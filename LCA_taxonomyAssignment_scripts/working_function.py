@@ -108,6 +108,7 @@ def taxonomy_dictionary(ncbi_taxonomy):
         for line in file:
             l3 = line.strip().split('|')
             tax_id = l3[0]
+            kingdom = l3[8]
             domain = l3[9]
             phylum = l3[7]
             classif = l3[6]
@@ -117,7 +118,7 @@ def taxonomy_dictionary(ncbi_taxonomy):
             species = l3[1]
 
             if "tax_id" not in line:
-                taxonomy_Dict[tax_id] = [domain, phylum,
+                taxonomy_Dict[tax_id] = [domain, kingdom, phylum,
                                          classif, order, family, genus, species]
 
     return taxonomy_Dict

@@ -321,12 +321,23 @@ process '03_Length_filtered' {
 
 
   script:
-  """
-  cat ${fastq_files} > "${sample_id}_QF_Dmux.fastq" 
-  obigrep -l $minLen -p 'forward_tag is not None and reverse_tag is not None' ${sample_id}_QF_Dmux.fastq > ${sample_id}_QF_Dmux_minLF.fastq
- 
-  """
-
+  if (params.illumina_demultiplexed && params.remove_ambiguous_tags)
+    """
+    cat "${fastq_files}" > "${sample_id}_QF_Dmux.fastq" 
+    obiannotate -S sample:'"_".join(sequence.getDefinition().strip().split("_")[1:])' "${sample_id}_QF_Dmux.fastq" > "${sample_id}_labelled.fastq"
+    obigrep -l $minLen "${sample_id}_labelled.fastq" | obigrep -v -D '1:N:0:.*[NBDHVKYSWRM].*_' > "${sample_id}_QF_Dmux_minLF.fastq"
+    """
+  else if (params.illumina_demultiplexed)
+    """
+    cat "${fastq_files}" > "${sample_id}_QF_Dmux.fastq" 
+    obiannotate -S sample:'"_".join(sequence.getDefinition().strip().split("_")[1:])' "${sample_id}_QF_Dmux.fastq" > "${sample_id}_labelled.fastq"
+    obigrep -l $minLen "${sample_id}_labelled.fastq" > ${sample_id}_QF_Dmux_minLF.fastq
+    """
+  else
+    """
+    cat ${fastq_files} > "${sample_id}_QF_Dmux.fastq" 
+    obigrep -l $minLen -p 'forward_tag is not None and reverse_tag is not None' "${sample_id}_QF_Dmux.fastq" > "${sample_id}_QF_Dmux_minLF.fastq"
+    """
 }
 
 
@@ -489,6 +500,7 @@ process '07_blast' {
      tuple val(sample_id), path("${sample_id}_blast_Result.tab"), path(zotuTable), path("match_list.txt") into blast_ch
   script:
       """
+      export BLASTDB="\$(dirname \"${params.blast_db}\")"
       blastn -task ${blast_task} \
 	     -db "${params.blast_db} ${params.custom_db}" \
              -outfmt "6 qseqid sseqid staxids sscinames scomnames sskingdoms pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \

@@ -67,7 +67,7 @@ def main():
 
     # print the header to the output file
     for lab in lable:
-        print("domain\tphylum\tclass\torder\tfamily\tgenus\tspecies\tOTU\tnumberOfUnq_BlastHits" +
+        print("domain\tkingdom\tphylum\tclass\torder\tfamily\tgenus\tspecies\tOTU\tnumberOfUnq_BlastHits" +
               '\t' + str('\t'.join(lable[lab])))
 
     # open filtered blast results temporary file
@@ -93,8 +93,8 @@ def main():
                 else:
                     # if the column 'OTU' is equal to the 'OTU' of the last line in acc
                     # compare remaining columns (number 0 - 6)
-                    if ll[7] == acc[linenr][7]:
-                        loccnt = 6  # reset column counter to the value 6
+                    if ll[8] == acc[linenr][8]:
+                        loccnt = 7  # reset column counter to the value 7
 
                         # for each column
                         while loccnt > 0:
@@ -103,7 +103,7 @@ def main():
                             # and repeat replacement for all columns after investigated column
                             # (current column to column number 6)
                             if ll[loccnt] != acc[linenr][loccnt] and (ll[loccnt] != '' or acc[linenr][loccnt] != ''):
-                                c = 6
+                                c = 7
                                 while c >= loccnt:
                                     acc[linenr][c] = "dropped"
                                     c -= 1
@@ -124,10 +124,10 @@ def main():
     # linking of the Zotu with filtering and LCA taxonomy results
     for x in acc:
         # If the Zotu was found also in the dictionary of the table
-        if x[7] in table:
+        if x[8] in table:
             # print it to the results file
-            print('\t'.join(x[:8]) + '\t' + str(n['vals']
-                                                [x[7]]) + '\t' + '\t'.join(table[x[7]]))
+            print('\t'.join(x[:9]) + '\t' + str(n['vals']
+                                                [x[8]]) + '\t' + '\t'.join(table[x[8]]))
 
 # end of the main function of the script
 

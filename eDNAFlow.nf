@@ -89,10 +89,8 @@ def helpMessage() {
 
     Choice of USEARCH32 vs USEARCH64 
       --mode [str]                   Default is '${params.mode}'; for running with 64 version the mode has to be set to --mode 'usearch64'
-                                     and below --search64 option has to be specified as well; can set to --mode 'vsearch' (only if --skipDemux is also chosen) 
-                                     below --vsearch option has to be specified as well
+                                     and below --search64 option has to be specified as well; can set to --mode 'vsearch'  
       --usearch64 [dir]              Full path to where usearch64 bit version is stored locally
-      --vsearch [dir]                Full path to where vsearch bit version is stored locally
 
     LULU
       --lulu [file]                  An R script to run post-clustering curation with default settings of LULU;
@@ -134,7 +132,6 @@ qcov = params.qcov
 lulu = file(params.lulu)
 mode = params.mode
 usearch64 = params.usearch64
-vsearch = params.vsearch
 minMatch_lulu = params.minMatch_lulu
 
 // Setting up channels & inputs for taxonomy assignment step
@@ -322,20 +319,24 @@ process '03_Length_filtered' {
 
   script:
   if (params.illumina_demultiplexed)
-    """
-    cat "${fastq_files}" > "${sample_id}_QF_Dmux.fastq" 
-    obiannotate -S sample:'"_".join(sequence.getDefinition().strip().split("_")[1:])' "${sample_id}_QF_Dmux.fastq" > "${sample_id}_labelled.fastq"
-    if ${params.remove_ambiguous_tags}; then
-      obigrep -l $minLen "${sample_id}_labelled.fastq" | obigrep -v -D '1:N:0:.*[NBDHVKYSWRM].*_' > "${sample_id}_QF_Dmux_minLF.fastq"
-    else
-      obigrep -l $minLen "${sample_id}_labelled.fastq" > ${sample_id}_QF_Dmux_minLF.fastq
-    fi
-    """
+    {
+      """
+      cat "${fastq_files}" > "${sample_id}_QF_Dmux.fastq" 
+      obiannotate -S sample:'"_".join(sequence.getDefinition().strip().split("_")[1:])' "${sample_id}_QF_Dmux.fastq" > "${sample_id}_labelled.fastq"
+      if ${params.remove_ambiguous_tags}; then
+        obigrep -l $minLen "${sample_id}_labelled.fastq" | obigrep -v -D '1:N:0:.*[NBDHVKYSWRM].*_' > "${sample_id}_QF_Dmux_minLF.fastq"
+      else
+        obigrep -l $minLen "${sample_id}_labelled.fastq" > ${sample_id}_QF_Dmux_minLF.fastq
+      fi
+      """
+    }
   else
-    """
-    cat ${fastq_files} > "${sample_id}_QF_Dmux.fastq" 
-    obigrep -l $minLen -p 'forward_tag is not None and reverse_tag is not None' "${sample_id}_QF_Dmux.fastq" > "${sample_id}_QF_Dmux_minLF.fastq"
-    """
+    {
+      """
+      cat ${fastq_files} > "${sample_id}_QF_Dmux.fastq" 
+      obigrep -l $minLen -p 'forward_tag is not None and reverse_tag is not None' "${sample_id}_QF_Dmux.fastq" > "${sample_id}_QF_Dmux_minLF.fastq"
+      """
+    }
 }
 
 
@@ -390,7 +391,7 @@ process '05_relabel_Cat_vsearch' {
      do
        label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
        # $usearch64 -fastx_relabel \$files -prefix \${label}. -fastqout \${label}.relabeled.fastq
-       vsearch --fastx_filter \$files --relabel \${label}. --fastqout \${label}.relabeled.fastq
+       vsearch --threads ${task.cpus} --fastx_filter \$files --relabel \${label}. --fastqout \${label}.relabeled.fastq
      done
 
      for files in *.relabeled.fastq
@@ -407,7 +408,7 @@ process '05_relabel_Cat_vsearch' {
      # $usearch64 -fastx_get_sample_names *_relabeled4Usearch.fastq -output sample.txt
 
      # $usearch64 -fastq_filter *_relabeled4Usearch.fastq -fastaout ${sample_id}.fasta
-     vsearch --fastx_filter *_relabeled4Usearch.fastq --fastaout ${sample_id}.fasta
+     vsearch --threads ${task.cpus} --fastx_filter *_relabeled4Usearch.fastq --fastaout ${sample_id}.fasta
      
      awk '/^>/ {print(\$0)}; /^[^>]/ {print(toupper(\$0))}' *.fasta > ${sample_id}_upper.fasta
      """
@@ -428,53 +429,55 @@ process '05_relabel_Cat_usearch' {
 
 
    script:
-   if(mode == 'usearch32')
-	   """
-	   for files in ${fastqs}
-	   do
-	   label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
-	   usearch -fastx_relabel \$files -prefix \${label}. -fastqout \${label}.relabeled.fastq 
-	   done
-	 
-	   for files in *.relabeled.fastq
-	   do
-	   name=\$(echo \$files | cut -d '/' -f '2' | cut -d '.' -f 1)
-	   echo \${name} >> CountOfSeq.txt
-	   grep "^@\${name}" \$files | wc -l >> CountOfSeq.txt
-	   done 
-
-	   cat *.relabeled.fastq > "${sample_id}_QF_Dmux_minLF_relabeled4Usearch.fastq"
-	  
-	   usearch -fastx_get_sample_names *_relabeled4Usearch.fastq -output sample.txt
-
-	   usearch -fastq_filter *_relabeled4Usearch.fastq -fastaout ${sample_id}.fasta
-	   
-	   awk '/^>/ {print(\$0)}; /^[^>]/ {print(toupper(\$0))}' *.fasta > ${sample_id}_upper.fasta
-	 
-	   """
-   else if(mode == 'usearch64')
-     """
-     for files in ${fastqs}
-           do
-           label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
-           $usearch64 -fastx_relabel \$files -prefix \${label}. -fastqout \${label}.relabeled.fastq
-           done
+   if (mode == 'usearch32') {
+       """
+       for files in ${fastqs}
+       do
+       label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
+       usearch -fastx_relabel \$files -prefix \${label}. -fastqout \${label}.relabeled.fastq 
+       done
+     
+       for files in *.relabeled.fastq
+       do
+       name=\$(echo \$files | cut -d '/' -f '2' | cut -d '.' -f 1)
+       echo \${name} >> CountOfSeq.txt
+       grep "^@\${name}" \$files | wc -l >> CountOfSeq.txt
+       done 
   
-           for files in *.relabeled.fastq
-           do
-           name=\$(echo \$files | cut -d '/' -f '2' | cut -d '.' -f 1)
-           echo \${name} >> CountOfSeq.txt
-           grep "^@\${name}" \$files | wc -l >> CountOfSeq.txt
-           done
-
-           cat *.relabeled.fastq > "${sample_id}_QF_Dmux_minLF_relabeled4Usearch.fastq"
-   
-           $usearch64 -fastx_get_sample_names *_relabeled4Usearch.fastq -output sample.txt
-
-           $usearch64 -fastq_filter *_relabeled4Usearch.fastq -fastaout ${sample_id}.fasta
+       cat *.relabeled.fastq > "${sample_id}_QF_Dmux_minLF_relabeled4Usearch.fastq"
+      
+       usearch -fastx_get_sample_names *_relabeled4Usearch.fastq -output sample.txt
+  
+       usearch -fastq_filter *_relabeled4Usearch.fastq -fastaout ${sample_id}.fasta
+       
+       awk '/^>/ {print(\$0)}; /^[^>]/ {print(toupper(\$0))}' *.fasta > ${sample_id}_upper.fasta
+     
+       """
+	   }
+   else if (mode == 'usearch64') {
+       """
+       for files in ${fastqs}
+             do
+             label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
+             $usearch64 -fastx_relabel \$files -prefix \${label}. -fastqout \${label}.relabeled.fastq
+             done
     
-           awk '/^>/ {print(\$0)}; /^[^>]/ {print(toupper(\$0))}' *.fasta > ${sample_id}_upper.fasta
-	   """
+             for files in *.relabeled.fastq
+             do
+             name=\$(echo \$files | cut -d '/' -f '2' | cut -d '.' -f 1)
+             echo \${name} >> CountOfSeq.txt
+             grep "^@\${name}" \$files | wc -l >> CountOfSeq.txt
+             done
+  
+             cat *.relabeled.fastq > "${sample_id}_QF_Dmux_minLF_relabeled4Usearch.fastq"
+     
+             $usearch64 -fastx_get_sample_names *_relabeled4Usearch.fastq -output sample.txt
+  
+             $usearch64 -fastq_filter *_relabeled4Usearch.fastq -fastaout ${sample_id}.fasta
+      
+             awk '/^>/ {print(\$0)}; /^[^>]/ {print(toupper(\$0))}' *.fasta > ${sample_id}_upper.fasta
+       """
+     }
  }
 
 ch = mode == 'vsearch' ? relabel_ch_vsearch : relabel_ch_usearch
@@ -503,12 +506,12 @@ process '06_Uniques_ZOTUs_vsearch' {
 
   script:
     """
-    vsearch --derep_fulllength ${upper_fasta} --sizeout --output "${sample_id}_Unq.fasta"
+    vsearch --threads ${task.cpus} --derep_fulllength ${upper_fasta} --sizeout --output "${sample_id}_Unq.fasta"
 
-    vsearch --cluster_unoise "${sample_id}_Unq.fasta" --centroids "${sample_id}_centroids.fasta" --minsize $minsize	   
-    vsearch --uchime3_denovo "${sample_id}_centroids.fasta" --nonchimeras "${sample_id}_zotus.fasta" --relabel zotu 
+    vsearch --threads ${task.cpus} --cluster_unoise "${sample_id}_Unq.fasta" --centroids "${sample_id}_centroids.fasta" --minsize $minsize	   
+    vsearch --threads ${task.cpus} --uchime3_denovo "${sample_id}_centroids.fasta" --nonchimeras "${sample_id}_zotus.fasta" --relabel zotu 
 
-    vsearch --usearch_global ${upper_fasta} --db "${sample_id}_zotus.fasta" --id 0.97 --otutabout zotuTable.txt
+    vsearch --threads ${task.cpus} --usearch_global ${upper_fasta} --db "${sample_id}_zotus.fasta" --id 0.97 --otutabout zotuTable.txt
     """
 }
 
@@ -528,21 +531,25 @@ process '06_Uniques_ZOTUs_usearch' {
 
   script:
   if(mode == 'usearch32')
-	   """
-	   usearch -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
-
-	   usearch -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize $minsize
-	    
-	   usearch -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
-	   """
+	   {
+       """
+       usearch -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
+  
+       usearch -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize $minsize
+        
+       usearch -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
+       """
+	   }
    else if(mode == 'usearch64')
-     """
-       $usearch64 -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
-
-       $usearch64 -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize $minsize
-
-       $usearch64 -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
-     """
+     {
+       """
+         $usearch64 -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
+  
+         $usearch64 -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize $minsize
+  
+         $usearch64 -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
+       """
+     }
 }
 
 zotu_ch = mode == 'vsearch' ? zotu_ch_vsearch : zotu_ch_usearch

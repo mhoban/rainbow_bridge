@@ -1,3 +1,4 @@
+#!/usr/bin/env Rscript 
 # This is a lulu script for post-clustering of Zotu table created by unoise3
 
 # Enable extracting command-line arguments

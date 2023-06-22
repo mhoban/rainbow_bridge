@@ -698,26 +698,32 @@ workflow {
       set { to_dereplicate }
   }
 
-  // dereplicate, blast, and run through LULU
+  // build the channel, run dereplication, and set to a channel we can use again
   Channel.of(params.prefix) | 
     combine(to_dereplicate) | 
     (params.mode == 'vsearch' ? derep_vsearch : derep_usearch) |
     set { dereplicated }
 
+  // run blast query and lulu curation
   dereplicated | 
     blast | 
     lulu
 
 
+  // run taxonomy assignment/collapse script if so requested
   if (params.assignTaxonomy) {
+    // here we grab the zotu table from our dereplication step
+    // TODO: also include lulu-curated output
     dereplicated | 
       map { it -> it[3] } | 
       set { zotu_table }
 
+    // here we grab the blast result
     blast.out | 
       map { it -> it[1] } | 
       set { blast_result }
 
+    // then we smash them together and run the taxonomy assignment/collapser script
     zotu_table |
       combine(blast_result) |
       collapse_taxonomy

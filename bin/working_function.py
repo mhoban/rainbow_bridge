@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # These are all functions necessary to run the LCA script
 # By Mahsa Mousavi-Derazmahalleh ; Python V3
 

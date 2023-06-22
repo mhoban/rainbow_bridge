@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 # USAGE: python nameOfThisScript.py
 # This script takes some user inputs (i.e. blast results, Zotu/otu table)

@@ -475,6 +475,11 @@ process relabel_usearch {
 
     # awk '/^>/ {print(\$0)}; /^[^>]/ {print(toupper(\$0))}' *.fasta > ${sample_id}_upper.fasta
     """
+  } else {
+    """
+    echo "we were passed a mode that wasn't usearch, usearch64, or vsearch"
+    exit 1
+    """
   }
 }
 
@@ -537,6 +542,11 @@ process derep_usearch {
     ${params.usearch64} -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
     ${params.usearch64} -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize ${params.minsize}
     ${params.usearch64} -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
+    """
+  } else {
+    """
+    echo "we were passed a mode that wasn't usearch, usearch64, or vsearch"
+    exit 1
     """
   }
 }

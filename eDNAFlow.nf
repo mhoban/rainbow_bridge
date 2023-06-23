@@ -1,7 +1,14 @@
 #!/usr/bin/env nextflow20
 nextflow.enable.dsl=2
 
-// TODO: do insect assignment. here's a docker image: https://hub.docker.com/r/mahsamousavi/insect
+// TODO: do insect assignment. here's a docker image: docker://mahsamousavi/insect:2019
+// TODO: make the taxonomy collapser script more legible and easier to use, have it cache taxdump, etc.
+// TODO: since we stopped doing the illumina_sample annotation, we probably still need to do the
+//       ambiguous tag removal step somewhere
+// TODO: consider putting back in the stats (sequence counts, etc.)
+// TODO: rather than putting parameters in filenames, store parameter values in a text file in each output dir
+// TODO: figure out how to deal with FastQC for pre-demultiplexed samples (perhaps use multiqc)
+//       multiqc docker image: docker://quay.io/biocontainers/multiqc:1.14--pyhdfd78af_0
 
 def usage() {
   println("Usage: eDNAFlow.nf [options]")
@@ -111,62 +118,96 @@ def usage() {
 process initial_fastqc {
   label 'fastqc'
 
-  publishDir "00_fastQC_initial", mode: params.publishMode
+  publishDir "00_fastqc_initial", mode: params.publishMode
 
   input:
-  tuple val(sample_id), path(read) 
+    tuple val(sample_id), path(read) 
 
-  /* output: */
-  /* tuple val(sample_id), path('*_fastqc.{zip,html}') */
-
-  when:
-  !params.skipFastqc
+  output:
+    path('*_fastqc.{zip,html}')
 
   script:
-
   if( read instanceof Path ) {
+    // single end
     """
-      fastqc -q ${read}
+    fastqc -q ${read}
     """
   } else {
+    // paired end
     """
-      fastqc -q ${read[0]} ${read[1]}
+    fastqc -q ${read[0]} ${read[1]}
     """
   }
+}
+
+process initial_multiqc {
+  label 'multiqc'
+
+  publishDir '00_fastqc_initial', mode: params.publishMode
+
+  input:
+    path(fastqc_files)
+  output: 
+    tuple path('multiqc_report.html'), path('multiqc_data/*')
+
+  script:
+  """
+  multiqc .
+  """
 }
 
 // FastQC to check quality after filtering and merging
 process merged_fastqc {
   label 'fastqc'
 
-  publishDir "00_fastQC_filtered_merged", mode: params.publishMode
+  publishDir "00_fastqc_filtered_merged", mode: params.publishMode
 
   input:
-  tuple val(sample_id), path(read) 
+    tuple val(sample_id), path(read) 
 
-  /* output: */
-  /* tuple val(sample_id), path('*_fastqc.{zip,html}')  */
-
-  when:
-  !params.skipFastqc
+  output:
+    path('*_fastqc.{zip,html}') 
 
   script:
-
   if( read instanceof Path ) {
+    // single end
     """
-      fastqc -q ${read}
+    fastqc -q ${read}
     """
   } else {
+    // paired end
     """
-      fastqc -q ${read[0]} ${read[1]}
+    fastqc -q ${read[0]} ${read[1]}
     """
   }
 }
 
-process trim_merge_demultiplexed  {
+process merged_multiqc {
+  label 'multiqc'
+
+  publishDir '00_fastqc_filtered_merged', mode: params.publishMode
+
+  input:
+    path(fastqc_files)
+  output: 
+    tuple path('multiqc_report.html'), path('multiqc_data/*')
+
+  script:
+  """
+  multiqc .
+  """
+}
+
+// multiqc combines the output of multiple fastqc reports
+// we do this for the non-demultiplexed samples
+
+// trim and (where relevant) merge paired-end reads
+// this gets called if the files were already demultiplexed
+// TODO: I'm not sure we need two entirely separate processes for this
+process filter_merge_demultiplexed  {
   label 'adapterRemoval'
 
-  publishDir '01_demultiplexed_trim_merge', mode: params.publishMode
+  publishDir '01_demultiplexed_filter_merge', mode: params.publishMode
 
   input:
     tuple val(sample_id), path(reads)
@@ -176,6 +217,7 @@ process trim_merge_demultiplexed  {
 
   script:
   if( reads instanceof Path ) {   
+    // single end
     """
     AdapterRemoval --threads ${task.cpus} --file1 ${reads} \
       --trimns --trimqualities \
@@ -200,6 +242,7 @@ process trim_merge_demultiplexed  {
 }
 
 // annotate sequences that have already been demultiplexed by illumina
+// we probably don't actually need this but it's being left in for now
 process annotate_demultiplexed {
   label 'obitools'
 
@@ -230,9 +273,8 @@ process annotate_demultiplexed {
   }
 }
 
-
-
-// Process 1: Quality filtering of raw reads
+// filter, trim, and (where relevant) merge reads
+// this gets called for raw reads that were *not* demultiplexed by the sequencer
 process filter_merge {
   label 'adapterRemoval'
 
@@ -249,6 +291,7 @@ process filter_merge {
   script:
 
   if( read instanceof Path ) {   
+    // single end
     """
     AdapterRemoval --threads ${task.cpus} --file1 ${read} \
       --trimns --trimqualities \
@@ -271,7 +314,7 @@ process filter_merge {
   }
 }
 
-// Process 2: primer mismatch & sample assignment
+// primer mismatch & sample assignment
 // multiple different barcode files are possible
 process ngsfilter {
   label 'obitools'
@@ -305,10 +348,8 @@ process filter_length {
     tuple val(sample_id), path('*_QF_Dmux_minLF.fastq') 
 
   script:
-  p = ""
-  if (!params.illuminaDemultiplexed) {
-    p = "-p 'forward_tag is not None and reverse_tag is not None'"
-  } 
+  // if we're already demultiplexed we probably don't have the forward_tag and reverse_tag annotations
+  def p = params.illuminaDemultiplexed ? "" : "-p 'forward_tag is not None and reverse_tag is not None'" 
   """
   cat ${fastq_files} > "${sample_id}_QF_Dmux.fastq" 
   obigrep --uppercase -l ${params.minLen} ${p} "${sample_id}_QF_Dmux.fastq" > "${sample_id}_QF_Dmux_minLF.fastq"
@@ -317,7 +358,7 @@ process filter_length {
 
 
 
-// Process 4: Split the file based on samples
+// for non-demultiplexed runs, split the annotated reads file by samples
 process split_samples {
   label 'obitools'
 
@@ -330,7 +371,8 @@ process split_samples {
     /*tuple val(sample_id),*/ path "$sample_id/*.fastq"
 
   script:
-  sample_tag = params.illuminaDemultiplexed ? "illumina_sample" : "sample"
+  // TODO: we probably don't need this anymore since we're not doing this annotation now
+  def sample_tag = params.illuminaDemultiplexed ? "illumina_sample" : "sample"
   """
   mkdir ${sample_id}
   obisplit --uppercase -t ${sample_tag} -u "noSampleID.fastq" $fastqs
@@ -340,7 +382,7 @@ process split_samples {
   """
 }
 
-// Process 4/5: Relabel file for vsearch
+// relabel files for vsearch
 process relabel_vsearch {
   label 'vsearch'
 
@@ -356,6 +398,8 @@ process relabel_vsearch {
 
   script:
   """
+  # this may or may not be necessary anymore, but it seems like a good sanity check
+  # since this will fail on empty files
   if [ -s "${fastq}" ]; then 
     vsearch --threads 0 --fastx_filter ${fastq} --relabel "${sample_id}." --fastaout - | \
       awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}_relabeled.fasta"
@@ -365,6 +409,7 @@ process relabel_vsearch {
   """
 }
 
+// relabel files for usearch
 process relabel_usearch {
 
   label 'usearch'
@@ -376,17 +421,14 @@ process relabel_usearch {
 
   output:
     path('*_relabeled.fasta')
-    /* tuple val(sample_id), path("*_upper.fasta"), emit: 'main' */
-    /* tuple val(sample_id), path("*.relabeled.fastq"), path("CountOfSeq.txt"), path("*_relabeled4Usearch.fastq"), emit: 'info'  */
 
   script:
-  if (params.mode == 'usearch32') {
+  if (params.mode in ['usearch','usearch32']) {
     """
     if [ -s "${fastq}" ]; then 
-      # vsearch --threads 0 --fastx_filter ${fastq} --relabel "${sample_id}." --fastaout "${sample_id}_relabeled.fasta"
+      # we have to convert everything to uppercase because obisplit --uppercase is broken
       usearch -fastx_relabel ${fastq} -prefix "${sample_id}." -fastaout /dev/stdout | tail -n+7 | \
         awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}"_relabeled.fasta 
-      # awk '/^>/ {print(\$0)}; /^[^>]/ {print(toupper(\$0))}' *.fasta > ${sample_id}_upper.fasta
     else
       touch "${sample_id}_relabeled.fasta"
     fi
@@ -410,8 +452,9 @@ process relabel_usearch {
 
 
     """
-  }
-  else if (params.mode == 'usearch64') {
+  } else if (params.mode == 'usearch64') {
+    // TODO: will this work? recall that it will be executed in the context of the usearch docker image
+    //       this is why calling vsearch like this didn't work
     """
     for files in ${fastqs}; do
       label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
@@ -435,7 +478,7 @@ process relabel_usearch {
   }
 }
 
-// Process 6: Dereplication, ZOTUs creation, ZOTU table creation (vsearch version)
+// dereplication, zOTUs creation, zOTU table creation (vsearch version)
 process derep_vsearch {
   label 'vsearch'
 
@@ -450,12 +493,14 @@ process derep_vsearch {
   output:
     tuple val(sample_id), path("${sample_id}_Unq.fasta"), path("${sample_id}_zotus.fasta"), path("zotuTable.txt") 
 
-  when:
-  !params.demuxOnly
-
   script:
   """
   # pass 0 threads to use all available cores
+  # steps:
+  # 1. get unique sequence variants
+  # 2. run denoising algorithm
+  # 3. get rid of chimeras
+  # 4. match original sequences to zotus by 97% identity
   vsearch --threads 0 --derep_fulllength ${upper_fasta} --sizeout --output "${sample_id}_Unq.fasta"
   vsearch --threads 0 --cluster_unoise "${sample_id}_Unq.fasta" --centroids "${sample_id}_centroids.fasta" --minsize ${params.minsize}	   
   vsearch --threads 0 --uchime3_denovo "${sample_id}_centroids.fasta" --nonchimeras "${sample_id}_zotus.fasta" --relabel Zotu 
@@ -463,6 +508,7 @@ process derep_vsearch {
   """
 }
 
+// dereplication, etc. using usearch
 process derep_usearch {
   label 'usearch'
 
@@ -474,20 +520,19 @@ process derep_usearch {
   output:
     tuple val(sample_id), path("${sample_id}_Unq.fasta"), path("${sample_id}_zotus.fasta"), path("zotuTable.txt") 
 
-  when:
-    !params.demuxOnly
-
   script:
-  if(params.mode == 'usearch32')
+  if (params.mode in ['usearch','usearch32'])
   {
     """
+    # steps:
+    # 1. get unique sequences
+    # 2. run denoising & chimera removal
+    # 3. generate zotu table
     usearch -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
     usearch -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize ${params.minsize}
     usearch -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
     """
-  }
-  else if(params.mode == 'usearch64')
-  {
+  } else if (params.mode == 'usearch64') {
     """
     ${params.usearch64} -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
     ${params.usearch64} -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize ${params.minsize}
@@ -496,10 +541,11 @@ process derep_usearch {
   }
 }
 
-// Process 7: Blast
+// run blast query
 process blast {
   label 'blast'
 
+  // get all the cpus and memory we can
   cpus { params.maxCpus }
   memory { params.maxMemory }
 
@@ -513,7 +559,9 @@ process blast {
 
   script:
   """
+  # this environment variable needs to be there for the taxonomy to show up properly
   export BLASTDB="\$(dirname \"${params.blastDb}\")"
+  # blast our zotus
   blastn -task ${params.blastTask} \
     -db "${params.blastDb} ${params.customDb}" \
     -outfmt "6 qseqid sseqid staxids sscinames scomnames sskingdoms pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \
@@ -523,7 +571,7 @@ process blast {
     -query ${zotus_fasta} -out ${sample_id}_blast_Result.tab \
     -num_threads ${task.cpus}
 
-  # do the blast search we need for LULU
+  # blast zotus against themselves to create the match list LULU needs
   makeblastdb -in ${zotus_fasta} -parse_seqids -dbtype nucl -out ${sample_id}_zotus
   blastn -db ${sample_id}_zotus \
     -outfmt "6 qseqid sseqid pident" \
@@ -533,7 +581,7 @@ process blast {
   """
 }
 
-// Process 8: LULU curation
+// LULU curation
 process lulu {
   label 'lulu'
 
@@ -552,22 +600,24 @@ process lulu {
 }
 
 
-// Process 9: Taxonomy assignment with LCA
-process collapse_taxonomy {
+// taxonomy assignment/collapse to least common ancestor (LCA)
+process assign_collapse_taxonomy {
   label 'lca_python3'
     publishDir { params.illuminaDemultiplexed ? '09_collapsed_taxonomy' : '10_collapsed_taxonomy' }, mode: params.publishMode
 
     input:
-      tuple path(zotu_table), path(blast_result) 
+      tuple path(zotu_table), path(lulu_zotu_table), path(blast_result) 
 
     output:
-      tuple path("intermediate_table.tab"), path("taxonomy_collapsed.tab") // path("${params.lcaOutput}_qCov${params.lcaQcov}_id${params.lcaPid}_diff${params.lcaDiff}.tab") 
+      tuple path("intermediate_table.tab"), path("taxonomy_collapsed.tab"), path("intermediate_table_lulu.tab"), path("taxonomy_collapsed_lulu.tab") // path("${params.lcaOutput}_qCov${params.lcaQcov}_id${params.lcaPid}_diff${params.lcaDiff}.tab") 
 
 
     script:
     """
     runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} taxonomy_collapsed.tab
     mv interMediate_res.tab intermediate_table.tab
+    runAssign_collapsedTaxonomy.py ${lulu_zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} taxonomy_collapsed_lulu.tab
+    mv interMediate_res.tab intermediate_table_lulu.tab
     """
 }  
 
@@ -646,49 +696,67 @@ workflow {
     // annotate them with their sample names and optionally filter out
     // sequences with ambiguous tags. then we recombine them into one forward
     // and one reverse file and continue with those as our reads
-    if (params.illuminaDemultiplexed) {
-      // run the first part of the pipeline for sequences that have already
-      // been demultiplexed by the sequencer
-      // TODO: figure out how to deal with FastQC for this way of doing things
+      if (params.illuminaDemultiplexed) {
+        // run the first part of the pipeline for sequences that have already
+        // been demultiplexed by the sequencer
 
-      reads |
-        trim_merge_demultiplexed |
-        /* annotate_demultiplexed |  */
-        combine(barcodes) | 
-        ngsfilter | 
-        groupTuple | 
-        filter_length | 
-        (params.mode == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
-        collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
-        set { to_dereplicate } 
-    } else {
-      // do initial fastqc step
-      if (!params.skipFastqc) {
-        initial_fastqc(reads)
+        if (params.fastqc) {
+          reads | 
+            initial_fastqc | 
+            flatten | 
+            collect | 
+            initial_multiqc
+        }
+
+        reads |
+          filter_merge_demultiplexed |
+          set { reads_filtered_merged }
+
+        if (params.fastqc) {
+          reads_filtered_merged | 
+            merged_fastqc | 
+            flatten | 
+            collect | 
+            merged_multiqc
+        }
+
+        reads_filtered_merged | 
+          /* annotate_demultiplexed |  */
+          combine(barcodes) | 
+          ngsfilter | 
+          groupTuple | 
+          filter_length | 
+          (params.mode == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
+          collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
+          set { to_dereplicate } 
+      } else {
+        // do initial fastqc step
+        if (params.fastqc) {
+          initial_fastqc(reads)
+        }
+
+        // do quality filtering and/or paired-end merge
+        reads | 
+          filter_merge | 
+          set { reads_filtered_merged }
+
+        // do after-filtering fastqc step
+        if (params.fastqc) {
+          merged_fastqc(reads_filtered_merged)
+        }
+
+        reads_filtered_merged | 
+          combine(barcodes) |
+          ngsfilter | 
+          groupTuple | 
+          filter_length |
+          split_samples | 
+          flatten | 
+          map { it -> [it.baseName, it] } | 
+          (params.mode == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
+          collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '07_relabeled_merged') |
+          set { to_dereplicate }
       }
-
-      // do quality filtering and/or paired-end merge
-      reads | 
-        filter_merge | 
-        set { reads_filtered_merged }
-
-      // do after-filtering fastqc step
-      if (!params.skipFastqc) {
-        merged_fastqc(reads_filtered_merged)
-      }
-
-      reads_filtered_merged | 
-        combine(barcodes) |
-        ngsfilter | 
-        groupTuple | 
-        filter_length |
-        split_samples | 
-        flatten | 
-        map { it -> [it.baseName, it] } | 
-        (params.mode == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
-        collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '07_relabeled_merged') |
-        set { to_dereplicate }
-    }
   } else {
     // here we've already demultiplexed and relabeled sequences 
     // (presumably from an earlier run of the pipeline), so we can jump to here
@@ -723,10 +791,15 @@ workflow {
       map { it -> it[1] } | 
       set { blast_result }
 
+    lulu.out | 
+      map { it -> it[0] } | 
+      set { lulu_zotu_table }
+
     // then we smash them together and run the taxonomy assignment/collapser script
     zotu_table |
+      combine(lulu_zotu_table) | 
       combine(blast_result) |
-      collapse_taxonomy
+      assign_collapse_taxonomy
   }
 
 }

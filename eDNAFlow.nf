@@ -529,6 +529,7 @@ process assign_collapse_taxonomy {
       tuple path("intermediate_table.tab"), path("taxonomy_collapsed.tab"), path("intermediate_table_lulu.tab"), path("taxonomy_collapsed_lulu.tab") // path("${params.lcaOutput}_qCov${params.lcaQcov}_id${params.lcaPid}_diff${params.lcaDiff}.tab") 
 
 
+    /* TODO: as above, fix the taxonomy script so that it works better, e.g. you can pass more than one OTU table */
     script:
     """
     runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} taxonomy_collapsed.tab
@@ -706,7 +707,7 @@ def check_params() {
     exit(0)
   }
 
-  if (params.single == params.paired) {
+  if (!file_exists(params.demuxedFasta) && params.single == params.paired) {
     if (!params.single) {
       println("One of either --single or --paired MUST be passed")
     } else {
@@ -760,7 +761,7 @@ workflow {
   // make sure our arguments are all in order
   check_params()
 
-  if (!params.skipDemux) {
+  if (!file_exists(params.demuxedFasta)) {
     if (params.single) {
       // here we load whatever was passed as the --reads option
       // if it's a glob, we get a list of files. if it's just one, we get just one
@@ -877,8 +878,7 @@ workflow {
     // here we've already demultiplexed and relabeled sequences 
     // (presumably from an earlier run of the pipeline), so we can jump to here
 
-    Channel.of(params.demuxedFasta) | 
-      combine(Channel.fromPath(params.demuxedFasta)) |
+    Channel.fromPath(params.demuxedFasta) |
       set { to_dereplicate }
   }
 
@@ -903,7 +903,6 @@ workflow {
   // run taxonomy assignment/collapse script if so requested
   if (params.assignTaxonomy) {
     // here we grab the zotu table from our dereplication step
-    // TODO: also include lulu-curated output
     dereplicated | 
       map { it -> it[3] } | 
       set { zotu_table }

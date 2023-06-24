@@ -10,8 +10,6 @@ exec_denoiser = false
 // TODO: incorporate this method of reading single or paired reads: https://github.com/nextflow-io/nextflow/issues/236#issuecomment-314018546
 // TODO: do insect assignment. here's a docker image: docker://mahsamousavi/insect:2019
 // TODO: make the taxonomy collapser script more legible and easier to use, have it cache taxdump, etc.
-// TODO: since we stopped doing the illumina_sample annotation, we probably still need to do the
-//       ambiguous tag removal step somewhere
 // TODO: consider putting back in the stats (sequence counts, sample names, etc.)
 // TODO: rather than putting parameters in filenames, store parameter values in a text file in each output dir
 
@@ -143,6 +141,23 @@ process filter_merge {
     mv ${sample_id}.collapsed ${sample_id}_trimmed_merged.fastq  
     """
   }
+}
+
+process filter_ambiguous_tags {
+  label 'obitools'
+
+  publishDir '01a_ambiguous_tags_filtered', mode: params.publishMode
+
+  input:
+    tuple val(sample_id), path(reads)
+
+  output:
+    tuple val(sample_id), path("*_good_tags.fastq") 
+
+  script:
+  """
+  obigrep --uppercase -D ':[ACGT]+\\+[ACGT]+\$' ${reads} > "${sample_id}_good_tags.fastq"
+  """
 }
 
 // annotate sequences that have already been demultiplexed by illumina
@@ -636,7 +651,6 @@ workflow {
         }
 
         reads |
-          /* filter_merge_demultiplexed | */
           filter_merge |
           set { reads_filtered_merged }
 
@@ -647,6 +661,12 @@ workflow {
             collect | 
             merged_multiqc
         }
+
+        if (params.removeAmbiguousTags) {
+          reads_filtered_merged | 
+            filter_ambiguous_tags | 
+            set { reads_filtered_merged }
+        } 
 
         reads_filtered_merged | 
           combine(barcodes) | 

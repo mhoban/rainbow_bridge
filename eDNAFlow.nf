@@ -106,11 +106,12 @@ process merged_multiqc {
 
 // trim and (where relevant) merge paired-end reads
 // this gets called if the files were already demultiplexed
-// TODO: I'm not sure we need two entirely separate processes for this
-process filter_merge_demultiplexed  {
+process filter_merge {
   label 'adapterRemoval'
 
-  publishDir '01_demultiplexed_filter_merge', mode: params.publishMode
+  /* publishDir '01_demultiplexed_filter_merge', mode: params.publishMode */
+  publishDir { params.illuminaDemultiplexed ? '01_demultiplexed_filter_merge' : '01_filter_merge' }, mode: params.publishMode
+  cpus { params.illuminaDemultiplexed ? 1 * task.attempt : params.maxCpus }
 
   input:
     tuple val(sample_id), path(reads)
@@ -172,47 +173,6 @@ process annotate_demultiplexed {
     """
     # annotate sample names
     obiannotate --uppercase -S illumina_sample:"'${sample_id}'" ${reads} > "${sample_id}_annotated.fastq"
-    """
-  }
-}
-
-// filter, trim, and (where relevant) merge reads
-// this gets called for raw reads that were *not* demultiplexed by the sequencer
-process filter_merge {
-  label 'adapterRemoval'
-
-  cpus { params.maxCpus }
-
-  publishDir "01_filter_merge", mode: params.publishMode
-
-  input:
-  tuple val(sample_id), path(read) 
-
-  output:
-  tuple val(sample_id), path('*_QF.fastq') 
-
-  script:
-
-  if( read instanceof Path ) {   
-    // single end
-    """
-    AdapterRemoval --threads ${task.cpus} --file1 ${read} \
-      --trimns --trimqualities \
-      --minquality ${params.minQuality} \
-      --basename ${sample_id}
-
-    mv ${sample_id}.truncated ${sample_id}_QF.fastq
-    """
-  } else {  
-    // if reads are paired-end then merge 
-    """
-    AdapterRemoval --threads ${task.cpus} --file1 ${read[0]} --file2 ${read[1]} \
-      --collapse --trimns --trimqualities \
-      --minquality $params.minQuality \
-      --minalignmentlength ${params.minAlignLen} \
-      --basename ${sample_id}
-
-    mv ${sample_id}.collapsed ${sample_id}_QF.fastq  
     """
   }
 }
@@ -676,7 +636,8 @@ workflow {
         }
 
         reads |
-          filter_merge_demultiplexed |
+          /* filter_merge_demultiplexed | */
+          filter_merge |
           set { reads_filtered_merged }
 
         if (params.fastqc) {

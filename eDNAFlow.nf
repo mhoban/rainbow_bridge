@@ -1,14 +1,18 @@
 #!/usr/bin/env nextflow20
 nextflow.enable.dsl=2
 
+/* some global variables */
+exec_denoiser = false
+
+// TODO: implement --demuxed-example option to show usearch fasta format for perviously-demultiplexed runs
+// TODO: dont' use skipDemux. instead skip demultiplexing just if demuxedFasta is an existing file
+// TODO: incorporate this method of reading single or paired reads: https://github.com/nextflow-io/nextflow/issues/236#issuecomment-314018546
 // TODO: do insect assignment. here's a docker image: docker://mahsamousavi/insect:2019
 // TODO: make the taxonomy collapser script more legible and easier to use, have it cache taxdump, etc.
 // TODO: since we stopped doing the illumina_sample annotation, we probably still need to do the
 //       ambiguous tag removal step somewhere
-// TODO: consider putting back in the stats (sequence counts, etc.)
+// TODO: consider putting back in the stats (sequence counts, sample names, etc.)
 // TODO: rather than putting parameters in filenames, store parameter values in a text file in each output dir
-// TODO: figure out how to deal with FastQC for pre-demultiplexed samples (perhaps use multiqc)
-//       multiqc docker image: docker://quay.io/biocontainers/multiqc:1.14--pyhdfd78af_0
 
 def usage() {
   println("Usage: eDNAFlow.nf [options]")
@@ -80,11 +84,11 @@ def usage() {
   println("")
   println("Quality filtering / Merging")
   println("  --min-quality [num]             The minimum Phred quality score to apply for quality control of raw sequences; Default is ${params.minQuality}")
-  println("  --min-len [num]           The minimum alignment length for merging read1 and read2; Default is ${params.minAlignLen}")
+  println("  --min-align-len [num]           The minimum alignment length for merging read1 and read2; Default is ${params.minAlignLen}")
   println("  --min-len [num]                 The minimum length allowed for sequences; Default is ${params.minLen}")
   println("")
   println("ZOTU formation")
-  println("  --minsize [num]                The minimum abundance; input sequences with lower abundances are removed; Default is ${params.minsize}")
+  println("  --min-abundance [num]           The minimum abundance; input sequences with lower abundances are removed; Default is ${params.minAbundance}")
   println("")
   println("Blast parameters")
   println("  --blast-task [string]	        Blast task to be performed; Default is '${params.blastTask}'; but can be set to 'megablast' if required   ")
@@ -95,7 +99,7 @@ def usage() {
   println("                                 Higher values prevent alignments of only a short portion of the query to a reference; Default is '${params.qcov}'")
   println("  ")
   println("Choice of USEARCH32 vs USEARCH64 ")
-  println("  --mode [str]                   Default is '${params.mode}'; for running with 64 version the mode has to be set to --mode 'usearch64'")
+  println("  --mode [str]                   Default is '${params.denoiser}'; for running with 64 version the mode has to be set to --mode 'usearch64'")
   println("                                 and below --search64 option has to be specified as well; can set to --mode 'vsearch'  ")
   println("  --usearch64 [dir]              Full path to where usearch64 bit version is stored locally")
   println("")
@@ -140,6 +144,8 @@ process initial_fastqc {
   }
 }
 
+// multiqc combines the output of multiple fastqc reports
+// we do this for the non-demultiplexed samples
 process initial_multiqc {
   label 'multiqc'
 
@@ -198,8 +204,6 @@ process merged_multiqc {
   """
 }
 
-// multiqc combines the output of multiple fastqc reports
-// we do this for the non-demultiplexed samples
 
 // trim and (where relevant) merge paired-end reads
 // this gets called if the files were already demultiplexed
@@ -423,7 +427,7 @@ process relabel_usearch {
     path('*_relabeled.fasta')
 
   script:
-  if (params.mode in ['usearch','usearch32']) {
+  if (!exec_denoiser) {
     """
     if [ -s "${fastq}" ]; then 
       # we have to convert everything to uppercase because obisplit --uppercase is broken
@@ -452,13 +456,13 @@ process relabel_usearch {
 
 
     """
-  } else if (params.mode == 'usearch64') {
+  } else if (exec_denoiser) {
     // TODO: will this work? recall that it will be executed in the context of the usearch docker image
     //       this is why calling vsearch like this didn't work
     """
     for files in ${fastqs}; do
       label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
-      ${params.usearch64} -fastx_relabel \$files -prefix \${label}. -fastqout \${label}.relabeled.fastq
+      ${params.denoiser} -fastx_relabel \$files -prefix \${label}. -fastqout \${label}.relabeled.fastq
     done
 
     for files in *.relabeled.fastq; do
@@ -469,9 +473,9 @@ process relabel_usearch {
 
     cat *.relabeled.fastq > "${sample_id}_QF_Dmux_minLF_relabeled4Usearch.fastq"
 
-    ${params.usearch64} -fastx_get_sample_names *_relabeled4Usearch.fastq -output sample.txt
+    ${params.denoiser} -fastx_get_sample_names *_relabeled4Usearch.fastq -output sample.txt
 
-    ${params.usearch64} -fastq_filter *_relabeled4Usearch.fastq -fastaout ${sample_id}_upper.fasta
+    ${params.denoiser} -fastq_filter *_relabeled4Usearch.fastq -fastaout ${sample_id}_upper.fasta
 
     # awk '/^>/ {print(\$0)}; /^[^>]/ {print(toupper(\$0))}' *.fasta > ${sample_id}_upper.fasta
     """
@@ -507,7 +511,7 @@ process derep_vsearch {
   # 3. get rid of chimeras
   # 4. match original sequences to zotus by 97% identity
   vsearch --threads 0 --derep_fulllength ${upper_fasta} --sizeout --output "${sample_id}_Unq.fasta"
-  vsearch --threads 0 --cluster_unoise "${sample_id}_Unq.fasta" --centroids "${sample_id}_centroids.fasta" --minsize ${params.minsize}	   
+  vsearch --threads 0 --cluster_unoise "${sample_id}_Unq.fasta" --centroids "${sample_id}_centroids.fasta" --minsize ${params.minAbundance}	   
   vsearch --threads 0 --uchime3_denovo "${sample_id}_centroids.fasta" --nonchimeras "${sample_id}_zotus.fasta" --relabel Zotu 
   vsearch --threads 0 --usearch_global ${upper_fasta} --db "${sample_id}_zotus.fasta" --id 0.97 --otutabout zotuTable.txt
   """
@@ -526,7 +530,7 @@ process derep_usearch {
     tuple val(sample_id), path("${sample_id}_Unq.fasta"), path("${sample_id}_zotus.fasta"), path("zotuTable.txt") 
 
   script:
-  if (params.mode in ['usearch','usearch32'])
+  if (!exec_denoiser)
   {
     """
     # steps:
@@ -534,14 +538,14 @@ process derep_usearch {
     # 2. run denoising & chimera removal
     # 3. generate zotu table
     usearch -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
-    usearch -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize ${params.minsize}
+    usearch -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize ${params.minAbundance}
     usearch -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
     """
-  } else if (params.mode == 'usearch64') {
+  } else if (exec_denoiser) {
     """
-    ${params.usearch64} -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
-    ${params.usearch64} -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize ${params.minsize}
-    ${params.usearch64} -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
+    ${params.denoiser} -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
+    ${params.denoiser} -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize ${params.minAbundance}
+    ${params.denoiser} -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
     """
   } else {
     """
@@ -562,18 +566,24 @@ process blast {
   publishDir { params.illuminaDemultiplexed ? "07_blast" : "08_blast" }, mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(a), path(zotus_fasta), path(zotuTable) 
+    tuple val(sample_id), path(a), path(zotus_fasta), path(zotuTable), path(blast_db), path(custom_db)
 
   output:
     tuple val(sample_id), path("${sample_id}_blast_Result.tab"), path(zotuTable), path("match_list.txt") 
 
   script:
+  def cdb = (String)custom_db
+  if (cdb == "NOTHING") {
+    cdb = ""
+  } else {
+    cdb = "${cdb}/${params.customDbName}"
+  }
   """
   # this environment variable needs to be there for the taxonomy to show up properly
-  export BLASTDB="\$(dirname \"${params.blastDb}\")"
+  export BLASTDB="${blast_db}"
   # blast our zotus
   blastn -task ${params.blastTask} \
-    -db "${params.blastDb} ${params.customDb}" \
+    -db "${blast_db}/nt ${cdb}" \
     -outfmt "6 qseqid sseqid staxids sscinames scomnames sskingdoms pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \
     -perc_identity ${params.percentIdentity} -evalue ${params.evalue} \
     -best_hit_score_edge 0.05 -best_hit_overhang 0.25 \
@@ -631,19 +641,32 @@ process assign_collapse_taxonomy {
     """
 }  
 
+def basename(f) {
+  (new File(f)).baseName
+}
 
-workflow {
-  // show help message and bail
+def file_exists(f) {
+  (new File(f)).exists()
+}
+
+def is_dir(d) {
+  (new File(d)).isDirectory()
+}
+
+def executable(f) {
+  (new File(f)).canExecute()
+}
+
+def check_params() {
+// show help message and bail
   if (params.help) {
     usage()
-
     if (params.debug) {
       println("\n\n\n")
       println(params)
     }
     exit(0)
   }
-
 
   if (params.single == params.paired) {
     if (!params.single) {
@@ -653,6 +676,51 @@ workflow {
     }
     exit(1)
   }
+
+  if (executable(params.denoiser)) {
+    exec_denoiser = true
+  } else {
+    if (!(params.denoiser in ['usearch','usearch32','vsearch'])) {
+      println("--denoiser must be either 'usearch', 'usearch32', 'vsearch', or a path to an executable (e.g., /opt/sw/bin/usearch64)")
+      exit(1)
+    }
+  }
+
+  if (!is_dir(params.blastDb)) {
+    println("BLAST database must be specified either with the --blast-db argument")
+    println("or using the \$BLASTDB environment variable. It must point to the directory")
+    println("containing the `nt` database (do not include /nt in the path)")
+    exit(1)
+  }
+
+  if (params.customDbName != "NOTHING" || params.customDb != "NOTHING") {
+    if (!is_dir(params.customDb)) {
+      println("Custom BLAST database must be specified as follows:")
+      println("--custom-db-dir <path to custom BLAST db directory>")
+      println("--custom-db <name of custom BLAST db (basename of .ndb, etc. files)>")
+      println("example:")
+      println("--custom-db-dir /storage/blast --custom-db test")
+      exit(1)
+    }
+    if (params.customDbName == "NOTHING") {
+      println("Name of custom BLAST db must be specified with the --custom-db option")
+      exit(1)
+    }
+  }
+
+  if (basename(params.blastDb) == basename(params.customDb)) {
+    println("Due to the vicissitudes of nextflow internality, the directory names")
+    println("of the main and custom BLAST databases must be different.")
+    println("As specified, both reside in directories called ${basename(params.blastDb)}")
+    exit(1)
+  }
+}
+
+
+workflow {
+
+  // make sure our arguments are all in order
+  check_params()
 
   if (!params.skipDemux) {
     if (params.single) {
@@ -665,7 +733,7 @@ workflow {
         set { reads }
     } else {
       // if fwd and rev point to files that exists, just load them directly
-      if ( (new File(params.fwd)).exists() && (new File(params.rev)).exists() ) {
+      if ( file_exists(params.fwd) && file_exists(params.rev) ) {
         Channel.of(params.prefix) |
           combine(Channel.fromPath(params.fwd,checkIfExists: true)) | 
           combine(Channel.fromPath(params.rev,checkIfExists: true)) | 
@@ -736,7 +804,7 @@ workflow {
           ngsfilter | 
           groupTuple | 
           filter_length | 
-          (params.mode == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
+          (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
           collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
           set { to_dereplicate } 
       } else {
@@ -763,7 +831,7 @@ workflow {
           split_samples | 
           flatten | 
           map { it -> [it.baseName, it] } | 
-          (params.mode == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
+          (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
           collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '07_relabeled_merged') |
           set { to_dereplicate }
       }
@@ -779,11 +847,17 @@ workflow {
   // build the channel, run dereplication, and set to a channel we can use again
   Channel.of(params.prefix) | 
     combine(to_dereplicate) | 
-    (params.mode == 'vsearch' ? derep_vsearch : derep_usearch) |
+    (params.denoiser == 'vsearch' ? derep_vsearch : derep_usearch) |
     set { dereplicated }
+
+  // make blastdb and customDbName a path channel so singularity will automount it properly
+  blast_db = Channel.fromPath(params.blastDb, type: 'dir')
+  custom_db = Channel.fromPath(params.customDb, type: 'dir', checkIfExists: params.customDb != "NOTHING")
 
   // run blast query and lulu curation
   dereplicated | 
+    combine(blast_db) | 
+    combine(custom_db) | 
     blast | 
     lulu
 

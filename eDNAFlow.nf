@@ -1,14 +1,16 @@
 #!/usr/bin/env nextflow20
 nextflow.enable.dsl=2
 
+// pull in the helper class
 import helper
 
 /* some global variables */
-
 exec_denoiser = false
 
+// TODO: put the LULU blast database step in the lulu process, except we can't because we need the right singularity image
+//       maybe we give it its own process so it runs in parallel
 // TODO: incorporate this method of reading single or paired reads: https://github.com/nextflow-io/nextflow/issues/236#issuecomment-314018546
-// TODO: do insect assignment. here's a docker image: docker://mahsamousavi/insect:2019
+// TODO: produce a phyloseq object. here's a docker image: docker://globusgenomics/phyloseq:latest
 // TODO: make the taxonomy collapser script more legible and easier to use, have it cache taxdump, etc.
 // TODO: consider putting back in the stats (sequence counts, sample names, etc.)
 // TODO: rather than putting parameters in filenames, store parameter values in a text file in each output dir
@@ -127,7 +129,6 @@ process filter_merge {
       --basename ${sample_id}
 
     mv ${sample_id}.truncated ${sample_id}_trimmed_merged.fastq
-
     """
   } else {  
     // if reads are paired-end then merge 
@@ -434,8 +435,10 @@ process blast {
   label 'blast'
 
   // get all the cpus and memory we can
-  cpus { params.maxCpus }
-  memory { params.maxMemory }
+  // use half if insect is gonna run too
+  cpus { params.insect ? (int)params.maxCpus / 2 : params.maxCpus }
+  time { params.maxTime }
+  memory { params.insect ? '300 GB' : params.maxMemory }
 
   publishDir { params.illuminaDemultiplexed ? "07_blast" : "08_blast" }, mode: params.publishMode
 
@@ -516,6 +519,34 @@ process assign_collapse_taxonomy {
     """
 }  
 
+process insect_classify {
+  label 'insect'
+
+  publishDir 'insect_classified', mode: params.publishMode
+
+  // use half because we're probably running at the same
+  // time as the blast search
+  cpus { params.maxCpus / 2 }
+  memory { '300 GB' }
+
+  input:
+    tuple path(zotus), path(classifier)
+
+  output:
+    tuple path('insect_classified.csv'), path('insect_settings.txt')
+
+  script:
+  """
+  insect.R ${zotus} ${classifier} \
+    ${task.cpus} ${params.insectThreshold} \
+    ${params.insectOffset} ${params.insectMinCount} \
+    ${params.insectPing}
+
+  echo "insect settiongs" > insect_settings.txt
+  """
+}
+
+
 def check_params() {
 // show help message and bail
   if (params.help) {
@@ -582,7 +613,6 @@ def check_params() {
 
 
 workflow {
-
   // make sure our arguments are all in order
   check_params()
 
@@ -621,12 +651,15 @@ workflow {
         // files will be sorted alphabetically this is an extremely niche issue
         // because file are basically always R1/R2 but what if they're
         // forwards/backwards or something like that?
+
+        // we also replace dashes with underscores in the sample ID because at leash
+        // vsearch will cut on that character and not treat it as a complete sample id
   
         // I'm not even certain the order matters, but I think it does because we 
         // send them to --file1 and --file2 of AdapterRemoval
         // TODO: figure out how to customize sample IDs here too, maybe
         Channel.fromFilePairs(pattern) | 
-          map { key,f -> [key,f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
+          map { key,f -> [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
           set { reads }
       }
     }
@@ -668,6 +701,8 @@ workflow {
             set { reads_filtered_merged }
         } 
 
+        // TODO: there are some issues with the output directory numbering
+        //       numbering should go: relabeled, merged, then dereplicated
         reads_filtered_merged | 
           combine(barcodes) | 
           ngsfilter | 
@@ -718,9 +753,13 @@ workflow {
     (params.denoiser == 'vsearch' ? derep_vsearch : derep_usearch) |
     set { dereplicated }
 
-  // make blastdb and customDbName a path channel so singularity will automount it properly
+  // make blast databases path channels so singularity will automount it properly
   blast_db = Channel.fromPath(params.blastDb, type: 'dir')
   custom_db = Channel.fromPath(params.customDb, type: 'dir', checkIfExists: params.customDb != "NOTHING")
+
+  dereplicated | 
+    map { it[2] } | 
+    set { zotus }
 
   // run blast query and lulu curation
   dereplicated | 
@@ -728,6 +767,14 @@ workflow {
     combine(custom_db) | 
     blast | 
     lulu
+
+  // run the insect classifier, if so desired
+  // this should run in parallel with the blast & lulu processes
+  if (params.insect) {
+    zotus | 
+      combine(Channel.fromPath(params.insect)) | 
+      insect_classify
+  }
 
 
   // run taxonomy assignment/collapse script if so requested
@@ -752,5 +799,5 @@ workflow {
       combine(blast_result) |
       assign_collapse_taxonomy
   }
-
+  
 }

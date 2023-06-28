@@ -7,8 +7,6 @@ import helper
 /* some global variables */
 exec_denoiser = false
 
-// TODO: put the LULU blast database step in the lulu process, except we can't because we need the right singularity image
-//       maybe we give it its own process so it runs in parallel
 // TODO: incorporate this method of reading single or paired reads: https://github.com/nextflow-io/nextflow/issues/236#issuecomment-314018546
 // TODO: produce a phyloseq object. here's a docker image: docker://globusgenomics/phyloseq:latest
 // TODO: make the taxonomy collapser script more legible and easier to use, have it cache taxdump, etc.
@@ -108,10 +106,9 @@ process merged_multiqc {
 // this gets called if the files were already demultiplexed
 process filter_merge {
   label 'adapterRemoval'
+  label 'demux_cpus'
 
-  /* publishDir '01_demultiplexed_filter_merge', mode: params.publishMode */
   publishDir { params.illuminaDemultiplexed ? '01_demultiplexed_filter_merge' : '01_filter_merge' }, mode: params.publishMode
-  cpus { params.illuminaDemultiplexed ? 1 * task.attempt : params.maxCpus }
 
   input:
     tuple val(sample_id), path(reads)
@@ -265,8 +262,6 @@ process split_samples {
 process relabel_vsearch {
   label 'vsearch'
 
-  cpus { params.maxCpus }
-
   publishDir { params.illuminaDemultiplexed ? "04_relabel_vsearch" : "05_relabel_vsearch" }, mode: params.publishMode
 
   input:
@@ -290,7 +285,6 @@ process relabel_vsearch {
 
 // relabel files for usearch
 process relabel_usearch {
-
   label 'usearch'
 
   publishDir { params.illuminaDemultiplexed ? "04_relabel_usearch" : "05_relabel_usearch" }, mode: params.publishMode
@@ -365,9 +359,7 @@ process relabel_usearch {
 // dereplication, zOTUs creation, zOTU table creation (vsearch version)
 process derep_vsearch {
   label 'vsearch'
-
-  // give us all the processors, since we should be the only ones on this
-  cpus { params.maxCpus }
+  label 'all_cpus'
 
   publishDir { params.illuminaDemultiplexed ? "05_derep_vsearch" : "06_derep_vsearch" }, mode: params.publishMode
 
@@ -395,6 +387,7 @@ process derep_vsearch {
 // dereplication, etc. using usearch
 process derep_usearch {
   label 'usearch'
+  label 'all_cpus'
 
   publishDir { params.illuminaDemultiplexed ? "05_derep_usearch" : "06_derep_usearch" }, mode: params.publishMode
 
@@ -433,12 +426,6 @@ process derep_usearch {
 // run blast query
 process blast {
   label 'blast'
-
-  // get all the cpus and memory we can
-  // use half if insect is gonna run too
-  cpus { params.insect ? (int)params.maxCpus / 2 : params.maxCpus }
-  time { params.maxTime }
-  memory { params.insect ? '300 GB' : params.maxMemory }
 
   publishDir { params.illuminaDemultiplexed ? "07_blast" : "08_blast" }, mode: params.publishMode
 
@@ -523,11 +510,6 @@ process insect_classify {
   label 'insect'
 
   publishDir 'insect_classified', mode: params.publishMode
-
-  // use half because we're probably running at the same
-  // time as the blast search
-  cpus { params.maxCpus / 2 }
-  memory { '300 GB' }
 
   input:
     tuple path(zotus), path(classifier)

@@ -1,4 +1,4 @@
-#!/usr/bin/env nextflow20
+#!/usr/bin/env nextflow
 nextflow.enable.dsl=2
 
 // pull in the helper class
@@ -7,6 +7,9 @@ import helper
 /* some global variables */
 exec_denoiser = false
 
+
+// TODO: add name checking against WoRMS
+// TODO: do lulu blast and lulu curation separately
 // TODO: incorporate this method of reading single or paired reads: https://github.com/nextflow-io/nextflow/issues/236#issuecomment-314018546
 // TODO: produce a phyloseq object. here's a docker image: docker://globusgenomics/phyloseq:latest
 // TODO: make the taxonomy collapser script more legible and easier to use, have it cache taxdump, etc.
@@ -630,11 +633,11 @@ workflow {
         }
   
         // load the reads and make sure they're in the right order because the
-        // files will be sorted alphabetically this is an extremely niche issue
+        // files will be sorted alphabetically. this is an extremely niche issue
         // because file are basically always R1/R2 but what if they're
         // forwards/backwards or something like that?
 
-        // we also replace dashes with underscores in the sample ID because at leash
+        // we also replace dashes with underscores in the sample ID because at least
         // vsearch will cut on that character and not treat it as a complete sample id
   
         // I'm not even certain the order matters, but I think it does because we 
@@ -650,81 +653,92 @@ workflow {
     barcodes = Channel.fromPath(params.barcode, checkIfExists: true)
 
     // if the sequences are already demultiplexed by illumina, we'll
-    // annotate them with their sample names and optionally filter out
-    // sequences with ambiguous tags. then we recombine them into one forward
-    // and one reverse file and continue with those as our reads
-      if (params.illuminaDemultiplexed) {
-        // run the first part of the pipeline for sequences that have already
-        // been demultiplexed by the sequencer
+    // process them separately, including optionally attempting to remove ambiguous tags
+    // and ultimately smash them together for vsearch/usearch to do the dereplication
+    if (params.illuminaDemultiplexed) {
 
-        if (params.fastqc) {
-          reads | 
-            initial_fastqc | 
-            flatten | 
-            collect | 
-            initial_multiqc
-        }
-
-        reads |
-          filter_merge |
-          set { reads_filtered_merged }
-
-        if (params.fastqc) {
-          reads_filtered_merged | 
-            merged_fastqc | 
-            flatten | 
-            collect | 
-            merged_multiqc
-        }
-
-        if (params.removeAmbiguousTags) {
-          reads_filtered_merged | 
-            filter_ambiguous_tags | 
-            set { reads_filtered_merged }
-        } 
-
-        // TODO: there are some issues with the output directory numbering
-        //       numbering should go: relabeled, merged, then dereplicated
-        reads_filtered_merged | 
-          combine(barcodes) | 
-          ngsfilter | 
-          groupTuple | 
-          filter_length | 
-          (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
-          collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
-          set { to_dereplicate } 
-      } else {
-        // do initial fastqc step
-        if (params.fastqc) {
-          initial_fastqc(reads)
-        }
-
-        // do quality filtering and/or paired-end merge
+      // do fastqc/multqc before filtering & merging
+      if (params.fastqc) {
         reads | 
-          filter_merge | 
-          set { reads_filtered_merged }
-
-        // do after-filtering fastqc step
-        if (params.fastqc) {
-          merged_fastqc(reads_filtered_merged)
-        }
-
-        reads_filtered_merged | 
-          combine(barcodes) |
-          ngsfilter | 
-          groupTuple | 
-          filter_length |
-          split_samples | 
+          initial_fastqc | 
           flatten | 
-          map { it -> [it.baseName, it] } | 
-          (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
-          collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '07_relabeled_merged') |
-          set { to_dereplicate }
+          collect | 
+          initial_multiqc
       }
+
+      // run the first part of the pipeline for sequences that have already
+      // been demultiplexed by the sequencer
+      reads |
+        filter_merge |
+        set { reads_filtered_merged }
+
+      // do fastqc/multiqc for filtered/merged
+      if (params.fastqc) {
+        reads_filtered_merged | 
+          merged_fastqc | 
+          flatten | 
+          collect | 
+          merged_multiqc
+      }
+
+      // remove ambiguous tags, if specified
+      if (params.removeAmbiguousTags) {
+        reads_filtered_merged | 
+          filter_ambiguous_tags | 
+          set { reads_filtered_merged }
+      } 
+
+      // TODO: there are some issues with the output directory numbering
+      //       numbering should go: relabeled, merged, then dereplicated
+
+      // run the rest of the pipeline, including the primer mismatch check,
+      // length filtering, and smashing together into one file
+      reads_filtered_merged | 
+        combine(barcodes) | 
+        ngsfilter | 
+        groupTuple | 
+        filter_length | 
+        (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
+        collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
+        set { to_dereplicate } 
+
+    } else {
+      // this is where reads are all in one fwd or fwd/rev file and have NOT been demultiplexed
+
+      // do initial fastqc step
+      if (params.fastqc) {
+        initial_fastqc(reads)
+      }
+
+      // do quality filtering and/or paired-end merge
+      reads | 
+        filter_merge | 
+        set { reads_filtered_merged }
+
+      // do after-filtering fastqc step
+      if (params.fastqc) {
+        merged_fastqc(reads_filtered_merged)
+      }
+
+      // run the rest of the pipeline, including demultiplexing, length filtering,
+      // splitting, and recombination for dereplication
+      reads_filtered_merged | 
+        combine(barcodes) |
+        ngsfilter | 
+        groupTuple | 
+        filter_length |
+        split_samples | 
+        flatten | 
+        map { it -> [it.baseName, it] } | 
+        (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
+        collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '07_relabeled_merged') |
+        set { to_dereplicate }
+    }
   } else {
     // here we've already demultiplexed and relabeled sequences 
     // (presumably from an earlier run of the pipeline), so we can jump to here
 
+    // load the fasta file in usearch/vsearch format
     Channel.fromPath(params.demuxedFasta) |
       set { to_dereplicate }
   }
@@ -739,6 +753,7 @@ workflow {
   blast_db = Channel.fromPath(params.blastDb, type: 'dir')
   custom_db = Channel.fromPath(params.customDb, type: 'dir', checkIfExists: params.customDb != "NOTHING")
 
+  // dereplicate returns a tuple, but we only need the third entry
   dereplicated | 
     map { it[2] } | 
     set { zotus }
@@ -771,6 +786,7 @@ workflow {
       map { it -> it[1] } | 
       set { blast_result }
 
+    // get the lulu-curated zotu table
     lulu.out | 
       map { it -> it[0] } | 
       set { lulu_zotu_table }

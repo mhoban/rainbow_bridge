@@ -518,16 +518,17 @@ process insect_classify {
     tuple path(zotus), path(classifier)
 
   output:
-    tuple path('insect_classified.csv'), path('insect_settings.txt')
+    tuple path('insect_classified.csv'), path('insect_settings.txt'), path('classifier.rds')
 
   script:
   """
-  insect.R ${zotus} ${classifier} \
+  mv ${classifier} classifier.rds
+  insect.R ${zotus} classifier.rds \
     ${task.cpus} ${params.insectThreshold} \
     ${params.insectOffset} ${params.insectMinCount} \
     ${params.insectPing}
 
-  echo "insect settiongs" > insect_settings.txt
+  echo "insect settings" > insect_settings.txt
   """
 }
 
@@ -767,9 +768,11 @@ workflow {
 
   // run the insect classifier, if so desired
   // this should run in parallel with the blast & lulu processes
+  // download the classifier model if it's one of the supported ones
   if (params.insect) {
+    insect = helper.insect_classifiers[params.insect.toLowerCase()] ? helper.insect_classifiers[params.insect.toLowerCase()] : params.insect
     zotus | 
-      combine(Channel.fromPath(params.insect)) | 
+      combine(Channel.fromPath(params.insect, checkIfExists: true)) | 
       insect_classify
   }
 

@@ -3,6 +3,7 @@
 library(insect)
 library(readr)
 library(stringr)
+library(purrr)
 
 args <- commandArgs(TRUE)
 
@@ -14,23 +15,13 @@ offs <- as.numeric(args[5])
 mincount <- as.numeric(args[6])
 pingr <- as.numeric(args[7])
 
-cat(str_glue("zf: {zf}, cf: {zf}, cores: {cores}, thresh: {thresh}\noffs: {offs}, mincount: {mincount}, pingr: {pingr}\n\n"))
-
+settings <- c("zOTU file: {zf}","Classifier model: {cf}","cores: {cores}","threshold: {thresh}","offset: {offs}","mincount: {mincount}","ping: {pingr}")
+settings <- map_chr(settings,str_glue)
+write_lines(settings,"insect_settings.txt")
 
 
 zotus <- readFASTA(zf)
 classifier <- readRDS(cf)
-cat(str_glue("classified <- classify(
-             zotus,
-             classifier,
-             threshold = {thresh},
-             metadata = TRUE,
-             offset = {offs},
-             mincount = {mincount},
-             cores = {cores},
-             ping = {pingr}
-             )"))
-
 classified <- classify(
   zotus,
   classifier,

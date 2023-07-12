@@ -527,8 +527,6 @@ process insect_classify {
     ${task.cpus} ${params.insectThreshold} \
     ${params.insectOffset} ${params.insectMinCount} \
     ${params.insectPing}
-
-  echo "insect settings" > insect_settings.txt
   """
 }
 
@@ -594,6 +592,17 @@ def check_params() {
     println("of the main and custom BLAST databases must be different.")
     println("As specified, both reside in directories called ${helper.basename(params.blastDb)}")
     exit(1)
+  }
+
+  if (params.insect) {
+    if (!helper.insect_classifiers[params.insect.toLowerCase()]) {
+      if (!helper.file_exists(params.insect)) {
+        println("Value passed to --insect must be one of the supported builtins or an RDS file")
+        println("containing a trained insect classifier model.")
+        println("See eDNAFlow.nf --help for supported builtin models")
+        exit(1)
+      }
+    }    
   }
 }
 

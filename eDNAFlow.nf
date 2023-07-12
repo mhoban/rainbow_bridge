@@ -364,7 +364,7 @@ process derep_vsearch {
   label 'vsearch'
   label 'all_cpus'
 
-  publishDir { params.illuminaDemultiplexed ? "05_derep_vsearch" : "06_derep_vsearch" }, mode: params.publishMode
+  publishDir { params.illuminaDemultiplexed ? "06_derep_vsearch" : "07_derep_vsearch" }, mode: params.publishMode
 
   input:
     tuple val(sample_id), path(upper_fasta) 
@@ -392,7 +392,7 @@ process derep_usearch {
   label 'usearch'
   label 'all_cpus'
 
-  publishDir { params.illuminaDemultiplexed ? "05_derep_usearch" : "06_derep_usearch" }, mode: params.publishMode
+  publishDir { params.illuminaDemultiplexed ? "06_derep_usearch" : "07_derep_usearch" }, mode: params.publishMode
 
   input:
     tuple val(sample_id), path(upper_fasta) 
@@ -490,29 +490,36 @@ process lulu {
 // taxonomy assignment/collapse to least common ancestor (LCA)
 process assign_collapse_taxonomy {
   label 'lca_python3'
-    publishDir { params.illuminaDemultiplexed ? '09_collapsed_taxonomy' : '10_collapsed_taxonomy' }, mode: params.publishMode
 
-    input:
-      tuple path(zotu_table), path(lulu_zotu_table), path(blast_result) 
+  publishDir { 
+    p = params.insect ? "a" : ""
+    return params.illuminaDemultiplexed ? "09${p}_collapsed_taxonomy" : "10${p}_collapsed_taxonomy" 
+  }, mode: params.publishMode
 
-    output:
-      tuple path("intermediate_table.tab"), path("taxonomy_collapsed.tab"), path("intermediate_table_lulu.tab"), path("taxonomy_collapsed_lulu.tab") // path("${params.lcaOutput}_qCov${params.lcaQcov}_id${params.lcaPid}_diff${params.lcaDiff}.tab") 
+  input:
+    tuple path(zotu_table), path(lulu_zotu_table), path(blast_result) 
+
+  output:
+    tuple path("intermediate_table.tab"), path("taxonomy_collapsed.tab"), path("intermediate_table_lulu.tab"), path("taxonomy_collapsed_lulu.tab") // path("${params.lcaOutput}_qCov${params.lcaQcov}_id${params.lcaPid}_diff${params.lcaDiff}.tab") 
 
 
-    /* TODO: as above, fix the taxonomy script so that it works better, e.g. you can pass more than one OTU table */
-    script:
-    """
-    runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} taxonomy_collapsed.tab
-    mv interMediate_res.tab intermediate_table.tab
-    runAssign_collapsedTaxonomy.py ${lulu_zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} taxonomy_collapsed_lulu.tab
-    mv interMediate_res.tab intermediate_table_lulu.tab
-    """
+  /* TODO: as above, fix the taxonomy script so that it works better, e.g. you can pass more than one OTU table */
+  script:
+  """
+  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} taxonomy_collapsed.tab
+  mv interMediate_res.tab intermediate_table.tab
+  runAssign_collapsedTaxonomy.py ${lulu_zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} taxonomy_collapsed_lulu.tab
+  mv interMediate_res.tab intermediate_table_lulu.tab
+  """
 }  
 
 process insect_classify {
   label 'insect'
 
-  publishDir 'insect_classified', mode: params.publishMode
+  publishDir { 
+    p = params.assignTaxonomy ? "b" : ""
+    return params.illuminaDemultiplexed ? "09${p}_insect_classified" : "10${p}_insect_classified" 
+  }, mode: params.publishMode
 
   input:
     tuple path(zotus), path(classifier)
@@ -709,7 +716,7 @@ workflow {
         groupTuple | 
         filter_length | 
         (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
-        collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
+        collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '05_relabeled_merged') |
         set { to_dereplicate } 
 
     } else {
@@ -741,7 +748,7 @@ workflow {
         flatten | 
         map { it -> [it.baseName, it] } | 
         (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
-        collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '07_relabeled_merged') |
+        collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
         set { to_dereplicate }
     }
   } else {

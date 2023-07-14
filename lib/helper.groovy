@@ -100,6 +100,7 @@ class helper {
       --min-len [num]            Minimum overall sequence length (default: ${params.minLen})
 
     BLAST settings (one or more of --blast-db or --custom-db is required):
+      --skip-blast               Skip BLAST searches
       --blast-db [dir]           Location of local BLAST nucleotide (nt) database *directory*
                                  (do NOT include the final "/nt")
                                  May be specified using the \$BLASTDB environment variable
@@ -148,6 +149,7 @@ class helper {
                                  path to usearch64 executable (default: usearch)
 
     LULU zOTU curation:
+      --skip-lulu                Skip LULU curation
       --lulu-min [num]           Minimum threshold of sequence similarity to consider zOTUs as spurious.
                                  Choose higher values when using markers with lower genetic variation 
                                  and/or few expected PCR and sequencing errors. (default: ${params.luluMin})

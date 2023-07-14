@@ -8,6 +8,7 @@ import helper
 exec_denoiser = false
 
 
+// TODO: fix insect model downloads (since Channel.fromPath isn't cutting it)
 // TODO: add name checking against WoRMS
 // TODO: do lulu blast and lulu curation separately
 // TODO: incorporate this method of reading single or paired reads: https://github.com/nextflow-io/nextflow/issues/236#issuecomment-314018546
@@ -17,92 +18,6 @@ exec_denoiser = false
 // TODO: rather than putting parameters in filenames, store parameter values in a text file in each output dir
 
 // gets an environment variable and returns blank instead of null if it's not set
-
-// FastQC to check the initial quality of raw reads
-process initial_fastqc {
-  label 'fastqc'
-
-  publishDir "00_fastqc_initial", mode: params.publishMode
-
-  input:
-    tuple val(sample_id), path(read) 
-
-  output:
-    path('*_fastqc.{zip,html}')
-
-  script:
-  if( read instanceof Path ) {
-    // single end
-    """
-    fastqc -q ${read}
-    """
-  } else {
-    // paired end
-    """
-    fastqc -q ${read[0]} ${read[1]}
-    """
-  }
-}
-
-// multiqc combines the output of multiple fastqc reports
-// we do this for the non-demultiplexed samples
-process initial_multiqc {
-  label 'multiqc'
-
-  publishDir '00_fastqc_initial', mode: params.publishMode
-
-  input:
-    path(fastqc_files)
-  output: 
-    tuple path('multiqc_report.html'), path('multiqc_data/*')
-
-  script:
-  """
-  multiqc .
-  """
-}
-
-// FastQC to check quality after filtering and merging
-process merged_fastqc {
-  label 'fastqc'
-
-  publishDir "00_fastqc_filtered_merged", mode: params.publishMode
-
-  input:
-    tuple val(sample_id), path(read) 
-
-  output:
-    path('*_fastqc.{zip,html}') 
-
-  script:
-  if( read instanceof Path ) {
-    // single end
-    """
-    fastqc -q ${read}
-    """
-  } else {
-    // paired end
-    """
-    fastqc -q ${read[0]} ${read[1]}
-    """
-  }
-}
-
-process merged_multiqc {
-  label 'multiqc'
-
-  publishDir '00_fastqc_filtered_merged', mode: params.publishMode
-
-  input:
-    path(fastqc_files)
-  output: 
-    tuple path('multiqc_report.html'), path('multiqc_data/*')
-
-  script:
-  """
-  multiqc .
-  """
-}
 
 
 // trim and (where relevant) merge paired-end reads
@@ -308,25 +223,6 @@ process relabel_usearch {
     else
       touch "${sample_id}_relabeled.fasta"
     fi
-
-    # for files in \${fastqs}; do
-    #   label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
-    #   usearch -fastx_relabel \$files -prefix \${label}. -fastqout \${label}.relabeled.fastq 
-    # done
-
-    # for files in *.relabeled.fastq; do
-    #   name=\$(echo \$files | cut -d '/' -f '2' | cut -d '.' -f 1)
-    #   echo \${name} >> CountOfSeq.txt
-    #   grep "^@\${name}" \$files | wc -l >> CountOfSeq.txt
-    # done 
-
-    # cat *.relabeled.fastq > "${sample_id}_QF_Dmux_minLF_relabeled4Usearch.fastq"
-
-    # usearch -fastx_get_sample_names *_relabeled4Usearch.fastq -output sample.txt
-
-    # usearch -fastq_filter *_relabeled4Usearch.fastq -fastaout ${sample_id}_upper.fasta
-
-
     """
   } else if (exec_denoiser) {
     // TODO: will this work? recall that it will be executed in the context of the usearch docker image
@@ -457,7 +353,21 @@ process blast {
     -qcov_hsp_perc ${params.qcov} -max_target_seqs ${params.maxQueryResults} \
     -query ${zotus_fasta} -out ${sample_id}_blast_Result.tab \
     -num_threads ${task.cpus}
+  """
+}
 
+// make custom blast database for LULU curation
+process lulu_blast {
+  label 'blast'
+
+  input:
+    tuple val(sample_id), path(zotus_fasta)
+  
+  output:
+    tuple val(sample_id), path('match_list.txt')
+
+  script:
+  """
   # blast zotus against themselves to create the match list LULU needs
   makeblastdb -in ${zotus_fasta} -parse_seqids -dbtype nucl -out ${sample_id}_zotus
   blastn -db ${sample_id}_zotus \
@@ -472,10 +382,12 @@ process blast {
 process lulu {
   label 'lulu'
 
+  errorStrategy 'ignore'
+
   publishDir { params.illuminaDemultiplexed ? "08_lulu" : "09_lulu" }, mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(a), path(zotuTable), path(match_list) 
+    tuple val(sample_id), path(match_list), path(zotuTable)
 
   output:
     tuple path("curated_zotuTable.tab"), path("lulu_zotu_map.tab"), path("lulu_result_object.rds")
@@ -529,7 +441,9 @@ process insect_classify {
 
   script:
   """
-  mv ${classifier} classifier.rds
+  if [ "${classifier}" != "classifier.rds" ]; then
+    mv ${classifier} classifier.rds
+  fi
   insect.R ${zotus} classifier.rds \
     ${task.cpus} ${params.insectThreshold} \
     ${params.insectOffset} ${params.insectMinCount} \
@@ -613,6 +527,10 @@ def check_params() {
   }
 }
 
+include { fastqc as first_fastqc }    from './modules.nf'
+include { fastqc as second_fastqc }   from './modules.nf'
+include { multiqc as first_multiqc }  from './modules.nf'
+include { multiqc as second_multiqc } from './modules.nf'
 
 workflow {
   // make sure our arguments are all in order
@@ -676,11 +594,13 @@ workflow {
 
       // do fastqc/multqc before filtering & merging
       if (params.fastqc) {
-        reads | 
-          initial_fastqc | 
-          flatten | 
-          collect | 
-          initial_multiqc
+        Channel.of("initial") | 
+        combine(reads) |
+          first_fastqc | 
+          collect(flat: true) | 
+          toList |
+          combine(Channel.of("initial")) | 
+          first_multiqc
       }
 
       // run the first part of the pipeline for sequences that have already
@@ -691,11 +611,13 @@ workflow {
 
       // do fastqc/multiqc for filtered/merged
       if (params.fastqc) {
-        reads_filtered_merged | 
-          merged_fastqc | 
-          flatten | 
-          collect | 
-          merged_multiqc
+        Channel.of("filtered") | 
+          combine(reads_filtered_merged) | 
+          second_fastqc | 
+          collect(flat: true) | 
+          toList |
+          combine(Channel.of("filtered")) | 
+          second_multiqc
       }
 
       // remove ambiguous tags, if specified
@@ -724,7 +646,9 @@ workflow {
 
       // do initial fastqc step
       if (params.fastqc) {
-        initial_fastqc(reads)
+        Channel.of("initial") | 
+          combine(reads) | 
+          first_fastqc
       }
 
       // do quality filtering and/or paired-end merge
@@ -734,7 +658,9 @@ workflow {
 
       // do after-filtering fastqc step
       if (params.fastqc) {
-        merged_fastqc(reads_filtered_merged)
+        Channel.of("filtered") | 
+          combine(reads_filtered_merged) |
+          second_fastqc
       }
 
       // run the rest of the pipeline, including demultiplexing, length filtering,
@@ -770,36 +696,49 @@ workflow {
   blast_db = Channel.fromPath(params.blastDb, type: 'dir')
   custom_db = Channel.fromPath(params.customDb, type: 'dir', checkIfExists: params.customDb != "NOTHING")
 
-  // dereplicate returns a tuple, but we only need the third entry
-  dereplicated | 
-    map { it[2] } | 
-    set { zotus }
+  // run blast query 
+  if (!params.skipBlast) {
+    dereplicated | 
+      combine(blast_db) | 
+      combine(custom_db) | 
+      blast 
+  }
 
-  // run blast query and lulu curation
+  // grab the zotu table from our dereplication step
   dereplicated | 
-    combine(blast_db) | 
-    combine(custom_db) | 
-    blast | 
-    lulu
+    map { it[3] } | 
+    set { zotu_table }
+
+  // make lulu blast database and do lulu curation
+  // TODO: figure out how many CPUs to give this process (maybe just 1 is fine)
+  if (!params.skipLulu) {
+    dereplicated | 
+      map { [it[0],it[2]] } | 
+      lulu_blast | 
+      combine(zotu_table) | 
+      lulu
+  }
 
   // run the insect classifier, if so desired
   // this should run in parallel with the blast & lulu processes
   // download the classifier model if it's one of the supported ones
   if (params.insect) {
+    // dereplicate returns a tuple, but we only need the zotus fasta
+    dereplicated | 
+      map { it[2] } | 
+      set { zotus }
+
+
     insect = helper.insect_classifiers[params.insect.toLowerCase()] ? helper.insect_classifiers[params.insect.toLowerCase()] : params.insect
+    println("insect: ${insect}")
     zotus | 
-      combine(Channel.fromPath(params.insect, checkIfExists: true)) | 
+      combine(Channel.fromPath(insect, checkIfExists: true)) | 
       insect_classify
   }
 
 
   // run taxonomy assignment/collapse script if so requested
-  if (params.assignTaxonomy) {
-    // here we grab the zotu table from our dereplication step
-    dereplicated | 
-      map { it -> it[3] } | 
-      set { zotu_table }
-
+  if (params.assignTaxonomy && !params.skipBlast) {
     // here we grab the blast result
     blast.out | 
       map { it -> it[1] } | 
@@ -816,5 +755,4 @@ workflow {
       combine(blast_result) |
       assign_collapse_taxonomy
   }
-  
 }

@@ -527,10 +527,10 @@ def check_params() {
   }
 }
 
-include { fastqc as first_fastqc }    from './modules.nf'
-include { fastqc as second_fastqc }   from './modules.nf'
-include { multiqc as first_multiqc }  from './modules.nf'
-include { multiqc as second_multiqc } from './modules.nf'
+include { fastqc as first_fastqc }    from './modules/modules.nf'
+include { fastqc as second_fastqc }   from './modules/modules.nf'
+include { multiqc as first_multiqc }  from './modules/modules.nf'
+include { multiqc as second_multiqc } from './modules/modules.nf'
 
 workflow {
   // make sure our arguments are all in order
@@ -730,7 +730,6 @@ workflow {
 
 
     insect = helper.insect_classifiers[params.insect.toLowerCase()] ? helper.insect_classifiers[params.insect.toLowerCase()] : params.insect
-    println("insect: ${insect}")
     zotus | 
       combine(Channel.fromPath(insect, checkIfExists: true)) | 
       insect_classify

@@ -8,17 +8,13 @@ import helper
 exec_denoiser = false
 
 
-// TODO: fix insect model downloads (since Channel.fromPath isn't cutting it)
+// TODO: investigate splitFastq to parallelize non-demultiplexed sequence runs
 // TODO: add name checking against WoRMS
-// TODO: do lulu blast and lulu curation separately
 // TODO: incorporate this method of reading single or paired reads: https://github.com/nextflow-io/nextflow/issues/236#issuecomment-314018546
 // TODO: produce a phyloseq object. here's a docker image: docker://globusgenomics/phyloseq:latest
 // TODO: make the taxonomy collapser script more legible and easier to use, have it cache taxdump, etc.
 // TODO: consider putting back in the stats (sequence counts, sample names, etc.)
 // TODO: rather than putting parameters in filenames, store parameter values in a text file in each output dir
-
-// gets an environment variable and returns blank instead of null if it's not set
-
 
 // trim and (where relevant) merge paired-end reads
 // this gets called if the files were already demultiplexed
@@ -412,7 +408,7 @@ process assign_collapse_taxonomy {
     tuple path(zotu_table), path(lulu_zotu_table), path(blast_result) 
 
   output:
-    tuple path("intermediate_table.tab"), path("taxonomy_collapsed.tab"), path("intermediate_table_lulu.tab"), path("taxonomy_collapsed_lulu.tab") // path("${params.lcaOutput}_qCov${params.lcaQcov}_id${params.lcaPid}_diff${params.lcaDiff}.tab") 
+    tuple path("intermediate_table.tab"), path("taxonomy_collapsed.tab"), path("intermediate_table_lulu.tab"), path("taxonomy_collapsed_lulu.tab") 
 
 
   /* TODO: as above, fix the taxonomy script so that it works better, e.g. you can pass more than one OTU table */
@@ -425,6 +421,21 @@ process assign_collapse_taxonomy {
   """
 }  
 
+// retrieve one of the pre-trained insect models from https://github.com/shaunpwilkinson/insect#classifying-sequences
+// because of previous sanity checks, we assume the value passed in `model` is a real one
+process get_model {
+  input:
+    val(model)
+  output:
+    path('classifier.rds')
+
+  exec:
+    classifier = task.workDir / 'classifier.rds' 
+    url = new URL(helper.insect_classifiers[model.toLowerCase()])
+    url.withInputStream { stream -> classifier << stream }
+}
+
+// run insect classifier model
 process insect_classify {
   label 'insect'
 
@@ -452,8 +463,9 @@ process insect_classify {
 }
 
 
+// sanity check to make sure command-line parameters are correct and valid
 def check_params() {
-// show help message and bail
+  // show help message and bail
   if (params.help) {
     helper.usage(params)
     if (params.debug) {
@@ -463,11 +475,13 @@ def check_params() {
     exit(0)
   }
 
+  // give example of what a demultiplexed FASTA file looks like
   if (params.demuxedExample) {
     helper.demuxed_example()
     exit(0)
   }
 
+  // make sure the right version of single,paired,demultiplexed is passed
   if (!helper.file_exists(params.demuxedFasta) && params.single == params.paired) {
     if (!params.single) {
       println("One of either --single or --paired MUST be passed")
@@ -477,6 +491,8 @@ def check_params() {
     exit(1)
   }
 
+  // if denoiser is an executable, treat it as such
+  // otherwise check to make sure it's a valid input
   if (helper.executable(params.denoiser)) {
     exec_denoiser = true
   } else {
@@ -486,6 +502,7 @@ def check_params() {
     }
   }
 
+  // sanity check, blast database
   if (!helper.is_dir(params.blastDb)) {
     println("BLAST database must be specified either with the --blast-db argument")
     println("or using the \$BLASTDB environment variable. It must point to the directory")
@@ -493,6 +510,7 @@ def check_params() {
     exit(1)
   }
 
+  // make sure custom blast database is specified correctly
   if (params.customDbName != "NOTHING" || params.customDb != "NOTHING") {
     if (!helper.is_dir(params.customDb)) {
       println("Custom BLAST database must be specified as follows:")
@@ -508,6 +526,7 @@ def check_params() {
     }
   }
 
+  // another blast database sanity check
   if (helper.basename(params.blastDb) == helper.basename(params.customDb)) {
     println("Due to the vicissitudes of nextflow internality, the directory names")
     println("of the main and custom BLAST databases must be different.")
@@ -515,6 +534,7 @@ def check_params() {
     exit(1)
   }
 
+  // make sure insect parameter is valid: either a file or one of the pretrained models
   if (params.insect) {
     if (!helper.insect_classifiers[params.insect.toLowerCase()]) {
       if (!helper.file_exists(params.insect)) {
@@ -527,6 +547,8 @@ def check_params() {
   }
 }
 
+// we reuse fastqc/multiqc processes at different steps so they're
+// included from an external module
 include { fastqc as first_fastqc }    from './modules/modules.nf'
 include { fastqc as second_fastqc }   from './modules/modules.nf'
 include { multiqc as first_multiqc }  from './modules/modules.nf'
@@ -585,6 +607,7 @@ workflow {
     }
 
     // load barcodes
+    // TODO: this doesn't have to exist if we're doing skipDemux
     barcodes = Channel.fromPath(params.barcode, checkIfExists: true)
 
     // if the sequences are already demultiplexed by illumina, we'll
@@ -626,9 +649,6 @@ workflow {
           filter_ambiguous_tags | 
           set { reads_filtered_merged }
       } 
-
-      // TODO: there are some issues with the output directory numbering
-      //       numbering should go: relabeled, merged, then dereplicated
 
       // run the rest of the pipeline, including the primer mismatch check,
       // length filtering, and smashing together into one file
@@ -682,7 +702,7 @@ workflow {
     // (presumably from an earlier run of the pipeline), so we can jump to here
 
     // load the fasta file in usearch/vsearch format
-    Channel.fromPath(params.demuxedFasta) |
+    Channel.fromPath(params.demuxedFasta, checkIfExists: true) |
       set { to_dereplicate }
   }
 
@@ -721,17 +741,23 @@ workflow {
 
   // run the insect classifier, if so desired
   // this should run in parallel with the blast & lulu processes
-  // download the classifier model if it's one of the supported ones
   if (params.insect) {
     // dereplicate returns a tuple, but we only need the zotus fasta
     dereplicated | 
       map { it[2] } | 
       set { zotus }
+    
+    // load the classifier model
+    if (helper.file_exists(params.insect)) {
+      classifier = Channel.fromPath(params.insect)
+    } else {
+      // download the classifier model if it's one of the supported ones
+      classifier = get_model(Channel.of(params.insect))
+    }
 
-
-    insect = helper.insect_classifiers[params.insect.toLowerCase()] ? helper.insect_classifiers[params.insect.toLowerCase()] : params.insect
+    // run the insect classification
     zotus | 
-      combine(Channel.fromPath(insect, checkIfExists: true)) | 
+      combine(classifier) | 
       insect_classify
   }
 
@@ -743,6 +769,7 @@ workflow {
       map { it -> it[1] } | 
       set { blast_result }
 
+    // TODO: what happens if they passed --skip-lulu
     // get the lulu-curated zotu table
     lulu.out | 
       map { it -> it[0] } | 

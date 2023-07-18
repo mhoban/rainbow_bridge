@@ -560,6 +560,8 @@ workflow {
   // make sure our arguments are all in order
   check_params()
 
+  vsearch = (params.vsearch || params.denoiser == 'vsearch')
+
   if (!helper.file_exists(params.demuxedFasta)) {
     if (params.single) {
       // here we load whatever was passed as the --reads option
@@ -658,7 +660,7 @@ workflow {
         combine(barcodes) | 
         ngsfilter | 
         filter_length | 
-        (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
+        (vsearch ? relabel_vsearch : relabel_usearch) | 
         collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '05_relabeled_merged') |
         set { to_dereplicate } 
 
@@ -735,7 +737,7 @@ workflow {
         // get rid of the '__split__' business in the filenames
         map { [it.baseName.replaceFirst(/^__split__/,""), it] } | 
         // relabel to fasta
-        (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
+        (vsearch ? relabel_vsearch : relabel_usearch) | 
         // collect to single relabeled fasta
         collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
         set { to_dereplicate }
@@ -752,7 +754,7 @@ workflow {
   // build the channel, run dereplication, and set to a channel we can use again
   Channel.of(params.prefix) | 
     combine(to_dereplicate) | 
-    (params.denoiser == 'vsearch' ? derep_vsearch : derep_usearch) |
+    (vsearch ? derep_vsearch : derep_usearch) |
     set { dereplicated }
 
   // make blast databases path channels so singularity will automount it properly

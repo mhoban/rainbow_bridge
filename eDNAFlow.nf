@@ -672,11 +672,11 @@ workflow {
         if (params.paired) {
           reads | 
             // flatten the reads tuple
-            map { key, reads -> [key,reads[0],reads[1] }
+            map { key, reads -> [key,reads[0],reads[1]] } | 
             // split fastq files
             splitFastq(by: params.splitBy, file: true, pe: true) | 
             // rearrange reads tuple so it looks like [key, [R1,R2]]
-            map { key, read1, read2 -> [key, [read1,read2]] }
+            map { key, read1, read2 -> [key, [read1,read2]] } |
             set { reads }
         } else {
           // in single-end mode we can just split directly
@@ -771,7 +771,7 @@ workflow {
 
   // grab the zotu table from our dereplication step
   dereplicated | 
-    map { sid, uniques, zotus, zotutable -> zotutable }
+    map { sid, uniques, zotus, zotutable -> zotutable } | 
     set { zotu_table }
 
   // make lulu blast database and do lulu curation
@@ -779,7 +779,7 @@ workflow {
   if (!params.skipLulu) {
     dereplicated | 
       // get zotus and sample id
-      map { sid, uniques, zotus, zotutable -> [sid,zotus] }
+      map { sid, uniques, zotus, zotutable -> [sid,zotus] } | 
       lulu_blast | 
       combine(zotu_table) | 
       lulu

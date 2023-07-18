@@ -8,7 +8,6 @@ import helper
 exec_denoiser = false
 
 
-// TODO: investigate splitFastq to parallelize non-demultiplexed sequence runs
 // TODO: add name checking against WoRMS
 // TODO: incorporate this method of reading single or paired reads: https://github.com/nextflow-io/nextflow/issues/236#issuecomment-314018546
 // TODO: produce a phyloseq object. here's a docker image: docker://globusgenomics/phyloseq:latest
@@ -39,7 +38,12 @@ process filter_merge {
       --minquality ${params.minQuality} \
       --basename ${sample_id}
 
-    mv ${sample_id}.truncated ${sample_id}_trimmed_merged.fastq
+    split_id=""
+    if ${params.split}; then
+      split_id="_${reads.baseName}"
+    fi
+
+    mv ${sample_id}.truncated ${sample_id}\${split_id}_trimmed_merged.fastq
     """
   } else {  
     // if reads are paired-end then merge 
@@ -50,7 +54,12 @@ process filter_merge {
       --minalignmentlength ${params.minAlignLen} \
       --basename ${sample_id}
 
-    mv ${sample_id}.collapsed ${sample_id}_trimmed_merged.fastq  
+    split_id=""
+    if ${params.split}; then
+      split_id="_${reads[0].baseName}"
+    fi
+
+    mv ${sample_id}.collapsed ${sample_id}\${split_id}_trimmed_merged.fastq  
     """
   }
 }
@@ -120,10 +129,9 @@ process ngsfilter {
 
   script:
   """
-  ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "orphan.fastq" ${read} > "${sample_id}_${barcode.baseName}_QF_Dmux.fastq"
+  ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "orphan.fastq" ${read} > "${sample_id}_${read.baseName}_${barcode.baseName}_QF_Dmux.fastq"
   """
 }
-
 
 // combine outputs from (possible) multiple barcode files, filter by length
 process filter_length {
@@ -132,7 +140,7 @@ process filter_length {
   publishDir "03_length_filtered"
 
   input: 
-    tuple val(sample_id), val(barcode_files), path(fastq_files) 
+    tuple val(sample_id), val(barcode_file), path(fastq_file) 
   
   output:
     tuple val(sample_id), path('*_QF_Dmux_minLF.fastq') 
@@ -141,12 +149,10 @@ process filter_length {
   // if we're already demultiplexed we probably don't have the forward_tag and reverse_tag annotations
   def p = params.illuminaDemultiplexed ? "" : "-p 'forward_tag is not None and reverse_tag is not None'" 
   """
-  cat ${fastq_files} > "${sample_id}_QF_Dmux.fastq" 
-  obigrep --uppercase -l ${params.minLen} ${p} "${sample_id}_QF_Dmux.fastq" > "${sample_id}_QF_Dmux_minLF.fastq"
+  # cat ${fastq_file} > "${sample_id}_QF_Dmux.fastq" 
+  obigrep --uppercase -l ${params.minLen} ${p} "${fastq_file}" > "${sample_id}_${fastq_file.baseName}_QF_Dmux_minLF.fastq"
   """
 }
-
-
 
 // for non-demultiplexed runs, split the annotated reads file by samples
 process split_samples {
@@ -155,20 +161,16 @@ process split_samples {
   publishDir "04_splitSamples_${sample_id}", mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(fastqs) 
+    tuple val(sample_id), path(fastq) 
   
   output:
-    /*tuple val(sample_id),*/ path "$sample_id/*.fastq"
+    path("__split__*.fastq")
 
   script:
   // TODO: we probably don't need this anymore since we're not doing this annotation now
   def sample_tag = params.illuminaDemultiplexed ? "illumina_sample" : "sample"
   """
-  mkdir ${sample_id}
-  obisplit --uppercase -t ${sample_tag} -u "noSampleID.fastq" $fastqs
-  mv *.fastq ${sample_id}
-  mv ${sample_id}/$fastqs ..
-  mv ${sample_id}/noSampleID.fastq  noSampleID.fastq.ignore
+  obisplit --uppercase -p "__split__" -t ${sample_tag} -u "orphans.fastq" $fastq
   """
 }
 
@@ -328,7 +330,7 @@ process blast {
     tuple val(sample_id), path(a), path(zotus_fasta), path(zotuTable), path(blast_db), path(custom_db)
 
   output:
-    tuple val(sample_id), path("${sample_id}_blast_Result.tab"), path(zotuTable), path("match_list.txt") 
+    tuple val(sample_id), path("${sample_id}_blast_Result.tab")
 
   script:
   def cdb = (String)custom_db
@@ -565,7 +567,7 @@ workflow {
       // and we try to pull off something from the beginning to use as a sample ID. 
       // TODO: customize how to specify sample IDs
       Channel.fromPath(params.reads, checkIfExists: true) |
-        map { it -> [it.baseName.tokenize('_')[0],it] } |
+        map { [it.baseName.tokenize('_')[0],it] } |
         set { reads }
     } else {
       // if fwd and rev point to files that exists, just load them directly
@@ -575,8 +577,7 @@ workflow {
           combine(Channel.fromPath(params.rev,checkIfExists: true)) | 
           map { a,b,c -> [a,[b,c]] } |
           set { reads }
-      }
-      else {
+      } else {
         // otherwise make a glob pattern to find where the fwd/rev reads live
         // this may get a little complex, so there are two possible options:
         // files must have some way of stating which direction they are (e.e., R1/R2)
@@ -602,6 +603,7 @@ workflow {
         // TODO: figure out how to customize sample IDs here too, maybe
         Channel.fromFilePairs(pattern) | 
           map { key,f -> [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
+          map { key,f -> key == "" ? [params.prefix,f] : [key,f] } | 
           set { reads }
       }
     }
@@ -655,7 +657,6 @@ workflow {
       reads_filtered_merged | 
         combine(barcodes) | 
         ngsfilter | 
-        groupTuple | 
         filter_length | 
         (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
         collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '05_relabeled_merged') |
@@ -664,11 +665,38 @@ workflow {
     } else {
       // this is where reads are all in one fwd or fwd/rev file and have NOT been demultiplexed
 
+      // split the input fastqs to increase parallelism, if requested
+      if (params.split) {
+        if (params.paired) {
+          reads | 
+            // flatten the reads tuple
+            map { key, reads -> [key,reads[0],reads[1] }
+            // split fastq files
+            splitFastq(by: params.splitBy, file: true, pe: true) | 
+            // rearrange reads tuple so it looks like [key, [R1,R2]]
+            map { key, read1, read2 -> [key, [read1,read2]] }
+            set { reads }
+        } else {
+          // in single-end mode we can just split directly
+          reads |
+            splitFastq(by: params.splitBy, file: true) | 
+            set { reads }
+        }
+      }
+
       // do initial fastqc step
       if (params.fastqc) {
         Channel.of("initial") | 
           combine(reads) | 
           first_fastqc
+        // if input files are split we'll run them through multiqc
+        if (params.split) {
+          first_fastqc.out | 
+            collect(flat: true) | 
+            toList |
+            combine(Channel.of("initial")) | 
+            first_multiqc
+        }
       }
 
       // do quality filtering and/or paired-end merge
@@ -681,6 +709,14 @@ workflow {
         Channel.of("filtered") | 
           combine(reads_filtered_merged) |
           second_fastqc
+        // again run multiqc if split
+        if (params.split) {
+          second_fastqc.out | 
+            collect(flat: true) | 
+            toList |
+            combine(Channel.of("filtered")) | 
+            second_multiqc
+        }
       }
 
       // run the rest of the pipeline, including demultiplexing, length filtering,
@@ -688,12 +724,19 @@ workflow {
       reads_filtered_merged | 
         combine(barcodes) |
         ngsfilter | 
-        groupTuple | 
         filter_length |
         split_samples | 
+        // we have to flatten here because we can get results that look like
+        // [[sample1,sample2,sample3],[sample1,sample2,sample3]]
         flatten | 
-        map { it -> [it.baseName, it] } | 
+        // this collectFile will merge all individual splits with the same name, so the
+        // tuple above turns into [sample1,sample2,sample3]
+        collectFile | 
+        // get rid of the '__split__' business in the filenames
+        map { [it.baseName.replaceFirst(/^__split__/,""), it] } | 
+        // relabel to fasta
         (params.denoiser == 'vsearch' ? relabel_vsearch : relabel_usearch) | 
+        // collect to single relabeled fasta
         collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
         set { to_dereplicate }
     }
@@ -716,7 +759,7 @@ workflow {
   blast_db = Channel.fromPath(params.blastDb, type: 'dir')
   custom_db = Channel.fromPath(params.customDb, type: 'dir', checkIfExists: params.customDb != "NOTHING")
 
-  // run blast query 
+  // run blast query, unless skipped
   if (!params.skipBlast) {
     dereplicated | 
       combine(blast_db) | 
@@ -726,14 +769,15 @@ workflow {
 
   // grab the zotu table from our dereplication step
   dereplicated | 
-    map { it[3] } | 
+    map { sid, uniques, zotus, zotutable -> zotutable }
     set { zotu_table }
 
   // make lulu blast database and do lulu curation
   // TODO: figure out how many CPUs to give this process (maybe just 1 is fine)
   if (!params.skipLulu) {
     dereplicated | 
-      map { [it[0],it[2]] } | 
+      // get zotus and sample id
+      map { sid, uniques, zotus, zotutable -> [sid,zotus] }
       lulu_blast | 
       combine(zotu_table) | 
       lulu
@@ -744,7 +788,7 @@ workflow {
   if (params.insect) {
     // dereplicate returns a tuple, but we only need the zotus fasta
     dereplicated | 
-      map { it[2] } | 
+      map { sid, uniques, zotus, zotutable -> zotus } | 
       set { zotus }
     
     // load the classifier model
@@ -752,7 +796,9 @@ workflow {
       classifier = Channel.fromPath(params.insect)
     } else {
       // download the classifier model if it's one of the supported ones
-      classifier = get_model(Channel.of(params.insect))
+      Channel.of(params.insect) | 
+        get_model | 
+        set { classifier }
     }
 
     // run the insect classification
@@ -766,13 +812,13 @@ workflow {
   if (params.assignTaxonomy && !params.skipBlast) {
     // here we grab the blast result
     blast.out | 
-      map { it -> it[1] } | 
+      map { sid, blast_result -> blast_result } | 
       set { blast_result }
 
     // TODO: what happens if they passed --skip-lulu
     // get the lulu-curated zotu table
     lulu.out | 
-      map { it -> it[0] } | 
+      map { zotutable, zotu_map, result_object -> zotutable } | 
       set { lulu_zotu_table }
 
     // then we smash them together and run the taxonomy assignment/collapser script

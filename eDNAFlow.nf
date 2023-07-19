@@ -7,14 +7,6 @@ import helper
 /* some global variables */
 exec_denoiser = false
 
-
-// TODO: add name checking against WoRMS
-// TODO: incorporate this method of reading single or paired reads: https://github.com/nextflow-io/nextflow/issues/236#issuecomment-314018546
-// TODO: produce a phyloseq object. here's a docker image: docker://globusgenomics/phyloseq:latest
-// TODO: make the taxonomy collapser script more legible and easier to use, have it cache taxdump, etc.
-// TODO: consider putting back in the stats (sequence counts, sample names, etc.)
-// TODO: rather than putting parameters in filenames, store parameter values in a text file in each output dir
-
 // trim and (where relevant) merge paired-end reads
 // this gets called if the files were already demultiplexed
 process filter_merge {
@@ -85,9 +77,6 @@ process filter_ambiguous_tags {
 // we probably don't actually need this but it's being left in for now
 process annotate_demultiplexed {
   label 'obitools'
-
-  /* TODO: allow customization of how the sample IDs are interpreted */
-  /* for now we will use the sample id returned by fromFilePairs */
 
   publishDir '0x_annotated', mode: params.publishMode
 
@@ -223,8 +212,6 @@ process relabel_usearch {
     fi
     """
   } else if (exec_denoiser) {
-    // TODO: will this work? recall that it will be executed in the context of the usearch docker image
-    //       this is why calling vsearch like this didn't work
     """
     for files in ${fastqs}; do
       label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
@@ -413,7 +400,6 @@ process assign_collapse_taxonomy {
     tuple path("intermediate_table.tab"), path("taxonomy_collapsed.tab"), path("intermediate_table_lulu.tab"), path("taxonomy_collapsed_lulu.tab") 
 
 
-  /* TODO: as above, fix the taxonomy script so that it works better, e.g. you can pass more than one OTU table */
   script:
   """
   runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} taxonomy_collapsed.tab
@@ -567,7 +553,6 @@ workflow {
       // here we load whatever was passed as the --reads option
       // if it's a glob, we get a list of files. if it's just one, we get just one
       // and we try to pull off something from the beginning to use as a sample ID. 
-      // TODO: customize how to specify sample IDs
       Channel.fromPath(params.reads, checkIfExists: true) |
         map { [it.baseName.tokenize('_')[0],it] } |
         set { reads }
@@ -585,7 +570,7 @@ workflow {
         // files must have some way of stating which direction they are (e.e., R1/R2)
         // fwd/rev reads may optionally be in separate subdirectories but those must both be subdirectories
         // at the same level. So you can have /dir/R1 and /dir/R2, but you CAN'T have /dir1/R1 and /dir2/R2
-        // as of now they must not be gzipped (though TODO: we can do the gunzipping, that's easy)
+        // as of now they must not be gzipped 
         if (params.fwd != "" && params.rev != "") {
           pattern = "${params.baseDir}/{${params.fwd},${params.rev}}/*{${params.r1},${params.r2}}*.fastq"
         } else {
@@ -602,7 +587,6 @@ workflow {
   
         // I'm not even certain the order matters, but I think it does because we 
         // send them to --file1 and --file2 of AdapterRemoval
-        // TODO: figure out how to customize sample IDs here too, maybe
         Channel.fromFilePairs(pattern) | 
           map { key,f -> [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
           map { key,f -> key == "" ? [params.prefix,f] : [key,f] } | 
@@ -611,7 +595,6 @@ workflow {
     }
 
     // load barcodes
-    // TODO: this doesn't have to exist if we're doing skipDemux
     barcodes = Channel.fromPath(params.barcode, checkIfExists: true)
 
     // if the sequences are already demultiplexed by illumina, we'll
@@ -775,7 +758,6 @@ workflow {
     set { zotu_table }
 
   // make lulu blast database and do lulu curation
-  // TODO: figure out how many CPUs to give this process (maybe just 1 is fine)
   if (!params.skipLulu) {
     dereplicated | 
       // get zotus and sample id
@@ -817,7 +799,6 @@ workflow {
       map { sid, blast_result -> blast_result } | 
       set { blast_result }
 
-    // TODO: what happens if they passed --skip-lulu
     // get the lulu-curated zotu table
     lulu.out | 
       map { zotutable, zotu_map, result_object -> zotutable } | 

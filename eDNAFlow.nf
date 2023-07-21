@@ -383,32 +383,6 @@ process lulu {
   """
 }
 
-
-// taxonomy assignment/collapse to least common ancestor (LCA)
-process assign_collapse_taxonomy {
-  label 'lca_python3'
-
-  publishDir { 
-    p = params.insect ? "a" : ""
-    return params.illuminaDemultiplexed ? "09${p}_collapsed_taxonomy" : "10${p}_collapsed_taxonomy" 
-  }, mode: params.publishMode
-
-  input:
-    tuple path(zotu_table), path(lulu_zotu_table), path(blast_result) 
-
-  output:
-    tuple path("intermediate_table.tab"), path("taxonomy_collapsed.tab"), path("intermediate_table_lulu.tab"), path("taxonomy_collapsed_lulu.tab") 
-
-
-  script:
-  """
-  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} taxonomy_collapsed.tab
-  mv interMediate_res.tab intermediate_table.tab
-  runAssign_collapsedTaxonomy.py ${lulu_zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} taxonomy_collapsed_lulu.tab
-  mv interMediate_res.tab intermediate_table_lulu.tab
-  """
-}  
-
 // retrieve one of the pre-trained insect models from https://github.com/shaunpwilkinson/insect#classifying-sequences
 // because of previous sanity checks, we assume the value passed in `model` is a real one
 process get_model {
@@ -541,6 +515,8 @@ include { fastqc as first_fastqc }    from './modules/modules.nf'
 include { fastqc as second_fastqc }   from './modules/modules.nf'
 include { multiqc as first_multiqc }  from './modules/modules.nf'
 include { multiqc as second_multiqc } from './modules/modules.nf'
+include { taxonomy as assign_collapse_taxonomy  } from './modules/modules.nf'
+include { taxonomy as assign_collapse_taxonomy_lulu  } from './modules/modules.nf'
 
 workflow {
   // make sure our arguments are all in order
@@ -799,15 +775,21 @@ workflow {
       map { sid, blast_result -> blast_result } | 
       set { blast_result }
 
-    // get the lulu-curated zotu table
-    lulu.out | 
-      map { zotutable, zotu_map, result_object -> zotutable } | 
-      set { lulu_zotu_table }
 
-    // then we smash them together and run the taxonomy assignment/collapser script
+    // then we smash it together with the blast results 
+    // and run the taxonomy assignment/collapser script
     zotu_table |
-      combine(lulu_zotu_table) | 
       combine(blast_result) |
+      combine(Channel.of('uncurated')) | 
       assign_collapse_taxonomy
+
+    if (!params.skipLulu) {
+      // run the taxonomy assignment for lulu-curated zotus
+      lulu.out | 
+        map { zotutable, zotu_map, result_object -> zotutable } | 
+        combine(blast_result) |
+        combine(Channel.of('curated')) | 
+        assign_collapse_taxonomy_lulu
+    }
   }
 }

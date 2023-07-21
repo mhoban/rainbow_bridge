@@ -1,3 +1,25 @@
+process taxonomy {
+  label 'lca_python3'
+
+  publishDir { 
+    p = params.insect ? "a" : ""
+    return params.illuminaDemultiplexed ? "09${p}_collapsed_taxonomy" : "10${p}_collapsed_taxonomy" 
+  }, mode: params.publishMode
+
+  input:
+    tuple path(zotu_table), path(blast_result), val(name)
+
+  output:
+    tuple path("${name}_intermediate_table.tab"), path("${name}_taxonomy_collapsed.tab")
+
+
+  script:
+  """
+  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${name}_taxonomy_collapsed.tab
+  mv interMediate_res.tab ${name}_intermediate_table.tab
+  """
+}  
+
 process fastqc {
   label 'fastqc'
 

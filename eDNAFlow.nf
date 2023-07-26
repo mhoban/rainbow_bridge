@@ -332,7 +332,7 @@ process blast {
   # blast our zotus
   blastn -task ${params.blastTask} \
     -db "${blast_db}/nt ${cdb}" \
-    -outfmt "6 qseqid sseqid staxids sscinames scomnames sskingdoms pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \
+    -outfmt "6 qseqid sseqid staxid ssciname scomname sskingdom pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \
     -perc_identity ${params.percentIdentity} -evalue ${params.evalue} \
     -best_hit_score_edge 0.05 -best_hit_overhang 0.25 \
     -qcov_hsp_perc ${params.qcov} -max_target_seqs ${params.maxQueryResults} \

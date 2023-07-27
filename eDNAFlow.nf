@@ -424,6 +424,21 @@ process insect_classify {
   """
 }
 
+// retrieve the NCBI ranked taxonomic lineage dump
+process get_lineage {
+  label 'python3'
+
+  output:
+    path('ranked_lineage.tab')
+
+  script:
+  """
+  curl -LO https://ftp.ncbi.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip
+  unzip -p new_taxdump.zip rankedlineage.dmp > ranked_lineage.tab
+  rm new_taxdump.zip
+  """
+}
+
 
 // sanity check to make sure command-line parameters are correct and valid
 def check_params() {
@@ -515,8 +530,10 @@ include { fastqc as first_fastqc }    from './modules/modules.nf'
 include { fastqc as second_fastqc }   from './modules/modules.nf'
 include { multiqc as first_multiqc }  from './modules/modules.nf'
 include { multiqc as second_multiqc } from './modules/modules.nf'
-include { taxonomy as assign_collapse_taxonomy  } from './modules/modules.nf'
-include { taxonomy as assign_collapse_taxonomy_lulu  } from './modules/modules.nf'
+/* include { taxonomy as assign_collapse_taxonomy  } from './modules/modules.nf' */
+/* include { taxonomy as assign_collapse_taxonomy_lulu  } from './modules/modules.nf' */
+include { r_taxonomy as assign_collapse_taxonomy  } from './modules/modules.nf'
+include { r_taxonomy as assign_collapse_taxonomy_lulu  } from './modules/modules.nf'
 
 workflow {
   // make sure our arguments are all in order
@@ -775,11 +792,16 @@ workflow {
       map { sid, blast_result -> blast_result } | 
       set { blast_result }
 
+    // get the NCBI ranked taxonomic lineage dump
+    get_lineage |
+      set{lineage}
+
 
     // then we smash it together with the blast results 
     // and run the taxonomy assignment/collapser script
     zotu_table |
       combine(blast_result) |
+      combine(lineage) | 
       combine(Channel.of('uncurated')) | 
       assign_collapse_taxonomy
 
@@ -788,6 +810,7 @@ workflow {
       lulu.out | 
         map { zotutable, zotu_map, result_object -> zotutable } | 
         combine(blast_result) |
+        combine(lineage) | 
         combine(Channel.of('curated')) | 
         assign_collapse_taxonomy_lulu
     }

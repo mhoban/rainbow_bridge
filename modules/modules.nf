@@ -1,5 +1,35 @@
+// assign/collapse taxonomy using the R port of the original python script
+process r_taxonomy {
+  label 'phyloseq'
+
+  publishDir { 
+    p = params.insect ? "a" : ""
+    return params.illuminaDemultiplexed ? "09${p}_collapsed_taxonomy_r" : "10${p}_collapsed_taxonomy_r" 
+  }, mode: params.publishMode
+
+  input:
+    tuple path(zotu_table), path(blast_result), path(lineage), val(name)
+
+  output:
+    tuple path("${name}_intermediate_table.tab"), path("${name}_taxonomy_collapsed.tab")
+
+
+  script:
+  pf = params.filterUncultured ? "-f" : ""
+  """
+  collapse_taxonomy.R \
+    --qcov ${params.lcaQcov} \
+    --pid ${params.lcaPid} \
+    --diff ${params.lcaDiff} \
+    ${pf} \
+    --intermediate "${name}_intermediate_table.tab" \
+    ${blast_result} ${zotu_table} ${lineage} "${name}_taxonomy_collapsed.tab"
+  """
+}  
+
+// assign/collapse taxonomy using the original python script
 process taxonomy {
-  label 'lca_python3'
+  label 'python3'
 
   publishDir { 
     p = params.insect ? "a" : ""
@@ -20,6 +50,7 @@ process taxonomy {
   """
 }  
 
+// run fastqc process
 process fastqc {
   label 'fastqc'
 

@@ -122,6 +122,8 @@ class helper {
       --lca-pid [num]            Minimum percent identity for LCA taxonomy assignment (default: 97)
       --lca-diff [num]           The difference between percent identities (when query coverage is
                                  identical) where species-level taxonomy is retained (default: 1)
+      --filter-uncultured        Optionally get rid of sequences that are listed as 'uncultured',
+                                 'environmental sample', or 'clone'
       --insect [classifier]      Perform taxonomy assignment using insect
                                  Accepted values of [classifier] are:
                                  - Filename to local .rds containing classifier model

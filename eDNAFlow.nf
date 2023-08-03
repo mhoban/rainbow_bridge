@@ -458,6 +458,11 @@ def check_params() {
     exit(0)
   }
 
+  if (params.split && params.illuminaDemultiplexed) {
+    println("Parameters --split and --illumina-demultiplexed are mutually exclusive")
+    exit(1)
+  }
+
   // make sure the right version of single,paired,demultiplexed is passed
   if (!helper.file_exists(params.demuxedFasta) && params.single == params.paired) {
     if (!params.single) {
@@ -530,10 +535,10 @@ include { fastqc as first_fastqc }    from './modules/modules.nf'
 include { fastqc as second_fastqc }   from './modules/modules.nf'
 include { multiqc as first_multiqc }  from './modules/modules.nf'
 include { multiqc as second_multiqc } from './modules/modules.nf'
-/* include { taxonomy as assign_collapse_taxonomy  } from './modules/modules.nf' */
-/* include { taxonomy as assign_collapse_taxonomy_lulu  } from './modules/modules.nf' */
 include { r_taxonomy as assign_collapse_taxonomy  } from './modules/modules.nf'
 include { r_taxonomy as assign_collapse_taxonomy_lulu  } from './modules/modules.nf'
+include { taxonomy as assign_collapse_taxonomy_py  } from './modules/modules.nf'
+include { taxonomy as assign_collapse_taxonomy_lulu_py  } from './modules/modules.nf'
 
 workflow {
   // make sure our arguments are all in order
@@ -796,6 +801,7 @@ workflow {
     get_lineage |
       set{lineage}
 
+  tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy
 
     // then we smash it together with the blast results 
     // and run the taxonomy assignment/collapser script
@@ -803,16 +809,17 @@ workflow {
       combine(blast_result) |
       combine(lineage) | 
       combine(Channel.of('uncurated')) | 
-      assign_collapse_taxonomy
+      tax_process
 
     if (!params.skipLulu) {
       // run the taxonomy assignment for lulu-curated zotus
+      tax_process_lulu = params.oldTaxonomy ? assign_collapse_taxonomy_lulu_py : assign_collapse_taxonomy_lulu
       lulu.out | 
         map { zotutable, zotu_map, result_object -> zotutable } | 
         combine(blast_result) |
         combine(lineage) | 
         combine(Channel.of('curated')) | 
-        assign_collapse_taxonomy_lulu
+        tax_process_lulu
     }
   }
 }

@@ -37,7 +37,7 @@ process taxonomy {
   }, mode: params.publishMode
 
   input:
-    tuple path(zotu_table), path(blast_result), val(name)
+    tuple path(zotu_table), path(blast_result), path(lineage), val(name)
 
   output:
     tuple path("${name}_intermediate_table.tab"), path("${name}_taxonomy_collapsed.tab")

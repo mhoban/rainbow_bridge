@@ -72,6 +72,9 @@ class helper {
       --publish-mode [mode]      Specify how nextflow places files in output directories 
                                  (default: symlink)
       --fastqc                   Output FastQC reports for pre and post filter/merge steps 
+      --split                    Split input fastq files and process in parallel
+                                 (not compatible with --illumina-demultiplexed)
+      --split-by                 Number of sequences per split fastq chunk (default: ${params.splitBy})
 
     For single-end sequencing runs:
       --single                   Specify single-ended sequencing run (required)
@@ -118,6 +121,7 @@ class helper {
 
     Taxonomy assignment:
       --assign-taxonomy          Perform final taxonomy assignment & LCA collapse 
+      --old-taxonomy             Use the old (python-based) taxonomy script rather than the newer R-based one
       --lca-qcov [num]           Minimum query coverage for LCA taxonomy assignment (default: 100)
       --lca-pid [num]            Minimum percent identity for LCA taxonomy assignment (default: 97)
       --lca-diff [num]           The difference between percent identities (when query coverage is

@@ -73,35 +73,6 @@ process filter_ambiguous_tags {
   """
 }
 
-// annotate sequences that have already been demultiplexed by illumina
-// we probably don't actually need this but it's being left in for now
-process annotate_demultiplexed {
-  label 'obitools'
-
-  publishDir '0x_annotated', mode: params.publishMode
-
-  input:
-    tuple val(sample_id), path(reads)
-
-  output:
-    tuple val(sample_id), path("*_annotated.fastq")
-
-  script:
-  if (params.removeAmbiguousTags) {
-    """
-    # optionally remove ambiguous tags and annotate sample names
-    # this assumes that illumina-demultiplexed sequence files have their tag sequences in the header
-    # line looking like [AGCT]+:[AGCT]+
-    obiannotate --uppercase -S illumina_sample:"'${sample_id}'" ${reads} | obigrep --uppercase -D ':[ACGT]+\\+[ACGT]+\$' > "${sample_id}_annotated.fastq"
-    """
-  } else {
-    """
-    # annotate sample names
-    obiannotate --uppercase -S illumina_sample:"'${sample_id}'" ${reads} > "${sample_id}_annotated.fastq"
-    """
-  }
-}
-
 // primer mismatch & sample assignment
 // multiple different barcode files are possible
 process ngsfilter {
@@ -629,7 +600,7 @@ workflow {
       }
 
       // remove ambiguous tags, if specified
-      if (params.removeAmbiguousTags) {
+      if (params.removeAmbiguousTags || params.removeAmbiguousIndices) {
         reads_filtered_merged | 
           filter_ambiguous_tags | 
           set { reads_filtered_merged }

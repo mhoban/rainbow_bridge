@@ -148,9 +148,8 @@ class helper {
     Demultiplexing and sequence matching:
       --illumina-demultiplexed     Sequencing run has already been demultiplexed by the sequencer
 
-      --remove-ambiguous-tags
-      --remove-ambiguous-indices   Removes reads with ambiguous indices/tags in the header (i.e., not A,G,C,T)
-                                   (only applies to previously-demultiplexed runs with tags in header)
+      --remove-ambiguous-indices   Removes reads with ambiguous indices in the header (i.e., not A,G,C,T)
+                                   (only applies to previously-demultiplexed runs with indices in header)
       --demuxed-fasta [file]       Skip demultiplexing step and use supplied FASTA 
                                    (must be in usearch/vsearch format)
       --demuxed-example            Spit out example usearch/vsearch demultiplexed FASTA format

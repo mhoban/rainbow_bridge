@@ -56,20 +56,20 @@ process filter_merge {
   }
 }
 
-process filter_ambiguous_tags {
+process filter_ambiguous_indices {
   label 'obitools'
 
-  publishDir '01a_ambiguous_tags_filtered', mode: params.publishMode
+  publishDir '01a_ambiguous_indices_filtered', mode: params.publishMode
 
   input:
     tuple val(sample_id), path(reads)
 
   output:
-    tuple val(sample_id), path("*_good_tags.fastq") 
+    tuple val(sample_id), path("*_good_indices.fastq") 
 
   script:
   """
-  obigrep --uppercase -D ':[ACGT]+\\+[ACGT]+\$' ${reads} > "${sample_id}_good_tags.fastq"
+  obigrep --uppercase -D ':[ACGT]+\\+[ACGT]+\$' ${reads} > "${sample_id}_good_indices.fastq"
   """
 }
 
@@ -567,7 +567,7 @@ workflow {
     barcodes = Channel.fromPath(params.barcode, checkIfExists: true)
 
     // if the sequences are already demultiplexed by illumina, we'll
-    // process them separately, including optionally attempting to remove ambiguous tags
+    // process them separately, including optionally attempting to remove ambiguous indices
     // and ultimately smash them together for vsearch/usearch to do the dereplication
     if (params.illuminaDemultiplexed) {
 
@@ -599,10 +599,10 @@ workflow {
           second_multiqc
       }
 
-      // remove ambiguous tags, if specified
-      if (params.removeAmbiguousTags || params.removeAmbiguousIndices) {
+      // remove ambiguous indices, if specified
+      if (params.removeAmbiguousIndices) {
         reads_filtered_merged | 
-          filter_ambiguous_tags | 
+          filter_ambiguous_indices | 
           set { reads_filtered_merged }
       } 
 

@@ -410,6 +410,23 @@ process get_lineage {
   """
 }
 
+// un-gzip gzipped files
+process unzip {
+  label 'unzip'
+
+  input:
+    tuple val(id), path(reads)
+  output: 
+    tuple val(id), path("*.fastq")
+
+  script:
+  """
+  zips=( ${reads} )
+  for z in "\${zips[@]}"; do
+    gunzip -c \$z > \${z%.gz}
+  done
+  """
+}
 
 // sanity check to make sure command-line parameters are correct and valid
 def check_params() {
@@ -522,28 +539,41 @@ workflow {
       // here we load whatever was passed as the --reads option
       // if it's a glob, we get a list of files. if it's just one, we get just one
       // and we try to pull off something from the beginning to use as a sample ID. 
+      // we also check to see if any of the files end with .gz and mark them as such if they are
+      // (that's what branch does)
       Channel.fromPath(params.reads, checkIfExists: true) |
         map { [it.baseName.tokenize('_')[0],it] } |
+        branch { 
+         gz: it[1] =~ /\.gz$/
+         regular: true
+        } |
         set { reads }
     } else {
       // if fwd and rev point to files that exists, just load them directly
+      // I guess these can probably be globs if you want them to be, but that
+      // might not work properly as currently written
       if ( helper.file_exists(params.fwd) && helper.file_exists(params.rev) ) {
         Channel.of(params.prefix) |
           combine(Channel.fromPath(params.fwd,checkIfExists: true)) | 
           combine(Channel.fromPath(params.rev,checkIfExists: true)) | 
           map { a,b,c -> [a,[b,c]] } |
+          branch { 
+           gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
+           regular: true
+          } |
           set { reads }
       } else {
+        // fallback to legacy baseDir param if someone forgot
+        reads = params.baseDir != "" ? params.baseDir : params.reads
         // otherwise make a glob pattern to find where the fwd/rev reads live
         // this may get a little complex, so there are two possible options:
         // files must have some way of stating which direction they are (e.e., R1/R2)
         // fwd/rev reads may optionally be in separate subdirectories but those must both be subdirectories
         // at the same level. So you can have /dir/R1 and /dir/R2, but you CAN'T have /dir1/R1 and /dir2/R2
-        // as of now they must not be gzipped 
         if (params.fwd != "" && params.rev != "") {
-          pattern = "${params.baseDir}/{${params.fwd},${params.rev}}/*{${params.r1},${params.r2}}*.fastq"
+          pattern = "${reads}/{${params.fwd},${params.rev}}/*{${params.r1},${params.r2}}*.fastq"
         } else {
-          pattern = "${params.baseDir}/*{${params.r1},${params.r2}}*.fastq"
+          pattern = "${reads}/*{${params.r1},${params.r2}}*.fastq"
         }
   
         // load the reads and make sure they're in the right order because the
@@ -559,9 +589,20 @@ workflow {
         Channel.fromFilePairs(pattern) | 
           map { key,f -> [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
           map { key,f -> key == "" ? [params.prefix,f] : [key,f] } | 
+          branch { 
+           gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
+           regular: true
+          } |
           set { reads }
       }
     }
+
+    // here we unzip the zipped files (if any) and merge them back together
+    // with the unzipped files (if any)
+    reads.gz | 
+      unzip |
+      concat ( reads.regular ) |
+      set { reads }
 
     // load barcodes
     barcodes = Channel.fromPath(params.barcode, checkIfExists: true)

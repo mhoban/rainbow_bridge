@@ -75,6 +75,14 @@ class helper {
       --split                      Split input fastq files and process in parallel
                                    (not compatible with --illumina-demultiplexed)
       --split-by                   Number of sequences per split fastq chunk (default: ${params.splitBy})
+      --sample-map <mapfile>       (Optional) A headerless tab-separated file mapping sample names to sequence-read
+                                   filenames. Paired-end runs include both forward and reverse reads. Example map:
+                                   ---
+                                   sample1	B1_S7_L001_R1_001.fastq	B1_S7_L001_R2_001.fastq
+                                   sample2	B2_S8_L001_R1_001.fastq	B2_S8_L001_R2_001.fastq
+                                   sample3	CL1_S2_L001_R1_001.fastq	CL1_S2_L001_R2_001.fastq
+                                   sample4	CL2_S3_L001_R1_001.fastq	CL2_S3_L001_R2_001.fastq 
+                                   ---
 
     For single-end sequencing runs:
       --single                     Specify single-ended sequencing run (required)

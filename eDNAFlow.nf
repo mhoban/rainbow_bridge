@@ -3,6 +3,7 @@ nextflow.enable.dsl=2
 
 // pull in the helper class
 import helper
+import colors
 
 /* some global variables */
 exec_denoiser = false
@@ -410,6 +411,33 @@ process get_lineage {
   """
 }
 
+// use tab-separated sample map to remap sample IDs
+process remap_samples {
+  input:
+    tuple val(id), path(reads), path(sample_map)
+  output: 
+    tuple env(new_id), path(reads)
+
+  script:
+  if (reads instanceof Path) {
+    """
+    pattern=${reads}
+    new_id=\$(grep "\$pattern" ${sample_map} | cut -d\$'\t' -f 1 | head -1)
+    if [ -z "\$new_id" ]; then
+      new_id=${id}
+    fi
+    """
+  } else {
+    """
+    pattern=\$'${reads[0]}\t${reads[1]}'
+    new_id=\$(grep "\$pattern" ${sample_map} | cut -d\$'\t' -f 1 | head -1)
+    if [ -z "\$new_id" ]; then
+      new_id=${id}
+    fi
+    """
+  }
+}
+
 // un-gzip gzipped files
 process unzip {
   label 'unzip'
@@ -447,17 +475,22 @@ def check_params() {
   }
 
   if (params.split && params.illuminaDemultiplexed) {
-    println("Parameters --split and --illumina-demultiplexed are mutually exclusive")
+    println(colors.red("Parameters") + colors.bred(" --split ") + colors.red("and") + colors.bred(" --illumina-demultiplexed ") + colors.red("are mutually exclusive"))
     exit(1)
   }
 
   // make sure the right version of single,paired,demultiplexed is passed
   if (!helper.file_exists(params.demuxedFasta) && params.single == params.paired) {
     if (!params.single) {
-      println("One of either --single or --paired MUST be passed")
+      println(colors.red("One of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" MUST be passed"))
     } else {
-      println("Only one of either --single or --paired may be passed")
+      println(colors.red("Only one of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" may be passed"))
     }
+    exit(1)
+  }
+
+  if (params.sampleMap != "" && !helper.file_exists(params.sampleMap)) {
+    println(colors.red("The supplied sample map file ${params.sampleMap} does not exist"))
     exit(1)
   }
 
@@ -467,40 +500,40 @@ def check_params() {
     exec_denoiser = true
   } else {
     if (!(params.denoiser in ['usearch','usearch32','vsearch'])) {
-      println("--denoiser must be either 'usearch', 'usearch32', 'vsearch', or a path to an executable (e.g., /opt/sw/bin/usearch64)")
+      println(colors.bred("--denoiser") + colors.red(" must be either 'usearch', 'usearch32', 'vsearch', or a path to an executable (e.g., /opt/sw/bin/usearch64)"))
       exit(1)
     }
   }
 
   // sanity check, blast database
   if (!helper.is_dir(params.blastDb)) {
-    println("BLAST database must be specified either with the --blast-db argument")
-    println("or using the \$BLASTDB environment variable. It must point to the directory")
-    println("containing the `nt` database (do not include /nt in the path)")
+    println(colors.red("BLAST database must be specified either with the ") + colors.bred("--blast-db") + colors.red(" argument"))
+    println(colors.red("or using the \$BLASTDB environment variable. It must point to the directory"))
+    println(colors.red("containing the `nt` database (do not include /nt in the path)"))
     exit(1)
   }
 
   // make sure custom blast database is specified correctly
   if (params.customDbName != "NOTHING" || params.customDb != "NOTHING") {
     if (!helper.is_dir(params.customDb)) {
-      println("Custom BLAST database must be specified as follows:")
-      println("--custom-db-dir <path to custom BLAST db directory>")
-      println("--custom-db <name of custom BLAST db (basename of .ndb, etc. files)>")
-      println("example:")
-      println("--custom-db-dir /storage/blast --custom-db test")
+      println(colors.red("Custom BLAST database must be specified as follows:"))
+      println(colors.bred("--custom-db-dir") + colors.red(" <path to custom BLAST db directory>"))
+      println(colors.bred("--custom-db") + colors.red(" <name of custom BLAST db (basename of .ndb, etc. files)>"))
+      println(colors.red("example:"))
+      println(colors.bred("--custom-db-dir") + colors.red(" /storage/blast ") + colors.bred("--custom-db") + colors.red(" test"))
       exit(1)
     }
     if (params.customDbName == "NOTHING") {
-      println("Name of custom BLAST db must be specified with the --custom-db option")
+      println(colors.red("Name of custom BLAST db must be specified with the ") + colors.bred("--custom-db") + colors.red(" option"))
       exit(1)
     }
   }
 
   // another blast database sanity check
   if (helper.basename(params.blastDb) == helper.basename(params.customDb)) {
-    println("Due to the vicissitudes of nextflow internality, the directory names")
-    println("of the main and custom BLAST databases must be different.")
-    println("As specified, both reside in directories called ${helper.basename(params.blastDb)}")
+    println(colors.red("Due to the vicissitudes of nextflow internality, the directory names"))
+    println(colors.red("of the main and custom BLAST databases must be different."))
+    println(colors.red("As specified, both reside in directories called ${helper.basename(params.blastDb)}"))
     exit(1)
   }
 
@@ -508,9 +541,9 @@ def check_params() {
   if (params.insect) {
     if (!helper.insect_classifiers[params.insect.toLowerCase()]) {
       if (!helper.file_exists(params.insect)) {
-        println("Value passed to --insect must be one of the supported builtins or an RDS file")
-        println("containing a trained insect classifier model.")
-        println("See eDNAFlow.nf --help for supported builtin models")
+        println(colors.red("Value passed to ") + colors.bred("--insect") + colors.red(" must be one of the supported builtins or an RDS file"))
+        println(colors.red("containing a trained insect classifier model."))
+        println(colors.red("See eDNAFlow.nf ") + colors.bred("--help") + colors.red(" for supported builtin models"))
         exit(1)
       }
     }    
@@ -603,6 +636,14 @@ workflow {
       unzip |
       concat ( reads.regular ) |
       set { reads }
+
+    // remap sample IDs if a sample map is provided
+    if (params.sampleMap != "") {
+      reads | 
+        combine( Channel.fromPath(params.sampleMap,checkIfExists: true) ) |
+        remap_samples | 
+        set { reads }
+    }
 
     // load barcodes
     barcodes = Channel.fromPath(params.barcode, checkIfExists: true)

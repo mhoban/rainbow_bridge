@@ -571,9 +571,9 @@ workflow {
         // fwd/rev reads may optionally be in separate subdirectories but those must both be subdirectories
         // at the same level. So you can have /dir/R1 and /dir/R2, but you CAN'T have /dir1/R1 and /dir2/R2
         if (params.fwd != "" && params.rev != "") {
-          pattern = "${reads}/{${params.fwd},${params.rev}}/*{${params.r1},${params.r2}}*.fastq"
+          pattern = "${reads}/{${params.fwd},${params.rev}}/*{${params.r1},${params.r2}}*.fastq*"
         } else {
-          pattern = "${reads}/*{${params.r1},${params.r2}}*.fastq"
+          pattern = "${reads}/*{${params.r1},${params.r2}}*.fastq*"
         }
   
         // load the reads and make sure they're in the right order because the
@@ -586,7 +586,7 @@ workflow {
   
         // I'm not even certain the order matters, but I think it does because we 
         // send them to --file1 and --file2 of AdapterRemoval
-        Channel.fromFilePairs(pattern) | 
+        Channel.fromFilePairs(pattern, checkIfExists: true) | 
           map { key,f -> [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
           map { key,f -> key == "" ? [params.prefix,f] : [key,f] } | 
           branch { 

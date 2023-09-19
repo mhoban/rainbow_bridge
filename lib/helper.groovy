@@ -85,13 +85,17 @@ class helper {
       --paired                     Specify paired-end sequencing run (required)
 
     To specify the location of paired-end sequence files, the following file patterns are followed:
-      <base-dir>/*<r1>|<r2>*.fastq
-      <base-dir>/<fwd>|<rev>/*<r1>|<r2>*.fastq
+      <reads>/*<r1>|<r2>*.fastq*
+      <reads>/<fwd>|<rev>/*<r1>|<r2>*.fastq*
 
     Options:
-      --base-dir [dir]             Base directory of sequence read subdirectories (default: .) 
+      --reads [dir]                Location (directory) where sequence reads can be found (default: .) 
       --fwd [dir]                  (Optional) forward reads directory (default: ${params.fwd})
+                                   For runs that have NOT been demultiplexed, --fwd may also point
+                                   directly at the raw forward reads (R1) sequence file.
       --rev [dir]                  (Optional) reverse reads directory (default: ${params.rev})
+                                   For runs that have NOT been demultiplexed, --rev may also point
+                                   directly at the raw reverse reads (R2) sequence file.
       --r1 [pattern]               Pattern distinguishing forward read files (default: ${params.r1})
       --r2 [pattern]               Pattern distinguishing reverse read files (default: ${params.r2})
 

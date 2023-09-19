@@ -581,7 +581,7 @@ workflow {
          regular: true
         } |
         set { reads }
-    } else {
+    } else if (params.paired) { 
       // if fwd and rev point to files that exists, just load them directly
       // I guess these can probably be globs if you want them to be, but that
       // might not work properly as currently written
@@ -628,6 +628,10 @@ workflow {
           } |
           set { reads }
       }
+    } else {
+      println(colors.red("Somehow neither ") + colors.bred("--single") + colors.red(" nor ") + colors.bred("--paired") + colors.red(" were passed and we got to this point"))
+      println(colors.red("That should not have happened"))
+      exit(1)
     }
 
     // here we unzip the zipped files (if any) and merge them back together

@@ -384,8 +384,7 @@ These settings controld demultiplexing and sequence matching (e.e., allowable PC
 
 <small>**`--primer-mismatch [num]`**</small>:  Allowed number of mismatched primer bases (default: 2)  
 <small>**`--illumina-demultiplexed`**</small>:  Required if sequencing run is already demultiplexed  
-<small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed sequencing runs, remove reads that have ambiguous indices   
-    (i.e. they have bases other than AGCT). This assumes Illumina indices are included in fastq headers:  
+<small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed sequencing runs, remove reads that have ambiguous indices (i.e. they have bases other than AGCT). This assumes Illumina indices are included in fastq headers:  
     <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAATGTGG+TTCGAAGA</strong></pre></code>
 <small>**`--demuxed-fasta [file]`**</small>:  Skip demultiplexing step and use supplied FASTA (must be in usearch/vsearch format). See [above](#demux-fasta).  \
 <small>**`--demuxed-example`**</small>:  Spit out example usearch/vsearch demultiplexed FASTA format  
@@ -396,8 +395,7 @@ These settings controld demultiplexing and sequence matching (e.e., allowable PC
 These settings allow you to customize BLAST searches. See [above](#blast-settings) for detailed information on specifying BLAST database location(s). Other options in this category allow you to control the BLAST search criteria directly (e.g., e-value, percent match, etc.). For further explanation of these options, see the [blast+ documentation](https://www.ncbi.nlm.nih.gov/books/NBK279690/).
 
 <small>**`--blast-task [task]`**</small>:  Set blast+ task (default: "blastn")  
-<small>**`--max-query-results [num]`**</small>:  Maxmimum number of BLAST results to return per zOTU (default: 10).   
-    See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter.  
+<small>**`--max-query-results [num]`**</small>:  Maximum number of BLAST results to return per zOTU (default: 10). See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter.  
 <small>**`--percent-identity [num]`**</small>:  Minimum percent identity of matches (default: 95)  
 <small>**`--evalue [num]`**</small>:  BLAST e-value threshold (default: 0.001)  
 <small>**`--qcov [num]`**</small>:  Minimum percent query coverage (default: 100)  
@@ -413,12 +411,12 @@ These options relate to assignment/collapsing of taxonomic IDs. There are two di
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy assignment (default: 97)  
 <small>**`--lca-diff [num]`**</small>:  Maximum difference between percent identities (when query coverage is identical) where species-level taxonomy is retained (default: 1)  
 <small>**`--filter-uncultured`**</small>:  Optionally get rid of sequences that are listed as 'uncultured', 'environmental sample', or 'clone'  
-<small>**`--insect [classifier]`**</small>:  Perform taxonomy assignment using insect   
-    Accepted values of [classifier] are:  
-    - Filename of local .rds containing classifier model  
-    - One of the following (case-insensitive) primer names:   
-      MiFish, Crust16S, Fish16S, 18SUni, 18SV4, p23S, mlCOIint, SCL5.8S  
-      (see [here](https://github.com/shaunpwilkinson/insect#classifying-sequences) for information on classifiers)  
+<small>**`--insect [classifier]`**</small>:  Perform taxonomy assignment using insect. Accepted values of [classifier] are:  
+  - Filename of local .rds R object containing classifier model  
+  - One of the following (case-insensitive) primer names:   
+    MiFish, Crust16S, Fish16S, 18SUni, 18SV4, p23S, mlCOIint, SCL5.8S  
+    (see [here](https://github.com/shaunpwilkinson/insect#classifying-sequences) for information on classifiers)  
+    
 <small>**`--insect-threshold [num]`**</small>:  Minimum Akaike weight for the recursive classification procedure to continue toward the leaves of the tree (default: 0.8)  
 <small>**`--insect-offset [num]`**</small>: Log-odds score offset parameter governing whether the minimum score is met at each node (default: 0)  
 <small>**`--insect-min-count [num]`**</small>:  Minimum number of training sequences belonging to a selected child node for the classification to progress (default: 5)  
@@ -429,8 +427,7 @@ These options relate to assignment/collapsing of taxonomic IDs. There are two di
 These options control how (and by what tool) sequences are denoised and zOTUs are infered. By default, eDNAFlow uses the 32-bit (free) version of [usearch](https://www.drive5.com/usearch/). However, this version is limited to 4GB of memory and may fail for large sequence files, so it's also possible to specify either the 64-bit (commercial) version of usearch or [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch). 
 
 <small>**`--min-abundance [num]`**</small>:  Minimum zOTU abundance; zOTUs below threshold will be discarded (default: 8)   
-<small>**`--denoiser [tool/path]`**</small>:  Sets the tool used for denoising & chimera removal  
-    Accepted options: 'usearch', 'usearch32', 'vsearch', path to 64-bit usearch executable  
+<small>**`--denoiser [tool/path]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'usearch32', 'vsearch', path to 64-bit usearch executable  
 <small>**`--vsearch`**</small>:  Alias for `--denoiser vsearch`  
 
 <!-- TOC --><a name="lulu-zotu-curation"></a>
@@ -478,36 +475,3 @@ Unless you pass the `--skip-blast` option, you'll need to provide a path to a lo
 
 The filtering applied in this script is based on a set of user specified thresholds, including query coverage (qCov), percentage identity (% identity) and the difference (Diff) between % identities of two hits when their qCov is equal. Setting qCov and % identity thresholds ensures that only BLAST hits >= to those thresholds will progress to the Diff comparison step. Setting Diff means that if the absolute value for the difference between % identity of hit1 and hit2 is \< Diff, then a species level taxonomy will be returned, otherwise taxonomy of that ZOTU will be dropped to the lowest common ancestor. This script produces two files, a file in which the taxonomy is assigned (the final result), and an intermediate file which will give the user an idea of why some ZOTUs may have been assigned to the lowest common ancestor. 
 
-<!--### Using LCA script for an otu/zotu/asv/etc file that was not generated by eDNAFlow
-
-This script is not limited to eDNAFlow created files. It can be used for assigning taxonomy of any OTU, ZOTU, and or ASV files, as long as: 
-
-1. User provide a tab-delimited blast result file for their OTU or ASV, where blastn is performed using the following format:
-
--outfmt "6 qseqid sseqid staxids sscinames scomnames sskingdoms pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp"
-
-***If you have used eDNAFlow to generate your files, then the above has already been taken care of.***
-
-2. The OTU or ASV table files are in tab-delimited format and the first line starts with #ID. To see examples, in folder testData2_Play check the files with extension _2test_LCAscript.tab -->
-
-
-<!--### Modify the lulu curated Zotu table before using LCA script
-
-If you want to use the curated ZOTU table, first you need to make some changes in that file. Use your favorite editor to:
-
-1) Remove all occurrence of ײ in the curated file. 
-2) In the first line add #ID followed by a tab.
-
-<!-- TOC --><a name="read-this-first-if-using-lca-with-a-custom-database"></a>
-### Read this first if using LCA with a custom database
--->
-<!--eDNAFlow allows you to specify your custom database for blast, but LCA script may not be able to parse and assign taxonomy of the custom results depending on how you built your custom database. This is because the LCA script needs taxonomy ID information (i.e. "staxids" which is the 3rd column in blast result file) to link the blast result with GenBank taxonomy. This ID will be pulled automatically when blasting against the Genbank database. However, for custom databases, if when you built it, you did not map the sequence identifiers to taxids, then it will not be available after blast and as a result LCA script will not be able to generate results for this.
-
-We suggest you check blast manual on how to make custom database. A nice example on making custom database can be found [here](https://www.ncbi.nlm.nih.gov/books/NBK279688/), but note that this example is based on protein.
--->
-<!--## Extra Notes
-
-Provided you have wget* installed on your system the script starts downloading the taxonomy dump file from NCBI and will put it in a folder with the date of that day. 
-
-*Mac users can easily install wget following instruction [here](https://www.cyberciti.biz/faq/howto-install-wget-om-mac-os-x-mountain-lion-mavericks-snow-leopard/)
--->

@@ -192,14 +192,12 @@ work|All internal files processed by nextflow|
 
 
 ## Description of run options
-eDNAFlow allows for a good deal of customization with regard to which and how various elements of the pipeline are run. 
+eDNAFlow allows for a good deal of customization with regard to which and how various elements of the pipeline are run. All command-line options can be either be passed as-is or saved in a parameters file. For information on file formats and calling convention, see [below](#specifying-parameters-in-a-parameter-file).
 
 To see a detailed list of available options run:
 ```bash
 $ eDNAFlow.nf --help
 ```
-
-All command-line options can be either be passed as-is or saved in a parameters file. For information on file format and calling convention, see [below](#specifying-parameters-in-a-parameter-file)
 
 The pipeline accepts three main input formats:
 

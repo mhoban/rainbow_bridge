@@ -12,39 +12,17 @@ import sys
 # import supporting functions used in the code below
 import working_function as wf
 
-# define commands for downloading taxonomy database from NCBI and saving it in a folder with the current date
-# if folder exists, it overwrites it
-getLineage = '''
-d="$(date +"%d-%m-%Y")" 
-mkdir ${d}_taxdump
-cd ${d}_taxdump 
-wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip 
-unzip new_taxdump.zip 
-mv rankedlineage.dmp ..  
-cd .. 
-tr -d "\t" < rankedlineage.dmp > rankedlineage_tabRemoved.dmp 
-rm -f ${d}_taxdump/*
-rm -f rankedlineage.dmp
-'''
-
-# create a child bash process
-process = subprocess.Popen('/bin/bash', stdin=subprocess.PIPE,
-                           stdout=subprocess.PIPE, universal_newlines=True)
-# execute getLineage command and print output on the screen
-out, err = process.communicate(getLineage)
-out
-
-
 # setting up input parameters
 tableFile = str(sys.argv[1])
 blastFile = str(sys.argv[2])
 qCovLim = sys.argv[3]
 pidLim = sys.argv[4]
 pid_diffCut = sys.argv[5]
+lineage = sys.argv[6]
+output = str(sys.argv[7])
 
 # define output file, open it and redirect standard output to this file
 def_output = sys.stdout
-output = str(sys.argv[6])
 f = open(output, 'w')
 sys.stdout = f
 
@@ -55,7 +33,7 @@ def main():
 
     # link filtered blast results with taxonomy information
     # results are saved in a temporary file called 'interMediate_res.tab'
-    wf.link_TaxFilblast(blastFile, pid_diffCut, qCovLim, pidLim)
+    wf.link_TaxFilblast(blastFile, pid_diffCut, qCovLim, pidLim, lineage)
 
     # filter blast result file to get only unique hits based on taxonomy id,
     # and filter them based on query coverage, percentage identity and difference of them (Diff)
@@ -140,13 +118,3 @@ f.close()
 
 # restore standard output to default
 sys.stdout = def_output
-
-# cleaning up temporary files
-cmd = '''
-d="$(date +"%d-%m-%Y")"
-mv rankedlineage_tabRemoved.dmp ${d}_taxdump
-'''
-process = subprocess.Popen('/bin/bash', stdin=subprocess.PIPE,
-                           stdout=subprocess.PIPE, universal_newlines=True)
-out, err = process.communicate(cmd)
-out

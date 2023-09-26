@@ -45,7 +45,7 @@ process taxonomy {
 
   script:
   """
-  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${name}_taxonomy_collapsed.tab
+  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${lineage} ${name}_taxonomy_collapsed.tab 
   mv interMediate_res.tab ${name}_intermediate_table.tab
   """
 }  

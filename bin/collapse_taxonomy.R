@@ -123,7 +123,7 @@ filtered <- filtered %>%
 # whose percent ID differs by the threshold
 while (any(filtered$diff > diff_thresh)) {
   filtered <- filtered %>% 
-    slice(-which(diff > 1)) %>%
+    slice(-which(diff > diff_thresh)) %>%
     group_by(zotu) %>%
     arrange(desc(qcov),desc(pident)) %>%
     mutate(diff=abs(c(0,diff(pident)))) %>%

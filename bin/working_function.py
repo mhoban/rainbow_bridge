@@ -106,7 +106,7 @@ def taxonomy_dictionary(ncbi_taxonomy):
     # This will parse the ncbi taxonomy file to get the column of interest
     with open(ncbi_taxonomy, "r") as file:
         for line in file:
-            l3 = line.strip().split('|')
+            l3 = line.replace("\t","").strip().split('|')
             tax_id = l3[0]
             kingdom = l3[8]
             domain = l3[9]
@@ -126,13 +126,13 @@ def taxonomy_dictionary(ncbi_taxonomy):
 
 # This function will link filtered blast results with taxonomy information
 # it takes four arguments including the filtering thresholds set by users, and will write the result to an intermediate file
-def link_TaxFilblast(filename, diff_lim, qCovThre, pidThre):
+def link_TaxFilblast(filename, diff_lim, qCovThre, pidThre, lineage):
     f = open('interMediate_res.tab', 'w')
 
     # holds the value from filterBlast function. which is a nested list
     filBlast = filterBlast(filename, diff_lim, qCovThre, pidThre)['unq']
     # a dictionary of taxonomyid and the value is all information available for it
-    taxDict = taxonomy_dictionary("rankedlineage_tabRemoved.dmp")
+    taxDict = taxonomy_dictionary(lineage)
 
     # if taxonomy id from blast file exist in the dictionary
     for i in filBlast:

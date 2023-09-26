@@ -75,7 +75,7 @@ class helper {
       --split                      Split input fastq files and process in parallel
                                    (not compatible with --illumina-demultiplexed)
       --split-by                   Number of sequences per split fastq chunk (default: ${params.splitBy})
-      --sample-map <mapfile>       (Optional) A headerless tab-separated file mapping sample names to sequence-read
+      --sample-map [mapfile]       (Optional) A headerless tab-separated file mapping sample names to sequence-read
                                    filenames. Paired-end runs include both forward and reverse reads. Example map:
                                    ---
                                    sample1	B1_S7_L001_R1_001.fastq	B1_S7_L001_R2_001.fastq
@@ -111,7 +111,7 @@ class helper {
       --min-quality [num]          Minimum Phred score for sequence retention 
                                    (default: ${params.minQuality})
       --min-align-len [num]        Minimum sequence overlap when merging forward/reverse reads
-                                   (default: ${params.minAlignLen}
+                                   (default: ${params.minAlignLen})
       --min-len [num]              Minimum overall sequence length (default: ${params.minLen})
 
     BLAST settings (one or more of --blast-db or --custom-db is required):

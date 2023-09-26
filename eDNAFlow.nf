@@ -119,7 +119,7 @@ process filter_length {
 process split_samples {
   label 'obitools'
 
-  publishDir "04_splitSamples_${sample_id}", mode: params.publishMode
+  publishDir "04_split_samples", mode: params.publishMode
 
   input:
     tuple val(sample_id), path(fastq) 
@@ -339,7 +339,7 @@ process lulu_blast {
 process lulu {
   label 'lulu'
 
-  errorStrategy 'ignore'
+  /* errorStrategy 'ignore' */
 
   publishDir { params.illuminaDemultiplexed ? "08_lulu" : "09_lulu" }, mode: params.publishMode
 
@@ -596,6 +596,8 @@ workflow {
           } |
           set { reads }
       } else {
+        // TODO: if params.reads is *not* a directory, should we just treat it as a glob and pass it directly into
+        // fromFilePairs?
         // fallback to legacy baseDir param if someone forgot
         reads = params.baseDir != "" ? params.baseDir : params.reads
         // otherwise make a glob pattern to find where the fwd/rev reads live

@@ -456,7 +456,22 @@ assignTaxonomy: true
 primerMismatch: 3
 ```
 
-Assuming the above example is called options.yml, eDNAFlow can be then executed like this:
+and in json format:
+
+```json
+{
+  "paired": true,
+  "reads": "../fastq/",
+  "fwd": "forward",
+  "rev": "reverse",
+  "illuminaDemultiplexed": true,
+  "removeAmbiguousIndices": true,
+  "assignTaxonomy": true,
+  "primerMismatch": 3
+}
+```
+
+Assuming the first example above is called options.yml, eDNAFlow can be then executed like this:
 
 ```bash
 $ eDNAFlow.nf -params-file options.yml

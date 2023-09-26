@@ -339,7 +339,7 @@ CL1_S2_L001
 CL2_S3_L001
 ```
 
-See [below](#general-options) for information on how to map filenames to custom sample names.
+See [below](#mapping-of-custom-sample-ids) for information on how to map filenames to custom sample names.
 
 <!-- TOC --><a name="other-options"></a>
 ### Other options

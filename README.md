@@ -5,12 +5,12 @@
 - [Basic usage](#basic-usage)
   * [A note on globs/wildcards](#a-note-on-globswildcards)
   * [Usage examples](#usage-examples)
-  * [For single-end runs (not previously demultiplexed):](#for-single-end-runs-not-previously-demultiplexed)
-  * [For previously-demultiplexed single-end runs:](#for-previously-demultiplexed-single-end-runs)
-  * [For non-demultiplexed paired-end runs:](#for-non-demultiplexed-paired-end-runs)
+  * [For single-end runs (not previously demultiplexed)](#for-single-end-runs-not-previously-demultiplexed)
+  * [For previously-demultiplexed single-end runs](#for-previously-demultiplexed-single-end-runs)
+  * [For non-demultiplexed paired-end runs](#for-non-demultiplexed-paired-end-runs)
     + [Specifying reads by directory](#specifying-reads-by-directory)
     + [Specifying reads by forward/reverse filenames](#specifying-reads-by-forwardreverse-filenames)
-  * [For previously-demultiplexed paired-end runs:](#for-previously-demultiplexed-paired-end-runs)
+  * [For previously-demultiplexed paired-end runs](#for-previously-demultiplexed-paired-end-runs)
   * [Contents of output directories](#contents-of-output-directories)
 - [Description of run options](#description-of-run-options)
   * [Required options for processing fastq input (demultiplexed or not)](#required-options-for-processing-fastq-input-demultiplexed-or-not)
@@ -19,17 +19,17 @@
   * [Required options](#required-options)
   * [Sample IDs](#sample-ids)
   * [Other options](#other-options)
-    + [General options:](#general-options)
-    + [Mapping of custom sample IDs:](#mapping-of-custom-sample-ids)
-    + [Splitting input:](#splitting-input)
-    + [Length, quality, and merge settings:](#length-quality-and-merge-settings)
-    + [Demultiplexing and sequence matching:](#demultiplexing-and-sequence-matching)
-    + [BLAST settings:](#blast-settings)
-    + [Taxonomy assignment:](#taxonomy-assignment)
+    + [General options](#general-options)
+    + [Mapping of custom sample IDs](#mapping-of-custom-sample-ids)
+    + [Splitting input](#splitting-input)
+    + [Length, quality, and merge settings](#length-quality-and-merge-settings)
+    + [Demultiplexing and sequence matching](#demultiplexing-and-sequence-matching)
+    + [BLAST settings](#blast-settings)
+    + [Taxonomy assignment](#taxonomy-assignment)
     + [Denoising and zOTU inference:  ](#denoising-and-zotu-inference)
-    + [LULU zOTU curation:](#lulu-zotu-curation)
-    + [Resource allocation:](#resource-allocation)
-    + [Singularity options:](#singularity-options)
+    + [LULU zOTU curation](#lulu-zotu-curation)
+    + [Resource allocation](#resource-allocation)
+    + [Singularity options](#singularity-options)
 - [Downloading the NCBI BLAST nucleotide database](#downloading-the-ncbi-blast-nucleotide-database)
 - [LCA (Lowest Common Ancestor) script for assigning taxonomy](#lca-lowest-common-ancestor-script-for-assigning-taxonomy)
 - [Specifying parameters in a parameter file](#specifying-parameters-in-a-parameter-file)
@@ -107,7 +107,7 @@ example_project/analysis/   # directory to hold eDNAFlow output files
 
 Analysis is started from within the analysis directory.
 
-### For single-end runs (not previously demultiplexed):
+### For single-end runs (not previously demultiplexed)
 
 ```bash
 user@srv:~/example_project/analysis$ eDNAFlow.nf \
@@ -117,7 +117,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
   [options]
 ```
 
-### For previously-demultiplexed single-end runs:
+### For previously-demultiplexed single-end runs
 
 ```bash
 user@srv:~/example_project/analysis$ eDNAFlow.nf \
@@ -128,7 +128,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
   [options]
 ```
 
-### For non-demultiplexed paired-end runs:
+### For non-demultiplexed paired-end runs
 
 In non-demultiplexed runs, the pipeline assumes you have exactly one forward read file and one reverse read. There are a few ways you can specify where these are found. Two are presented here and you can find a more detailed discussion [below](#description-of-run-options).
 
@@ -155,7 +155,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
   [options]
 ```
 
-### For previously-demultiplexed paired-end runs:
+### For previously-demultiplexed paired-end runs
 
 For demultiplexed runs, the pipeline combines the values of the `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2` options to make a glob that is used to find sequence reads. A simple example is given here, but for a detailed discussion of how these things go together, see [below](#specifying-fastq-files).
 
@@ -198,6 +198,8 @@ To see a detailed list of available options run:
 ```bash
 $ eDNAFlow.nf --help
 ```
+
+All command-line options can be either be passed as-is or saved in a parameters file. For information on file format and calling convention, see [below](#specifying-parameters-in-a-parameter-file)
 
 The pipeline accepts three main input formats:
 
@@ -324,12 +326,12 @@ See [below](#mapping-of-custom-sample-ids) for information on how to map filenam
 
 ### Other options
 
-#### General options:
+#### General options
 <small>**`--prefix [prefix]`**</small>:      Project prefix, applied to output filenames as "sample ID" (default: 'seq')  
 <small>**`--publish-mode [mode]`**</small>:  Specify how nextflow places files in output directories (default: symlink)  
 <small>**`--fastqc`**</small>:               Output FastQC reports for pre and post filter/merge steps. MultiQC is used for demultiplexed runs.  
 
-#### Mapping of custom sample IDs:
+#### Mapping of custom sample IDs
 By default, eDNAFlow interprets sample IDs from filenames. However, it is possible to specify a mapping file that will translate filenames into custom sample IDs.
 
 <small>**`--sample-map [mapfile]`**</small>: A headerless tab-delimited file mapping sample names to sequence-read filenames. 
@@ -341,20 +343,20 @@ sample_CL1  CL1_S2_L001_R1_001.fastq  CL1_S2_L001_R2_001.fastq
 sample_CL2  CL2_S3_L001_R1_001.fastq  CL2_S3_L001_R2_001.fastq 
 ```
 
-#### Splitting input:
+#### Splitting input
 To improve performance, large input files can be split into multiple smaller files and processed in parallel. This option is only available for runs that have *not* previously been demultiplexed. With the `--split` option, eDNAFlow will break up the input reads into smaller files (with the number of reads per file customizable as explained below) and process them all in parallel in the same way that demultiplexed runs are processed. 
 
 <small>**`--split`**</small>:    Split input fastq files and process in parallel   
 <small>**`--split-by [num]`**</small>: Number of sequences per split fastq chunk (default: 100000)  
 
-#### Length, quality, and merge settings:
+#### Length, quality, and merge settings
 These settings allow you to set values related to quality filtering and paired-end merging.
 
 <small>**`--min-quality [num]`**</small>:     Minimum Phred score for sequence retention (default: 20)  
 <small>**`--min-align-len [num]`**</small>:   Minimum sequence overlap when merging forward/reverse reads (default: 12)  
 <small>**`--min-len [num]`**</small>:         Minimum overall sequence length (default: 50)  
 
-#### Demultiplexing and sequence matching:
+#### Demultiplexing and sequence matching
 These settings controld demultiplexing and sequence matching (e.e., allowable PCR primer mismatch).
 
 <small>**`--primer-mismatch [num]`**</small>:  Allowed number of mismatched primer bases (default: 2)  
@@ -365,7 +367,7 @@ These settings controld demultiplexing and sequence matching (e.e., allowable PC
 <small>**`--demuxed-example`**</small>:  Spit out example usearch/vsearch demultiplexed FASTA format  
 <small>**`--demux-only`**</small>:  Stop after demultiplexing and splitting raw reads  
 
-#### BLAST settings:
+#### BLAST settings
 These settings allow you to customize BLAST searches. See [above](#blast-settings) for detailed information on specifying BLAST database location(s). Other options in this category allow you to control the BLAST search criteria directly (e.g., e-value, percent match, etc.). For further explanation of these options, see the [blast+ documentation](https://www.ncbi.nlm.nih.gov/books/NBK279690/).
 
 <small>**`--blast-task [task]`**</small>:  Set blast+ task (default: "blastn")  
@@ -374,7 +376,7 @@ These settings allow you to customize BLAST searches. See [above](#blast-setting
 <small>**`--evalue [num]`**</small>:  BLAST e-value threshold (default: 0.001)  
 <small>**`--qcov [num]`**</small>:  Minimum percent query coverage (default: 100)  
 
-#### Taxonomy assignment:
+#### Taxonomy assignment
 These options relate to assignment/collapsing of taxonomic IDs. There are two different methods of collapsing taxonomy (see [below](#taxonomy) for details): the "old" way (using a python script) and the "new" way (using R). Both methods take essentially the same approach and can be customized using the same options. The old method is retained for completeness (and because the new method may still have bugs). In each case, top BLAST results for each zOTU are compared to one another and a decision is made whether or not to collapse to the next highest taxonomic rank based on how different those results are from one another. This is the so-called lowest common ancestor (LCA) approach. In addition to the taxonomy collapser scripts, eDNA can use [insect](https://github.com/shaunpwilkinson/insect) to assign taxonomic IDs to zOTUs. This is particularly useful for assigning higher-order (e.g. phylum, order) taxonomy to zOTUs that are otherwise unidentified. To run insect on your sequences, you must specify either one of the [pre-trained](https://github.com/shaunpwilkinson/insect#classifying-sequences) classifier models OR one that you've trained yourself. Insect also takes various parameters to tweak how it does its assignments.
 
 <small>**`--assign-taxonomy`**</small>: Perform final taxonomy assignment & LCA collapse  
@@ -402,20 +404,20 @@ These options control how (and by what tool) sequences are denoised and zOTUs ar
 <small>**`--denoiser [tool/path]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'usearch32', 'vsearch', path to 64-bit usearch executable  
 <small>**`--vsearch`**</small>:  Alias for `--denoiser vsearch`  
 
-#### LULU zOTU curation:
+#### LULU zOTU curation
 eDNAFlow includes the option to curate zOTUs using [lulu](https://github.com/tobiasgf/lulu). 
 
 <small>**`--skip-lulu`**</small>:  Skip LULU curation  
 <small>**`--lulu-min [num]`**</small>:  Minimum threshold of sequence similarity to consider zOTUs as spurious. Choose higher values when using markers with lower genetic variation and/or few expected PCR and sequencing errors. (default: 84)  
 
-#### Resource allocation:
+#### Resource allocation
 These options allow you to allocate resources (CPUs and memory) to eDNAFlow processes.
 
 <small>**`--max-memory [mem]`**</small>:  Maximum memory available to nextflow processes, e.g., '8.GB' (default: maximum available system memory)  
 <small>**`--max-cpus [num]`**</small>:  Maximum cores available to nextflow processes default: maximum available system CPUs)  
 <small>**`--max-time [time]`**</small>:  Maximum time allocated to each pipeline process, e.g., '2.h' (default: 10d)  
 
-#### Singularity options:
+#### Singularity options
 Options to specify how singularity behaves. The `--bind-dir` option binds host directories to the internal containers and may be necessary if you're getting 'file not found' errors, although most options that specify filenames or directories will auto-bind.
 
 <small>**`--bind-dir [dir]`**</small>:  Space-separated list of directories to bind within singularity images (must be surrounded by quotations if more than one directory)  

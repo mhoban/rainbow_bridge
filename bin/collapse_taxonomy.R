@@ -170,7 +170,7 @@ filtered <- filtered %>%
 # join the zOTU table, using its first column as the zotu column
 collapsed <- filtered %>%
   left_join(zotus,by=setNames(colnames(zotus)[1],"zotu")) %>%
-  select(OTU=zotu,domain:species,numberOfUnq_BlastHits=unique_hits,everything()) %>%
+  select(domain:species,OTU=zotu,numberOfUnq_BlastHits=unique_hits,everything()) %>%
   # arrange(domain,kingdom,phylum,class,order,family,genus,species,parse_number(OTU))
   arrange(parse_number(OTU))
 

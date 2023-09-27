@@ -9,7 +9,6 @@ import colors
 exec_denoiser = false
 
 // trim and (where relevant) merge paired-end reads
-// this gets called if the files were already demultiplexed
 process filter_merge {
   label 'adapterRemoval'
   label 'demux_cpus'
@@ -31,12 +30,7 @@ process filter_merge {
       --minquality ${params.minQuality} \
       --basename ${sample_id}
 
-    split_id=""
-    if ${params.split}; then
-      split_id="_${reads.baseName}"
-    fi
-
-    mv ${sample_id}.truncated ${sample_id}\${split_id}_trimmed_merged.fastq
+    mv ${sample_id}.truncated ${sample_id}_trimmed_merged.fastq
     """
   } else {  
     // if reads are paired-end then merge 
@@ -47,12 +41,7 @@ process filter_merge {
       --minalignmentlength ${params.minAlignLen} \
       --basename ${sample_id}
 
-    split_id=""
-    if ${params.split}; then
-      split_id="_${reads[0].baseName}"
-    fi
-
-    mv ${sample_id}.collapsed ${sample_id}\${split_id}_trimmed_merged.fastq  
+    mv ${sample_id}.collapsed ${sample_id}_trimmed_merged.fastq  
     """
   }
 }
@@ -90,7 +79,8 @@ process ngsfilter {
 
   script:
   """
-  ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "orphan.fastq" ${read} > "${sample_id}_${read.baseName}_${barcode.baseName}_QF_Dmux.fastq"
+  # ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "${sample_id}_filter_orphans.fastq" ${read} > "${sample_id}_${read.baseName}_${barcode.baseName}_QF_Dmux.fastq"
+  ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "${sample_id}_filter_orphans.fastq" ${read} > "${sample_id}_${barcode.baseName}_QF_Dmux.fastq"
   """
 }
 
@@ -110,8 +100,9 @@ process filter_length {
   // if we're already demultiplexed we probably don't have the forward_tag and reverse_tag annotations
   def p = params.illuminaDemultiplexed ? "" : "-p 'forward_tag is not None and reverse_tag is not None'" 
   """
-  # cat ${fastq_file} > "${sample_id}_QF_Dmux.fastq" 
-  obigrep --uppercase -l ${params.minLen} ${p} "${fastq_file}" > "${sample_id}_${fastq_file.baseName}_QF_Dmux_minLF.fastq"
+  for fastq in ${fastq_file}; do
+    obigrep --uppercase -l ${params.minLen} ${p} "\$fastq" >> "${sample_id}_QF_Dmux_minLF.fastq"
+  done
   """
 }
 
@@ -128,10 +119,8 @@ process split_samples {
     path("__split__*.fastq")
 
   script:
-  // TODO: we probably don't need this anymore since we're not doing this annotation now
-  def sample_tag = params.illuminaDemultiplexed ? "illumina_sample" : "sample"
   """
-  obisplit --uppercase -p "__split__" -t ${sample_tag} -u "orphans.fastq" $fastq
+  obisplit --uppercase -p "__split__" -t sample -u "${sample_id}_split_orphans.fastq" $fastq
   """
 }
 
@@ -662,7 +651,7 @@ workflow {
       // do fastqc/multqc before filtering & merging
       if (params.fastqc) {
         Channel.of("initial") | 
-        combine(reads) |
+          combine(reads) |
           first_fastqc | 
           collect(flat: true) | 
           toList |
@@ -699,6 +688,7 @@ workflow {
       reads_filtered_merged | 
         combine(barcodes) | 
         ngsfilter | 
+        groupTuple | 
         filter_length | 
         (vsearch ? relabel_vsearch : relabel_usearch) | 
         collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '05_relabeled_merged') |
@@ -716,12 +706,14 @@ workflow {
             // split fastq files
             splitFastq(by: params.splitBy, file: true, pe: true) | 
             // rearrange reads tuple so it looks like [key, [R1,R2]]
-            map { key, read1, read2 -> [key, [read1,read2]] } |
+            // and add the split number to the key
+            map { key, read1, read2 -> ["${key}." + file(read1.BaseName).Extension, [read1,read2]] } |
             set { reads }
         } else {
           // in single-end mode we can just split directly
           reads |
             splitFastq(by: params.splitBy, file: true) | 
+            map { key, readfile -> ["${key}." + file(readfile.BaseName).Extension, readfile] } |
             set { reads }
         }
       }
@@ -766,6 +758,7 @@ workflow {
       reads_filtered_merged | 
         combine(barcodes) |
         ngsfilter | 
+        groupTuple | 
         filter_length |
         split_samples | 
         // we have to flatten here because we can get results that look like
@@ -857,8 +850,12 @@ workflow {
       set { blast_result }
 
     // get the NCBI ranked taxonomic lineage dump
-    get_lineage |
-      set{lineage}
+    if (!helper.file_exists(params.lineage)) {
+      get_lineage |
+        set{lineage}
+    } else {
+      lineage = Channel.fromPath(params.lineage, checkIfExists: true)
+    }
 
   tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy
 

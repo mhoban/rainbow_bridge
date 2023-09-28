@@ -100,13 +100,13 @@ This pattern will match 'seq_R1.fastq', 'seq_001_002_R2.fastq', and 'seq_123_456
 
 
 ## Usage examples
-The eDNAFlow code tree does not need to be in the same folder as the data you're analyzing. The easiest way to deploy it is to add the directory where you cloned the git repsitory to your system $PATH and just call `eDNAFlow.nf` directly as an executable. Following are some examples of the basic command to run the pipeline on your local machine on single-end/paired-end data with multiple possible barcode files. For each of these examples, I assume `eDNAFlow.nf` is in the system path and your directory structure looks something like this:
+The eDNAFlow code tree does not need to be in the same folder as the data you're analyzing. The easiest way to deploy it is to add the directory where you cloned the git repsitory to your system $PATH and just call `eDNAFlow.nf` directly as an executable. Following are some examples of the basic command to run the pipeline on your local machine on single-end/paired-end data with multiple possible barcode files. For each of these examples, I assume `eDNAFlow.nf` is in the system path, you're working on a project called `example_project`, and your directory structure looks something like this:
 
 ```bash
 example_project/            # base directory containing project files
 example_project/fastq/      # directory to hold raw sequence reads
-example_project/barcode/    # directory to hold barcode file(s)
-example_project/analysis/   # directory to hold eDNAFlow output files
+example_project/data/    # directory to hold other data (e.g., barcode and/or sample map file(s))
+example_project/analysis/   # directory to hold eDNAFlow analysis output
 ```
 
 Analysis is started from within the analysis directory.
@@ -117,7 +117,7 @@ Analysis is started from within the analysis directory.
 user@srv:~/example_project/analysis$ eDNAFlow.nf \
   --single \
   --reads ../fastq/sequence_reads.fastq \   # <-- reads denotes a single .fastq file
-  --barcode '../barcode/*.tab'
+  --barcode '../data/*.tab'
   [options]
 ```
 
@@ -127,7 +127,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
 user@srv:~/example_project/analysis$ eDNAFlow.nf \
   --single \
   --reads '../fastq/*.fastq' \    # <-- reads is a glob denoting multiple .fastq files
-  --barcode '../barcode/*.tab'
+  --barcode '../data/*.tab'
   --illumina-demultiplexed        # <-- reads are already demultiplexed
   [options]
 ```
@@ -143,7 +143,7 @@ With this method, the `--reads` option points to the directory where .fastq read
 user@srv:~/example_project/analysis$ eDNAFlow.nf \
   --paired \
   --reads ../fastq/  
-  --barcode '../barcode/*.tab'
+  --barcode '../data/*.tab'
   [options]
 ```
 
@@ -155,7 +155,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
   --paired \
   --fwd ../fastq/sequencing_run_R1.fastq \
   --rev ../fastq/sequencing_run_R2.fastq \
-  --barcode '../barcode/*.tab'
+  --barcode '../data/*.tab'
   [options]
 ```
 
@@ -167,7 +167,7 @@ For demultiplexed runs, the pipeline combines the values of the `--reads`, `--fw
 user@srv:~/example_project/analysis$ eDNAFlow.nf \
   --paired \
   --reads ../fastq \   # Here, we're just specifying the directory where reads are found. 
-  --barcode '../barcode/*.tab'  # Default options will look for <reads>/*R1*.fastq* and <reads>/*R2*.fastq*
+  --barcode '../data/*.tab'  # Default options will look for <reads>/*R1*.fastq* and <reads>/*R2*.fastq*
   --illumina-demultiplexed
   [options]
 ```

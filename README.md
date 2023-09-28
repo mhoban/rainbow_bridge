@@ -45,7 +45,7 @@ For more information on eDNAFlow and other software used as part of the workflow
 
 ## About this version
 
-This is an updated version of eDNAFlow, rewritten to support nextflow's DSL2 and the newest version of nextflow. It also better supports parallel processing, both through splitting and simultaneously processing large files and the ability to process already-demultiplexed sequence files. In addition, it adds a few processing options, such as the ability to classify taxonomy using [insect](https://github.com/shaunpwilkinson/insect) and produce a [phyloseq](https://joey711.github.io/phyloseq/) object as output.
+This is an updated fork of eDNAFlow, rewritten to support nextflow's DSL2 and the newest version of nextflow. It also better supports parallel processing, both through splitting and simultaneously processing large files and the ability to process already-demultiplexed sequence files. In addition, it adds a few processing options, such as the ability to classify taxonomy using [insect](https://github.com/shaunpwilkinson/insect) and produce a [phyloseq](https://joey711.github.io/phyloseq/) object as output.
 
 ## Setup and testing
 

@@ -584,8 +584,11 @@ workflow {
     zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
     blast_result = Channel.fromPath(params.blastFile, checkIfExists: true)
 
-    // load the ranked lineage channel
+    // load the ranked lineage and merged channels
     if (!helper.file_exists(params.lineage)) {
+      if (params.lineage != "") {
+        println(colors.yellow("Lineage file '${params.lineage}' does not exist and will be downloaded"))
+      }
       get_lineage |
         set{lineage}
     } else {

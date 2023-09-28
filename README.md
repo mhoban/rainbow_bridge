@@ -105,7 +105,7 @@ The eDNAFlow code tree does not need to be in the same folder as the data you're
 ```bash
 example_project/            # base directory containing project files
 example_project/fastq/      # directory to hold raw sequence reads
-example_project/data/    # directory to hold other data (e.g., barcode and/or sample map file(s))
+example_project/data/       # directory to hold other data (e.g., barcode and/or sample map file(s))
 example_project/analysis/   # directory to hold eDNAFlow analysis output
 ```
 

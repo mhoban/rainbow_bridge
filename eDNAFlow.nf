@@ -588,7 +588,7 @@ workflow {
     zotu_table |
       combine(blast_result) |
       combine(lineage) | 
-      combine(Channel.of('user')) | 
+      combine(Channel.of('standalone')) | 
       combine(Channel.of(true)) | 
       tax_process
 

@@ -4,12 +4,19 @@ process r_taxonomy {
 
   publishDir { 
     p = params.insect ? "a" : ""
-    dir =  params.illuminaDemultiplexed ? "09${p}_taxonomy" : "10${p}_taxonomy" 
+    if (!standalone) {
+      // number output directory if it's part of the pipeline
+      dir =  params.illuminaDemultiplexed ? "09${p}_taxonomy" : "10${p}_taxonomy" 
+    } else {
+      // otherwise we're standalone, so don't
+      dir = "taxonomy"
+    }
+    // include taxonomy parameters in output directory name
     return "${dir}_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}"
   }, mode: params.publishMode
 
   input:
-    tuple path(zotu_table), path(blast_result), path(lineage), val(name)
+    tuple path(zotu_table), path(blast_result), path(lineage), val(name), val(standalone)
 
   output:
     tuple path("${name}_intermediate_r.tab"), path("${name}_taxonomy_r.tab")
@@ -35,12 +42,19 @@ process py_taxonomy {
 
   publishDir { 
     p = params.insect ? "a" : ""
-    dir = params.illuminaDemultiplexed ? "09${p}_taxonomy" : "10${p}_taxonomy" 
+    if (!standalone) {
+      // number output directory if it's part of the pipeline
+      dir =  params.illuminaDemultiplexed ? "09${p}_taxonomy" : "10${p}_taxonomy" 
+    } else {
+      // otherwise we're standalone, so don't
+      dir = "taxonomy"
+    }
+    // include taxonomy parameters in output directory name
     return "${dir}_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}"
   }, mode: params.publishMode
 
   input:
-    tuple path(zotu_table), path(blast_result), path(lineage), val(name)
+    tuple path(zotu_table), path(blast_result), path(lineage), val(name), val(standalone)
 
   output:
     tuple path("${name}_intermediate_py.tab"), path("${name}_taxonomy_py.tab")

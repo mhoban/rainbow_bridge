@@ -469,13 +469,23 @@ def check_params() {
   }
 
   // make sure the right version of single,paired,demultiplexed is passed
-  if (!helper.file_exists(params.demuxedFasta) && params.single == params.paired) {
+  if (!params.assignTaxonomy && !helper.file_exists(params.demuxedFasta) && params.single == params.paired) {
     if (!params.single) {
       println(colors.red("One of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" MUST be passed"))
     } else {
       println(colors.red("Only one of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" may be passed"))
     }
     exit(1)
+  } else if (params.assignTaxonomy && (!params.single && !params.paired)) {
+    // if assign-taxonomy is passed WITHOUT single or paired, throw an error
+    if (!helper.file_exists(params.blastFile)) {
+      println(colors.red("The supplied blast result table \"${params.blastFile}\" does not exist"))  
+      exit(1)
+    }
+    if (!helper.file_exists(params.zotuTable)) {
+      println(colors.red("The supplied zOTU table \"${params.zotuTable}\" does not exist"))  
+      exit(1)
+    }
   }
 
   if (params.sampleMap != "" && !helper.file_exists(params.sampleMap)) {
@@ -545,8 +555,8 @@ include { fastqc as first_fastqc }    from './modules/modules.nf'
 include { fastqc as second_fastqc }   from './modules/modules.nf'
 include { multiqc as first_multiqc }  from './modules/modules.nf'
 include { multiqc as second_multiqc } from './modules/modules.nf'
-include { r_taxonomy as assign_collapse_taxonomy  } from './modules/modules.nf'
-include { r_taxonomy as assign_collapse_taxonomy_lulu  } from './modules/modules.nf'
+include { r_taxonomy as assign_collapse_taxonomy_r  } from './modules/modules.nf'
+include { r_taxonomy as assign_collapse_taxonomy_lulu_r  } from './modules/modules.nf'
 include { py_taxonomy as assign_collapse_taxonomy_py  } from './modules/modules.nf'
 include { py_taxonomy as assign_collapse_taxonomy_lulu_py  } from './modules/modules.nf'
 
@@ -556,300 +566,17 @@ workflow {
 
   vsearch = (params.vsearch || params.denoiser == 'vsearch')
 
-  if (!helper.file_exists(params.demuxedFasta)) {
-    if (params.single) {
-      // here we load whatever was passed as the --reads option
-      // if it's a glob, we get a list of files. if it's just one, we get just one
-      // and we try to pull off something from the beginning to use as a sample ID. 
-      // we also check to see if any of the files end with .gz and mark them as such if they are
-      // (that's what branch does)
-      Channel.fromPath(params.reads, checkIfExists: true) |
-        map { [it.baseName.tokenize('_')[0],it] } |
-        branch { 
-         gz: it[1] =~ /\.gz$/
-         regular: true
-        } |
-        set { reads }
-    } else if (params.paired) { 
-      // if fwd and rev point to files that exists, just load them directly
-      // I guess these can probably be globs if you want them to be, but that
-      // might not work properly as currently written
-      if ( helper.file_exists(params.fwd) && helper.file_exists(params.rev) ) {
-        Channel.of(params.prefix) |
-          combine(Channel.fromPath(params.fwd,checkIfExists: true)) | 
-          combine(Channel.fromPath(params.rev,checkIfExists: true)) | 
-          map { a,b,c -> [a,[b,c]] } |
-          branch { 
-           gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
-           regular: true
-          } |
-          set { reads }
-      } else {
-        // TODO: if params.reads is *not* a directory, should we just treat it as a glob and pass it directly into
-        // fromFilePairs?
-        // fallback to legacy baseDir param if someone forgot
-        reads = params.baseDir != "" ? params.baseDir : params.reads
-        // otherwise make a glob pattern to find where the fwd/rev reads live
-        // this may get a little complex, so there are two possible options:
-        // files must have some way of stating which direction they are (e.e., R1/R2)
-        // fwd/rev reads may optionally be in separate subdirectories but those must both be subdirectories
-        // at the same level. So you can have /dir/R1 and /dir/R2, but you CAN'T have /dir1/R1 and /dir2/R2
-        if (params.fwd != "" && params.rev != "") {
-          pattern = "${reads}/{${params.fwd},${params.rev}}/*{${params.r1},${params.r2}}*.fastq*"
-        } else {
-          pattern = "${reads}/*{${params.r1},${params.r2}}*.fastq*"
-        }
-  
-        // load the reads and make sure they're in the right order because the
-        // files will be sorted alphabetically. this is an extremely niche issue
-        // because file are basically always R1/R2 but what if they're
-        // forwards/backwards or something like that?
+  // check if user wants to run taxonomy assignment as standalone
+  tax_only = params.assignTaxonomy && helper.file_exists(params.blastFile) && helper.file_exists(params.zotuTable)
 
-        // we also replace dashes with underscores in the sample ID because at least
-        // vsearch will cut on that character and not treat it as a complete sample id
-  
-        // I'm not even certain the order matters, but I think it does because we 
-        // send them to --file1 and --file2 of AdapterRemoval
-        Channel.fromFilePairs(pattern, checkIfExists: true) | 
-          map { key,f -> [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
-          map { key,f -> key == "" ? [params.prefix,f] : [key,f] } | 
-          branch { 
-           gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
-           regular: true
-          } |
-          set { reads }
-      }
-    } else {
-      println(colors.red("Somehow neither ") + colors.bred("--single") + colors.red(" nor ") + colors.bred("--paired") + colors.red(" were passed and we got to this point"))
-      println(colors.red("That should not have happened"))
-      exit(1)
-    }
+  // do standalone taxonomy assignment
+  if (tax_only) {
+    // build input channels and get appropriate process
+    tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy_r
+    zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
+    blast_result = Channel.fromPath(params.blastFile, checkIfExists: true)
 
-    // here we unzip the zipped files (if any) and merge them back together
-    // with the unzipped files (if any)
-    reads.gz | 
-      unzip |
-      concat ( reads.regular ) |
-      set { reads }
-
-    // remap sample IDs if a sample map is provided
-    if (params.sampleMap != "") {
-      reads | 
-        combine( Channel.fromPath(params.sampleMap,checkIfExists: true) ) |
-        remap_samples | 
-        set { reads }
-    }
-
-    // load barcodes
-    barcodes = Channel.fromPath(params.barcode, checkIfExists: true)
-
-    // if the sequences are already demultiplexed by illumina, we'll
-    // process them separately, including optionally attempting to remove ambiguous indices
-    // and ultimately smash them together for vsearch/usearch to do the dereplication
-    if (params.illuminaDemultiplexed) {
-
-      // do fastqc/multqc before filtering & merging
-      if (params.fastqc) {
-        Channel.of("initial") | 
-          combine(reads) |
-          first_fastqc | 
-          collect(flat: true) | 
-          toList |
-          combine(Channel.of("initial")) | 
-          first_multiqc
-      }
-
-      // run the first part of the pipeline for sequences that have already
-      // been demultiplexed by the sequencer
-      reads |
-        filter_merge |
-        set { reads_filtered_merged }
-
-      // do fastqc/multiqc for filtered/merged
-      if (params.fastqc) {
-        Channel.of("filtered") | 
-          combine(reads_filtered_merged) | 
-          second_fastqc | 
-          collect(flat: true) | 
-          toList |
-          combine(Channel.of("filtered")) | 
-          second_multiqc
-      }
-
-      // remove ambiguous indices, if specified
-      if (params.removeAmbiguousIndices) {
-        reads_filtered_merged | 
-          filter_ambiguous_indices | 
-          set { reads_filtered_merged }
-      } 
-
-      // run the rest of the pipeline, including the primer mismatch check,
-      // length filtering, and smashing together into one file
-      reads_filtered_merged | 
-        combine(barcodes) | 
-        ngsfilter | 
-        groupTuple | 
-        filter_length | 
-        (vsearch ? relabel_vsearch : relabel_usearch) | 
-        collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '05_relabeled_merged') |
-        set { to_dereplicate } 
-
-    } else {
-      // this is where reads are all in one fwd or fwd/rev file and have NOT been demultiplexed
-
-      // split the input fastqs to increase parallelism, if requested
-      if (params.split) {
-        if (params.paired) {
-          reads | 
-            // flatten the reads tuple
-            map { key, reads -> [key,reads[0],reads[1]] } | 
-            // split fastq files
-            splitFastq(by: params.splitBy, file: true, pe: true) | 
-            // rearrange reads tuple so it looks like [key, [R1,R2]]
-            // and add the split number to the key
-            map { key, read1, read2 -> ["${key}." + file(read1.BaseName).Extension, [read1,read2]] } |
-            set { reads }
-        } else {
-          // in single-end mode we can just split directly
-          reads |
-            splitFastq(by: params.splitBy, file: true) | 
-            map { key, readfile -> ["${key}." + file(readfile.BaseName).Extension, readfile] } |
-            set { reads }
-        }
-      }
-
-      // do initial fastqc step
-      if (params.fastqc) {
-        Channel.of("initial") | 
-          combine(reads) | 
-          first_fastqc
-        // if input files are split we'll run them through multiqc
-        if (params.split) {
-          first_fastqc.out | 
-            collect(flat: true) | 
-            toList |
-            combine(Channel.of("initial")) | 
-            first_multiqc
-        }
-      }
-
-      // do quality filtering and/or paired-end merge
-      reads | 
-        filter_merge | 
-        set { reads_filtered_merged }
-
-      // do after-filtering fastqc step
-      if (params.fastqc) {
-        Channel.of("filtered") | 
-          combine(reads_filtered_merged) |
-          second_fastqc
-        // again run multiqc if split
-        if (params.split) {
-          second_fastqc.out | 
-            collect(flat: true) | 
-            toList |
-            combine(Channel.of("filtered")) | 
-            second_multiqc
-        }
-      }
-
-      // run the rest of the pipeline, including demultiplexing, length filtering,
-      // splitting, and recombination for dereplication
-      reads_filtered_merged | 
-        combine(barcodes) |
-        ngsfilter | 
-        groupTuple | 
-        filter_length |
-        split_samples | 
-        // we have to flatten here because we can get results that look like
-        // [[sample1,sample2,sample3],[sample1,sample2,sample3]]
-        flatten | 
-        // this collectFile will merge all individual splits with the same name, so the
-        // tuple above turns into [sample1,sample2,sample3]
-        collectFile | 
-        // get rid of the '__split__' business in the filenames
-        map { [it.baseName.replaceFirst(/^__split__/,""), it] } | 
-        // relabel to fasta
-        (vsearch ? relabel_vsearch : relabel_usearch) | 
-        // collect to single relabeled fasta
-        collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
-        set { to_dereplicate }
-    }
-  } else {
-    // here we've already demultiplexed and relabeled sequences 
-    // (presumably from an earlier run of the pipeline), so we can jump to here
-
-    // load the fasta file in usearch/vsearch format
-    Channel.fromPath(params.demuxedFasta, checkIfExists: true) |
-      set { to_dereplicate }
-  }
-
-  // build the channel, run dereplication, and set to a channel we can use again
-  Channel.of(params.prefix) | 
-    combine(to_dereplicate) | 
-    (vsearch ? derep_vsearch : derep_usearch) |
-    set { dereplicated }
-
-  // make blast databases path channels so singularity will automount it properly
-  blast_db = Channel.fromPath(params.blastDb, type: 'dir')
-  custom_db = Channel.fromPath(params.customDb, type: 'dir', checkIfExists: params.customDb != "NOTHING")
-
-  // run blast query, unless skipped
-  if (!params.skipBlast) {
-    dereplicated | 
-      combine(blast_db) | 
-      combine(custom_db) | 
-      blast 
-  }
-
-  // grab the zotu table from our dereplication step
-  dereplicated | 
-    map { sid, uniques, zotus, zotutable -> zotutable } | 
-    set { zotu_table }
-
-  // make lulu blast database and do lulu curation
-  if (!params.skipLulu) {
-    dereplicated | 
-      // get zotus and sample id
-      map { sid, uniques, zotus, zotutable -> [sid,zotus] } | 
-      lulu_blast | 
-      combine(zotu_table) | 
-      lulu
-  }
-
-  // run the insect classifier, if so desired
-  // this should run in parallel with the blast & lulu processes
-  if (params.insect) {
-    // dereplicate returns a tuple, but we only need the zotus fasta
-    dereplicated | 
-      map { sid, uniques, zotus, zotutable -> zotus } | 
-      set { zotus }
-    
-    // load the classifier model
-    if (helper.file_exists(params.insect)) {
-      classifier = Channel.fromPath(params.insect)
-    } else {
-      // download the classifier model if it's one of the supported ones
-      Channel.of(params.insect) | 
-        get_model | 
-        set { classifier }
-    }
-
-    // run the insect classification
-    zotus | 
-      combine(classifier) | 
-      insect_classify
-  }
-
-
-  // run taxonomy assignment/collapse script if so requested
-  if (params.assignTaxonomy && !params.skipBlast) {
-    // here we grab the blast result
-    blast.out | 
-      map { sid, blast_result -> blast_result } | 
-      set { blast_result }
-
-    // get the NCBI ranked taxonomic lineage dump
+    // load the ranked lineage channel
     if (!helper.file_exists(params.lineage)) {
       get_lineage |
         set{lineage}
@@ -857,25 +584,338 @@ workflow {
       lineage = Channel.fromPath(params.lineage, checkIfExists: true)
     }
 
-  tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy
-
-    // then we smash it together with the blast results 
-    // and run the taxonomy assignment/collapser script
+    // run taxonomy process
     zotu_table |
       combine(blast_result) |
       combine(lineage) | 
-      combine(Channel.of('uncurated')) | 
+      combine(Channel.of('user')) | 
+      combine(Channel.of(true)) | 
       tax_process
 
+  } else {
+    if (!helper.file_exists(params.demuxedFasta)) {
+      if (params.single) {
+        // here we load whatever was passed as the --reads option
+        // if it's a glob, we get a list of files. if it's just one, we get just one
+        // and we try to pull off something from the beginning to use as a sample ID. 
+        // we also check to see if any of the files end with .gz and mark them as such if they are
+        // (that's what branch does)
+        Channel.fromPath(params.reads, checkIfExists: true) |
+          map { [it.baseName.tokenize('_')[0],it] } |
+          branch { 
+           gz: it[1] =~ /\.gz$/
+           regular: true
+          } |
+          set { reads }
+      } else if (params.paired) { 
+        // if fwd and rev point to files that exists, just load them directly
+        // I guess these can probably be globs if you want them to be, but that
+        // might not work properly as currently written
+        if ( helper.file_exists(params.fwd) && helper.file_exists(params.rev) ) {
+          Channel.of(params.prefix) |
+            combine(Channel.fromPath(params.fwd,checkIfExists: true)) | 
+            combine(Channel.fromPath(params.rev,checkIfExists: true)) | 
+            map { a,b,c -> [a,[b,c]] } |
+            branch { 
+             gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
+             regular: true
+            } |
+            set { reads }
+        } else {
+          // TODO: if params.reads is *not* a directory, should we just treat it as a glob and pass it directly into
+          // fromFilePairs?
+          // fallback to legacy baseDir param if someone forgot
+          reads = params.baseDir != "" ? params.baseDir : params.reads
+          // otherwise make a glob pattern to find where the fwd/rev reads live
+          // this may get a little complex, so there are two possible options:
+          // files must have some way of stating which direction they are (e.e., R1/R2)
+          // fwd/rev reads may optionally be in separate subdirectories but those must both be subdirectories
+          // at the same level. So you can have /dir/R1 and /dir/R2, but you CAN'T have /dir1/R1 and /dir2/R2
+          if (params.fwd != "" && params.rev != "") {
+            pattern = "${reads}/{${params.fwd},${params.rev}}/*{${params.r1},${params.r2}}*.fastq*"
+          } else {
+            pattern = "${reads}/*{${params.r1},${params.r2}}*.fastq*"
+          }
+
+          // load the reads and make sure they're in the right order because the
+          // files will be sorted alphabetically. this is an extremely niche issue
+          // because file are basically always R1/R2 but what if they're
+          // forwards/backwards or something like that?
+
+          // we also replace dashes with underscores in the sample ID because at least
+          // vsearch will cut on that character and not treat it as a complete sample id
+
+          // I'm not even certain the order matters, but I think it does because we 
+          // send them to --file1 and --file2 of AdapterRemoval
+          Channel.fromFilePairs(pattern, checkIfExists: true) | 
+            map { key,f -> [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
+            map { key,f -> key == "" ? [params.prefix,f] : [key,f] } | 
+            branch { 
+             gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
+             regular: true
+            } |
+            set { reads }
+        }
+      } else {
+        println(colors.red("Somehow neither ") + colors.bred("--single") + colors.red(" nor ") + colors.bred("--paired") + colors.red(" were passed and we got to this point"))
+        println(colors.red("That should not have happened"))
+        exit(1)
+      }
+
+      // here we unzip the zipped files (if any) and merge them back together
+      // with the unzipped files (if any)
+      reads.gz | 
+        unzip |
+        concat ( reads.regular ) |
+        set { reads }
+
+      // remap sample IDs if a sample map is provided
+      if (params.sampleMap != "") {
+        reads | 
+          combine( Channel.fromPath(params.sampleMap,checkIfExists: true) ) |
+          remap_samples | 
+          set { reads }
+      }
+
+      // load barcodes
+      barcodes = Channel.fromPath(params.barcode, checkIfExists: true)
+
+      // if the sequences are already demultiplexed by illumina, we'll
+      // process them separately, including optionally attempting to remove ambiguous indices
+      // and ultimately smash them together for vsearch/usearch to do the dereplication
+      if (params.illuminaDemultiplexed) {
+
+        // do fastqc/multqc before filtering & merging
+        if (params.fastqc) {
+          Channel.of("initial") | 
+            combine(reads) |
+            first_fastqc | 
+            collect(flat: true) | 
+            toList |
+            combine(Channel.of("initial")) | 
+            first_multiqc
+        }
+
+        // run the first part of the pipeline for sequences that have already
+        // been demultiplexed by the sequencer
+        reads |
+          filter_merge |
+          set { reads_filtered_merged }
+
+        // do fastqc/multiqc for filtered/merged
+        if (params.fastqc) {
+          Channel.of("filtered") | 
+            combine(reads_filtered_merged) | 
+            second_fastqc | 
+            collect(flat: true) | 
+            toList |
+            combine(Channel.of("filtered")) | 
+            second_multiqc
+        }
+
+        // remove ambiguous indices, if specified
+        if (params.removeAmbiguousIndices) {
+          reads_filtered_merged | 
+            filter_ambiguous_indices | 
+            set { reads_filtered_merged }
+        } 
+
+        // run the rest of the pipeline, including the primer mismatch check,
+        // length filtering, and smashing together into one file
+        reads_filtered_merged | 
+          combine(barcodes) | 
+          ngsfilter | 
+          groupTuple | 
+          filter_length | 
+          (vsearch ? relabel_vsearch : relabel_usearch) | 
+          collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '05_relabeled_merged') |
+          set { to_dereplicate } 
+
+      } else {
+        // this is where reads are all in one fwd or fwd/rev file and have NOT been demultiplexed
+
+        // split the input fastqs to increase parallelism, if requested
+        if (params.split) {
+          if (params.paired) {
+            reads | 
+              // flatten the reads tuple
+              map { key, reads -> [key,reads[0],reads[1]] } | 
+              // split fastq files
+              splitFastq(by: params.splitBy, file: true, pe: true) | 
+              // rearrange reads tuple so it looks like [key, [R1,R2]]
+              // and add the split number to the key
+              map { key, read1, read2 -> ["${key}." + file(read1.BaseName).Extension, [read1,read2]] } |
+              set { reads }
+          } else {
+            // in single-end mode we can just split directly
+            reads |
+              splitFastq(by: params.splitBy, file: true) | 
+              map { key, readfile -> ["${key}." + file(readfile.BaseName).Extension, readfile] } |
+              set { reads }
+          }
+        }
+
+        // do initial fastqc step
+        if (params.fastqc) {
+          Channel.of("initial") | 
+            combine(reads) | 
+            first_fastqc
+          // if input files are split we'll run them through multiqc
+          if (params.split) {
+            first_fastqc.out | 
+              collect(flat: true) | 
+              toList |
+              combine(Channel.of("initial")) | 
+              first_multiqc
+          }
+        }
+
+        // do quality filtering and/or paired-end merge
+        reads | 
+          filter_merge | 
+          set { reads_filtered_merged }
+
+        // do after-filtering fastqc step
+        if (params.fastqc) {
+          Channel.of("filtered") | 
+            combine(reads_filtered_merged) |
+            second_fastqc
+          // again run multiqc if split
+          if (params.split) {
+            second_fastqc.out | 
+              collect(flat: true) | 
+              toList |
+              combine(Channel.of("filtered")) | 
+              second_multiqc
+          }
+        }
+
+        // run the rest of the pipeline, including demultiplexing, length filtering,
+        // splitting, and recombination for dereplication
+        reads_filtered_merged | 
+          combine(barcodes) |
+          ngsfilter | 
+          groupTuple | 
+          filter_length |
+          split_samples | 
+          // we have to flatten here because we can get results that look like
+          // [[sample1,sample2,sample3],[sample1,sample2,sample3]]
+          flatten | 
+          // this collectFile will merge all individual splits with the same name, so the
+          // tuple above turns into [sample1,sample2,sample3]
+          collectFile | 
+          // get rid of the '__split__' business in the filenames
+          map { [it.baseName.replaceFirst(/^__split__/,""), it] } | 
+          // relabel to fasta
+          (vsearch ? relabel_vsearch : relabel_usearch) | 
+          // collect to single relabeled fasta
+          collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
+          set { to_dereplicate }
+      }
+    } else {
+      // here we've already demultiplexed and relabeled sequences 
+      // (presumably from an earlier run of the pipeline), so we can jump to here
+
+      // load the fasta file in usearch/vsearch format
+      Channel.fromPath(params.demuxedFasta, checkIfExists: true) |
+        set { to_dereplicate }
+    }
+
+    // build the channel, run dereplication, and set to a channel we can use again
+    Channel.of(params.prefix) | 
+      combine(to_dereplicate) | 
+      (vsearch ? derep_vsearch : derep_usearch) |
+      set { dereplicated }
+
+    // make blast databases path channels so singularity will automount it properly
+    blast_db = Channel.fromPath(params.blastDb, type: 'dir')
+    custom_db = Channel.fromPath(params.customDb, type: 'dir', checkIfExists: params.customDb != "NOTHING")
+
+    // run blast query, unless skipped
+    if (!params.skipBlast) {
+      dereplicated | 
+        combine(blast_db) | 
+        combine(custom_db) | 
+        blast 
+    }
+
+    // grab the zotu table from our dereplication step
+    dereplicated | 
+      map { sid, uniques, zotus, zotutable -> zotutable } | 
+      set { zotu_table }
+
+    // make lulu blast database and do lulu curation
     if (!params.skipLulu) {
-      // run the taxonomy assignment for lulu-curated zotus
-      tax_process_lulu = params.oldTaxonomy ? assign_collapse_taxonomy_lulu_py : assign_collapse_taxonomy_lulu
-      lulu.out | 
-        map { zotutable, zotu_map, result_object -> zotutable } | 
+      dereplicated | 
+        // get zotus and sample id
+        map { sid, uniques, zotus, zotutable -> [sid,zotus] } | 
+        lulu_blast | 
+        combine(zotu_table) | 
+        lulu
+    }
+
+    // run the insect classifier, if so desired
+    // this should run in parallel with the blast & lulu processes
+    if (params.insect) {
+      // dereplicate returns a tuple, but we only need the zotus fasta
+      dereplicated | 
+        map { sid, uniques, zotus, zotutable -> zotus } | 
+        set { zotus }
+      
+      // load the classifier model
+      if (helper.file_exists(params.insect)) {
+        classifier = Channel.fromPath(params.insect)
+      } else {
+        // download the classifier model if it's one of the supported ones
+        Channel.of(params.insect) | 
+          get_model | 
+          set { classifier }
+      }
+
+      // run the insect classification
+      zotus | 
+        combine(classifier) | 
+        insect_classify
+    }
+
+
+    // run taxonomy assignment/collapse script if so requested
+    if (params.assignTaxonomy && !params.skipBlast) {
+      // here we grab the blast result
+      blast.out | 
+        map { sid, blast_result -> blast_result } | 
+        set { blast_result }
+
+      // get the NCBI ranked taxonomic lineage dump
+      if (!helper.file_exists(params.lineage)) {
+        get_lineage |
+          set{lineage}
+      } else {
+        lineage = Channel.fromPath(params.lineage, checkIfExists: true)
+      }
+
+    // get the appropriate taxonomy process
+    tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy_r
+
+      // then we smash it together with the blast results 
+      // and run the taxonomy assignment/collapser script
+      zotu_table |
         combine(blast_result) |
         combine(lineage) | 
-        combine(Channel.of('curated')) | 
-        tax_process_lulu
+        combine(Channel.of('uncurated')) | 
+        combine(Channel.of(false)) | 
+        tax_process
+
+      if (!params.skipLulu) {
+        // run the taxonomy assignment for lulu-curated zotus
+        tax_process_lulu = params.oldTaxonomy ? assign_collapse_taxonomy_lulu_py : assign_collapse_taxonomy_lulu_r
+        lulu.out | 
+          map { zotutable, zotu_map, result_object -> zotutable } | 
+          combine(blast_result) |
+          combine(lineage) | 
+          combine(Channel.of('curated')) | 
+          tax_process_lulu
+      }
     }
   }
 }

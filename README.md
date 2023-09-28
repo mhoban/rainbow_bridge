@@ -377,7 +377,11 @@ These settings allow you to customize BLAST searches. See [above](#blast-setting
 #### Taxonomy assignment
 These options relate to assignment/collapsing of taxonomic IDs. There are two different methods of collapsing taxonomy (see [below](#taxonomy) for details): the "old" way (using a python script) and the "new" way (using R). Both methods take essentially the same approach and can be customized using the same options. The old method is retained for completeness (and because the new method may still have bugs). In each case, top BLAST results for each zOTU are compared to one another and a decision is made whether or not to collapse to the next highest taxonomic rank based on how different those results are from one another. This is the so-called lowest common ancestor (LCA) approach. In addition to the taxonomy collapser scripts, eDNA can use [insect](https://github.com/shaunpwilkinson/insect) to assign taxonomic IDs to zOTUs. This is particularly useful for assigning higher-order (e.g. phylum, order) taxonomy to zOTUs that are otherwise unidentified. To run insect on your sequences, you must specify either one of the [pre-trained](https://github.com/shaunpwilkinson/insect#classifying-sequences) classifier models OR one that you've trained yourself. Insect also takes various parameters to tweak how it does its assignments.
 
+**Note: it is possible to run taxonomy assignment as a standalone process (i.e., separate from the rest of the pipeline). To do this, pass the `--assign-taxonomy` option along with the `--blast-file` and `--zotu-table` options.**
+
 <small>**`--assign-taxonomy`**</small>: Perform final taxonomy assignment & LCA collapse  
+<small>**`--blast-file`**</small>: (Only applicable when running taxonomy assignment as standalone) BLAST result table (output from blast step of pipeline)
+<small>**`--zotu-table`**</small>: (Only applicable when running taxonomy assignment as standalone) zOTU table file (output from denoising step of pipeline)
 <small>**`--old-taxonomy`**</small>:  Use the old (python-based) taxonomy script rather than the newer R-based one.  
     (use in combination with `--assign-taxonomy`).  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy assignment (default: 100)  

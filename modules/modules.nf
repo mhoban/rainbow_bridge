@@ -26,7 +26,7 @@ process r_taxonomy {
 
   script:
   pf = params.filterUncultured ? "-f" : ""
-  c = curated ? "curated_" : ""
+  c = curated ? "lulu_" : ""
   """
   collapse_taxonomy.R \
     --qcov ${params.lcaQcov} \
@@ -69,7 +69,7 @@ process py_taxonomy {
 
 
   script:
-  c = curated ? "curated_" : ""
+  c = curated ? "lulu_" : ""
   """
   runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${lineage} "taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tab" 
   mv interMediate_res.tab "intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tab"

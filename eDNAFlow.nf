@@ -75,12 +75,11 @@ process ngsfilter {
 
 
   output:
-    tuple val(sample_id), val("${barcode.baseName}"), path("*_Dmux.fastq") 
+    tuple val(sample_id), val("${barcode.baseName}"), path("*_annotated.fastq") 
 
   script:
   """
-  # ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "${sample_id}_filter_orphans.fastq" ${read} > "${sample_id}_${read.baseName}_${barcode.baseName}_QF_Dmux.fastq"
-  ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "${sample_id}_filter_orphans.fastq" ${read} > "${sample_id}_${barcode.baseName}_QF_Dmux.fastq"
+  ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "${sample_id}_filter_orphans.fastq" ${read} > "${sample_id}_${barcode.baseName}_annotated.fastq"
   """
 }
 
@@ -94,14 +93,14 @@ process filter_length {
     tuple val(sample_id), val(barcode_file), path(fastq_file) 
   
   output:
-    tuple val(sample_id), path('*_QF_Dmux_minLF.fastq') 
+    tuple val(sample_id), path('*_length_filtered.fastq') 
 
   script:
   // if we're already demultiplexed we probably don't have the forward_tag and reverse_tag annotations
   def p = params.illuminaDemultiplexed ? "" : "-p 'forward_tag is not None and reverse_tag is not None'" 
   """
   for fastq in ${fastq_file}; do
-    obigrep --uppercase -l ${params.minLen} ${p} "\$fastq" >> "${sample_id}_QF_Dmux_minLF.fastq"
+    obigrep --uppercase -l ${params.minLen} ${p} "\$fastq" >> "${sample_id}_length_filtered.fastq"
   done
   """
 }
@@ -212,7 +211,7 @@ process derep_vsearch {
     tuple val(sample_id), path(upper_fasta) 
 
   output:
-    tuple val(sample_id), path("${sample_id}_Unq.fasta"), path("${sample_id}_zotus.fasta"), path("zotuTable.txt") 
+    tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab") 
 
   script:
   """
@@ -222,10 +221,10 @@ process derep_vsearch {
   # 2. run denoising algorithm
   # 3. get rid of chimeras
   # 4. match original sequences to zotus by 97% identity
-  vsearch --threads 0 --derep_fulllength ${upper_fasta} --sizeout --output "${sample_id}_Unq.fasta"
-  vsearch --threads 0 --cluster_unoise "${sample_id}_Unq.fasta" --centroids "${sample_id}_centroids.fasta" --minsize ${params.minAbundance}	   
+  vsearch --threads 0 --derep_fulllength ${upper_fasta} --sizeout --output "${sample_id}_unique.fasta"
+  vsearch --threads 0 --cluster_unoise "${sample_id}_unique.fasta" --centroids "${sample_id}_centroids.fasta" --minsize ${params.minAbundance}	   
   vsearch --threads 0 --uchime3_denovo "${sample_id}_centroids.fasta" --nonchimeras "${sample_id}_zotus.fasta" --relabel Zotu 
-  vsearch --threads 0 --usearch_global ${upper_fasta} --db "${sample_id}_zotus.fasta" --id 0.97 --otutabout zotuTable.txt
+  vsearch --threads 0 --usearch_global ${upper_fasta} --db "${sample_id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tab
   """
 }
 
@@ -240,7 +239,7 @@ process derep_usearch {
     tuple val(sample_id), path(upper_fasta) 
 
   output:
-    tuple val(sample_id), path("${sample_id}_Unq.fasta"), path("${sample_id}_zotus.fasta"), path("zotuTable.txt") 
+    tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab") 
 
   script:
   if (!exec_denoiser)
@@ -250,15 +249,15 @@ process derep_usearch {
     # 1. get unique sequences
     # 2. run denoising & chimera removal
     # 3. generate zotu table
-    usearch -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
-    usearch -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize ${params.minAbundance}
-    usearch -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
+    usearch -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_unique.fasta"
+    usearch -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
+    usearch -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
     """
   } else if (exec_denoiser) {
     """
-    ${params.denoiser} -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_Unq.fasta"
-    ${params.denoiser} -unoise3 "${sample_id}_Unq.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_Unq_unoise3.txt" -minsize ${params.minAbundance}
-    ${params.denoiser} -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotuTable.txt -mapout zmap.txt
+    ${params.denoiser} -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_unique.fasta"
+    ${params.denoiser} -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
+    ${params.denoiser} -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
     """
   } else {
     """
@@ -279,10 +278,10 @@ process blast {
   }, mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(a), path(zotus_fasta), path(zotuTable), path(blast_db), path(custom_db)
+    tuple val(sample_id), path(a), path(zotus_fasta), path(zotu_table), path(blast_db), path(custom_db)
 
   output:
-    tuple val(sample_id), path("${sample_id}_blast_Result.tab")
+    tuple val(sample_id), path("${sample_id}_blast_result.tab")
 
   script:
   def cdb = (String)custom_db
@@ -301,7 +300,7 @@ process blast {
     -perc_identity ${params.percentIdentity} -evalue ${params.evalue} \
     -best_hit_score_edge 0.05 -best_hit_overhang 0.25 \
     -qcov_hsp_perc ${params.qcov} -max_target_seqs ${params.maxQueryResults} \
-    -query ${zotus_fasta} -out ${sample_id}_blast_Result.tab \
+    -query ${zotus_fasta} -out ${sample_id}_blast_result.tab \
     -num_threads ${task.cpus}
   """
 }
@@ -337,10 +336,10 @@ process lulu {
   publishDir { params.illuminaDemultiplexed ? "07_lulu" : "08_lulu" }, mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(match_list), path(zotuTable)
+    tuple val(sample_id), path(match_list), path(zotu_table)
 
   output:
-    tuple path("curated_zotuTable.tab"), path("lulu_zotu_map.tab"), path("lulu_result_object.rds")
+    tuple path("lulu_zotu_table.tab"), path("lulu_zotu_map.tab"), path("lulu_result_object.rds")
 
   script:
   """

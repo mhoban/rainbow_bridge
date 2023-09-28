@@ -3,14 +3,14 @@
 
 # Enable extracting command-line arguments
 args = commandArgs(trailingOnly=TRUE)
-minMatch_lulu <- args[1]
+minimum_match <- args[1]
 
 require(lulu)
-otutab <- read.csv("zotuTable.txt",sep='\t',header=TRUE,as.is=TRUE, row.names = 1)
+otutab <- read.csv("zotu_table.tab",sep='\t',header=TRUE,as.is=TRUE, row.names = 1)
 matchlist <- read.table("match_list.txt", header=FALSE,as.is=TRUE, stringsAsFactors=FALSE)
 
 # Curation step with lulu
-curated_result <- lulu(otutab, matchlist, minimum_match = minMatch_lulu) # This runs the default parameter of lulu (i.e. minimum_ratio_type = "min", minimum_ratio = 1, minimum_match = 84, minimum_relative_cooccurence = 0.95)
+curated_result <- lulu(otutab, matchlist, minimum_match = minimum_match) # This runs the default parameter of lulu (i.e. minimum_ratio_type = "min", minimum_ratio = 1, minimum_match = 84, minimum_relative_cooccurence = 0.95)
 # there are more parameters to play with in lulu command. Check lulu paper to understand how they will affect your results 
 
 # curated_result$curated_table # Curated OTU table
@@ -33,8 +33,7 @@ lulu_table <- data.frame(
   row.names = NULL
 )
 
-write.table(lulu_table,"curated_zotuTable.tab",sep="\t",row.names=FALSE,quote=FALSE)
+write.table(lulu_table,"lulu_zotu_table.tab",sep="\t",row.names=FALSE,quote=FALSE)
 
-# write.table(curated_result$curated_table, "curated_zotuTable.tab", sep="\t")  # write curated result 
 write.table(curated_result$otu_map, "lulu_zotu_map.tab", sep="\t")            # write the map info
 saveRDS(curated_result,"lulu_result_object.rds")

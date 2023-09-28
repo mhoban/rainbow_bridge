@@ -27,6 +27,8 @@
       + [Demultiplexing and sequence matching](#demultiplexing-and-sequence-matching)
       + [BLAST settings](#blast-settings)
       + [Taxonomy assignment](#taxonomy-assignment)
+         - [LCA assignment](#lca-assignment)
+         - [Insect classification](#insect-classification)
       + [Denoising and zOTU inference:  ](#denoising-and-zotu-inference)
       + [LULU zOTU curation](#lulu-zotu-curation)
       + [Resource allocation](#resource-allocation)
@@ -379,16 +381,23 @@ These settings allow you to customize BLAST searches. See [above](#blast-setting
 #### Taxonomy assignment
 These options relate to assignment/collapsing of taxonomic IDs. There are two different methods of collapsing taxonomy (see [below](#taxonomy) for details): the "old" way (using a python script) and the "new" way (using R). Both methods take essentially the same approach and can be customized using the same options. The old method is retained for completeness (and because the new method may still have bugs). In each case, top BLAST results for each zOTU are compared to one another and a decision is made whether or not to collapse to the next highest taxonomic rank based on how different those results are from one another. This is the so-called lowest common ancestor (LCA) approach. In addition to the taxonomy collapser scripts, eDNA can use [insect](https://github.com/shaunpwilkinson/insect) to assign taxonomic IDs to zOTUs. This is particularly useful for assigning higher-order (e.g. phylum, order) taxonomy to zOTUs that are otherwise unidentified. To run insect on your sequences, you must specify either one of the [pre-trained](https://github.com/shaunpwilkinson/insect#classifying-sequences) classifier models OR one that you've trained yourself. Insect also takes various parameters to tweak how it does its assignments.
 
-**Note: it is possible to run taxonomy assignment as a standalone process (i.e., separate from the rest of the pipeline). To do this, pass the `--assign-taxonomy` option along with the `--blast-file` and `--zotu-table` options.**
+##### LCA assignment
+Options for the LCA method of taxonomy assignment/collapse. Note: it is also possible to run taxonomy assignment as a standalone process (i.e., separate from the rest of the pipeline). To do this, pass the `--assign-taxonomy` option along with the `--blast-file` and `--zotu-table` options.
 
-<small>**`--assign-taxonomy`**</small>: Perform final taxonomy assignment & LCA collapse  
+<small>**`--assign-taxonomy`**</small>: Perform taxonomy assignment & LCA collapse  
 <small>**`--blast-file`**</small>: (Only applicable when running taxonomy assignment as standalone) BLAST result table (output from blast step of pipeline)  
 <small>**`--zotu-table`**</small>: (Only applicable when running taxonomy assignment as standalone) zOTU table file (output from denoising step of pipeline)  
-<small>**`--old-taxonomy`**</small>:  Use the old (python-based) taxonomy script rather than the newer R-based one (use in combination with `--assign-taxonomy`).  
+<small>**`--old-taxonomy`**</small>:  Use the old (python-based) taxonomy script rather than the newer R-based one (use in combination with `--assign-taxonomy`)  
+<small>**`--lineage`**</small>: Specify previous-download NCBI rankedlineage.dmp file (leave blank to download latest)  
+<small>**`--merged`**</small>: Specify previous-download NCBI merged.dmp file (leave blank to download latest)  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy assignment (default: 100)  
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy assignment (default: 97)  
 <small>**`--lca-diff [num]`**</small>:  Maximum difference between percent identities (when query coverage is identical) where species-level taxonomy is retained (default: 1)  
-<small>**`--filter-uncultured`**</small>:  Optionally get rid of sequences that are listed as 'uncultured', 'environmental sample', or 'clone'  
+<small>**`--filter-uncultured`**</small>:  Optionally get rid of sequences that are listed as 'uncultured', 'environmental sample', 'clone', or 'synthetic'  
+
+##### Insect classification
+Options for taxonomy assignment using the insect algorithm. 
+
 <small>**`--insect [classifier]`**</small>:  Perform taxonomy assignment using insect. Accepted values of [classifier] are:  
   - Filename of local .rds R object containing classifier model  
   - One of the following (case-insensitive) primer names:   

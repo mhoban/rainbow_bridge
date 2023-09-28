@@ -16,7 +16,7 @@ process r_taxonomy {
   }, mode: params.publishMode
 
   input:
-    tuple path(zotu_table), path(blast_result), path(lineage), val(name), val(standalone)
+    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(name), val(standalone)
 
   output:
     tuple path("${name}_intermediate_r.tab"), path("${name}_taxonomy_r.tab")
@@ -29,6 +29,7 @@ process r_taxonomy {
     --qcov ${params.lcaQcov} \
     --pid ${params.lcaPid} \
     --diff ${params.lcaDiff} \
+    --merged ${merged} \
     ${pf} \
     --intermediate "${name}_intermediate_r.tab" \
     ${blast_result} ${zotu_table} ${lineage} "${name}_taxonomy_r.tab"
@@ -54,7 +55,7 @@ process py_taxonomy {
   }, mode: params.publishMode
 
   input:
-    tuple path(zotu_table), path(blast_result), path(lineage), val(name), val(standalone)
+    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(name), val(standalone)
 
   output:
     tuple path("${name}_intermediate_py.tab"), path("${name}_taxonomy_py.tab")

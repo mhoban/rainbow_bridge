@@ -44,7 +44,9 @@ option_list = list(
   make_option(c("-d", "--diff"), action="store", default=NA, type='double', help="Percent ID difference threshold for matching query coverage"),
   make_option(c("-f", "--filter-uncultured"), action="store_true", default=FALSE, type='logical', help="Ignore uncultured/environmental/cloned, etc. sequences"),
   make_option(c("-i", "--intermediate"), action="store", default=NA, type='character', help="Store intermediate filtered BLAST results in specified file"),
-  make_option(c("-s", "--semicolon"), action="store_true", default=FALSE, type='logical', help="Interpret taxids split by semicolon")
+  make_option(c("-s", "--semicolon"), action="store_true", default=FALSE, type='logical', help="Interpret taxids split by semicolon"),
+  make_option(c("-m", "--merged"), action="store", default="", type="character", help="NCBI merged.dmp file"),
+  make_option(c("-b", "--drop-blank"), action="store_true", default=TRUE, type="logical", help="Drop entries with completely blank taxonomic lineages")
 )
 
 # parse command-line options
@@ -63,7 +65,7 @@ opt = parse_args(
 fe <- file_exists(opt$args[1:3])
 if (any(!fe)) {
   bad <- fe[!fe]
-  msg <- str_c(str_glue("Missing/bad filname: {names(bad)}"),collapse="\n")
+  msg <- str_c(str_glue("Missing/bad filename: {names(bad)}"),collapse="\n")
   stop(msg)
 }
 
@@ -78,6 +80,7 @@ diff_thresh <- opt$options$diff
 filter_uncultured <- opt$options$filter_uncultured
 intermediate <- opt$options$intermediate
 semicolon <- opt$options$semicolon
+drop_blank <- opt$options$drop_blank
 
 
 # read blast results table
@@ -151,15 +154,38 @@ lineage <- read_tsv(lineage_dump,col_types = "i_c_c_c_c_c_c_c_c_c_",
                     col_names = c("taxid","species","fakespecies","genus","family","order","class","phylum","kingdom","domain")) %>%
   select(taxid,domain,kingdom,phylum,class,order,family,genus,species)
 
+# get new taxids for any merged taxa, if relevant
+if (file_exists(opt$options$merged)) {
+  merged <- read_tsv(opt$options$merged,col_types="i_i_",col_names=c("old_taxid","new_taxid"))
+  filtered <- filtered %>%
+    left_join(merged,by=c("taxid" = "old_taxid")) %>%
+    mutate(
+      taxid = case_when(
+        !is.na(new_taxid) ~ new_taxid,
+        .default = taxid
+      )
+    ) %>%
+  select(-new_taxid)
+}
+
 # join in ranked taxonomic lineage
 filtered <- filtered %>%
   rename(blast_species=species,blast_kingdom=kingdom) %>%
   mutate(taxid=as.integer(taxid)) %>%
   left_join(lineage,by="taxid") 
+
+# filter out any uncultured, environmental, etc.
 if (filter_uncultured) {
   filtered <- filtered %>%
-    filter( if_all(domain:species,~!replace_na(str_detect(.,"uncultured|environmental sample|clone"),FALSE)) ) 
+    filter(if_all(domain:species,~!replace_na(str_detect(.,"uncultured|environmental sample|clone|synthetic"),FALSE))) 
 }
+
+# drop hits with empty taxonomy (use in combination with merged to be sure)
+if (drop_blank) {
+  filtered <- filtered %>%
+    filter(!if_all(domain:species,is.na))
+}
+
 
 # here we collapse taxonomic levels that differ across remaining blast results
 filtered <- filtered %>%
@@ -168,10 +194,12 @@ filtered <- filtered %>%
   arrange(parse_number(zotu))
 
 # join the zOTU table, using its first column as the zotu column
+# use inner join because some zOTUs don't end up in the table
 collapsed <- filtered %>%
-  left_join(zotus,by=setNames(colnames(zotus)[1],"zotu")) %>%
+  inner_join(zotus,by=setNames(colnames(zotus)[1],"zotu")) %>%
   select(domain:species,OTU=zotu,numberOfUnq_BlastHits=unique_hits,everything()) %>%
   # arrange(domain,kingdom,phylum,class,order,family,genus,species,parse_number(OTU))
   arrange(parse_number(OTU))
 
+# save the output table
 write_tsv(collapsed,output_table,na="")

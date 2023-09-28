@@ -386,16 +386,18 @@ process insect_classify {
 }
 
 // retrieve the NCBI ranked taxonomic lineage dump
+// also get the info about merged taxids
 process get_lineage {
   label 'python3'
 
   output:
-    path('ranked_lineage.tab')
+    tuple path('ranked_lineage.tab'), path('merged.dmp')
 
   script:
   """
   curl -LO https://ftp.ncbi.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip
   unzip -p new_taxdump.zip rankedlineage.dmp > ranked_lineage.tab
+  unzip -p new_taxdump.zip merged.dmp > merged.tab
   rm new_taxdump.zip
   """
 }
@@ -582,7 +584,12 @@ workflow {
         set{lineage}
     } else {
       lineage = Channel.fromPath(params.lineage, checkIfExists: true)
+      merged = Channel.fromPath(params.merged)
+      lineage | 
+        combine(merged) | 
+        set { lineage }
     }
+
 
     // run taxonomy process
     zotu_table |
@@ -892,6 +899,10 @@ workflow {
           set{lineage}
       } else {
         lineage = Channel.fromPath(params.lineage, checkIfExists: true)
+        merged = Channel.fromPath(params.merged)
+        lineage | 
+          combine(merged) | 
+          set { lineage }
       }
 
     // get the appropriate taxonomy process

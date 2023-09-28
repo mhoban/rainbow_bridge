@@ -131,15 +131,22 @@ class helper {
       --evalue [num]               Expectation value threshold for saving hits (default: 0.001)
       --qcov [num]                 Percent query coverage per hsp (default: 100)
 
-    Taxonomy assignment:
+    Taxonomy assignment / LCA:
       --assign-taxonomy            Perform final taxonomy assignment & LCA collapse 
+      --blast-file [file]          Blast result table (only for standalone LCA assignment)
+      --zotu-table [file]          zOTU table file (only for standalone LCA assignment)
       --old-taxonomy               Use the old (python-based) taxonomy script rather than the newer R-based one
+      --lineage [file]             Previously downloaded NCBI rankedlineage.dmp file (leave blank to download)
+      --merged [file]              Previously downloaded NCBI merged.dmp file (leave blank to dowload)
       --lca-qcov [num]             Minimum query coverage for LCA taxonomy assignment (default: 100)
       --lca-pid [num]              Minimum percent identity for LCA taxonomy assignment (default: 97)
       --lca-diff [num]             The difference between percent identities (when query coverage is
                                    identical) where species-level taxonomy is retained (default: 1)
       --filter-uncultured          Optionally get rid of sequences that are listed as 'uncultured',
-                                   'environmental sample', or 'clone'
+                                   'environmental sample', 'synthetic', or 'clone'
+      --dropped [str]              Placeholder text for dropped taxonomic levels (use "NA" for blank/NA)
+
+    Insect taxonomy classification:
       --insect [classifier]        Perform taxonomy assignment using insect
                                    Accepted values of [classifier] are:
                                    - Filename to local .rds containing classifier model

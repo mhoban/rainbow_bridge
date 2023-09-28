@@ -608,7 +608,7 @@ workflow {
     zotu_table |
       combine(blast_result) |
       combine(lineage) | 
-      combine(Channel.of('standalone')) | 
+      combine(Channel.of(false)) | 
       tax_process
 
   } else {
@@ -924,7 +924,7 @@ workflow {
       zotu_table |
         combine(blast_result) |
         combine(lineage) | 
-        combine(Channel.of('uncurated')) | 
+        combine(Channel.of(false)) | 
         tax_process
 
       if (!params.skipLulu) {
@@ -934,7 +934,7 @@ workflow {
           map { zotutable, zotu_map, result_object -> zotutable } | 
           combine(blast_result) |
           combine(lineage) | 
-          combine(Channel.of('curated')) | 
+          combine(Channel.of(true)) | 
           tax_process_lulu
       }
     }

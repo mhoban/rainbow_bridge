@@ -14,19 +14,19 @@ process r_taxonomy {
       // otherwise we're standalone, so don't
       dir = "taxonomy"
     }
-    // include taxonomy parameters in output directory name
-    return "${dir}_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}"
+    return dir
   }, mode: params.publishMode
 
   input:
-    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(name)
+    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(curated)
 
   output:
-    tuple path("${name}_intermediate_r.tab"), path("${name}_taxonomy_r.tab")
+    tuple path("intermediate*.tab"), path("taxonomy*.tab")
 
 
   script:
   pf = params.filterUncultured ? "-f" : ""
+  c = curated ? "curated_" : ""
   """
   collapse_taxonomy.R \
     --qcov ${params.lcaQcov} \
@@ -35,8 +35,8 @@ process r_taxonomy {
     --merged ${merged} \
     --dropped ${params.dropped} \
     ${pf} \
-    --intermediate "${name}_intermediate_r.tab" \
-    ${blast_result} ${zotu_table} ${lineage} "${name}_taxonomy_r.tab"
+    --intermediate "intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tab" \
+    ${blast_result} ${zotu_table} ${lineage} "taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tab"
 
   """
 }  
@@ -58,21 +58,21 @@ process py_taxonomy {
       // otherwise we're standalone, so don't
       dir = "taxonomy"
     }
-    // include taxonomy parameters in output directory name
-    return "${dir}_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}"
+    return dir
   }, mode: params.publishMode
 
   input:
-    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(name)
+    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(curated)
 
   output:
-    tuple path("${name}_intermediate_py.tab"), path("${name}_taxonomy_py.tab")
+    tuple path("intermediate*.tab"), path("taxonomy*.tab")
 
 
   script:
+  c = curated ? "curated_" : ""
   """
-  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${lineage} ${name}_taxonomy_py.tab 
-  mv interMediate_res.tab ${name}_intermediate_py.tab
+  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${lineage} "taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tab" 
+  mv interMediate_res.tab "intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tab"
   """
 }  
 

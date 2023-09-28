@@ -30,6 +30,7 @@ process r_taxonomy {
     --pid ${params.lcaPid} \
     --diff ${params.lcaDiff} \
     --merged ${merged} \
+    --dropped ${params.dropped} \
     ${pf} \
     --intermediate "${name}_intermediate_r.tab" \
     ${blast_result} ${zotu_table} ${lineage} "${name}_taxonomy_r.tab"

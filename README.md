@@ -385,11 +385,12 @@ These options relate to assignment/collapsing of taxonomic IDs. There are two di
 Options for the LCA method of taxonomy assignment/collapse. Note: it is also possible to run taxonomy assignment as a standalone process (i.e., separate from the rest of the pipeline). To do this, pass the `--assign-taxonomy` option along with the `--blast-file` and `--zotu-table` options.
 
 <small>**`--assign-taxonomy`**</small>: Perform taxonomy assignment & LCA collapse  
-<small>**`--blast-file`**</small>: (Only applicable when running taxonomy assignment as standalone) BLAST result table (output from blast step of pipeline)  
-<small>**`--zotu-table`**</small>: (Only applicable when running taxonomy assignment as standalone) zOTU table file (output from denoising step of pipeline)  
+<small>**`--blast-file [file]`**</small>: (Only applicable when running taxonomy assignment as standalone) BLAST result table (output from blast step of pipeline)  
+<small>**`--zotu-table [file]`**</small>: (Only applicable when running taxonomy assignment as standalone) zOTU table file (output from denoising step of pipeline)  
 <small>**`--old-taxonomy`**</small>:  Use the old (python-based) taxonomy script rather than the newer R-based one (use in combination with `--assign-taxonomy`)  
-<small>**`--lineage`**</small>: Specify previous-download NCBI rankedlineage.dmp file (leave blank to download latest)  
-<small>**`--merged`**</small>: Specify previous-download NCBI merged.dmp file (leave blank to download latest)  
+<small>**`--lineage [file]`**</small>: Specify previous-download NCBI rankedlineage.dmp file (leave blank to download latest)  
+<small>**`--merged [file]`**</small>: Specify previous-download NCBI merged.dmp file (leave blank to download latest)  
+<small>**`--dropped [str]`**</small>: Placeholder for dropped taxonomic levels (default: 'dropped'). Pass "NA" for blank/NA
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy assignment (default: 100)  
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy assignment (default: 97)  
 <small>**`--lca-diff [num]`**</small>:  Maximum difference between percent identities (when query coverage is identical) where species-level taxonomy is retained (default: 1)  

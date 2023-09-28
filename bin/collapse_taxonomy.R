@@ -46,7 +46,8 @@ option_list = list(
   make_option(c("-i", "--intermediate"), action="store", default=NA, type='character', help="Store intermediate filtered BLAST results in specified file"),
   make_option(c("-s", "--semicolon"), action="store_true", default=FALSE, type='logical', help="Interpret taxids split by semicolon"),
   make_option(c("-m", "--merged"), action="store", default="", type="character", help="NCBI merged.dmp file"),
-  make_option(c("-b", "--drop-blank"), action="store_true", default=TRUE, type="logical", help="Drop entries with completely blank taxonomic lineages")
+  make_option(c("-k", "--drop-blank"), action="store_true", default=TRUE, type="logical", help="Drop entries with completely blank taxonomic lineages"),
+  make_option(c("-r", "--dropped"), action="store", default="dropped", type='character', help="Placeholder for dropped taxonomic levels (default: dropped)")
 )
 
 # parse command-line options
@@ -81,6 +82,10 @@ filter_uncultured <- opt$options$filter_uncultured
 intermediate <- opt$options$intermediate
 semicolon <- opt$options$semicolon
 drop_blank <- opt$options$drop_blank
+dropped <- opt$options$dropped
+if (str_to_lower(dropped) == "na") {
+  dropped <- NA_character_
+}
 
 
 # read blast results table
@@ -190,7 +195,7 @@ if (drop_blank) {
 # here we collapse taxonomic levels that differ across remaining blast results
 filtered <- filtered %>%
   group_by(zotu) %>%
-  summarise(across(domain:species,~if_else(n_distinct(.x) == 1,.x[1],"dropped")),unique_hits=unique_hits[1]) %>%
+  summarise(across(domain:species,~if_else(n_distinct(.x) == 1,.x[1],dropped)),unique_hits=unique_hits[1]) %>%
   arrange(parse_number(zotu))
 
 # join the zOTU table, using its first column as the zotu column

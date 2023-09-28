@@ -5,8 +5,11 @@ process r_taxonomy {
   publishDir { 
     p = params.insect ? "a" : ""
     if (!params.standaloneTaxonomy) {
+      num = (params.illuminaDemultiplexed ? 8 : 9) + (params.skipLulu ? 0 : 1)
+      num = String.format("%02d",num)
+
       // number output directory if it's part of the pipeline
-      dir =  params.illuminaDemultiplexed ? "09${p}_taxonomy" : "10${p}_taxonomy" 
+      dir =  params.illuminaDemultiplexed ? "${num}${p}_taxonomy" : "${num}${p}_taxonomy" 
     } else {
       // otherwise we're standalone, so don't
       dir = "taxonomy"
@@ -46,7 +49,11 @@ process py_taxonomy {
     p = params.insect ? "a" : ""
     if (!params.standaloneTaxonomy) {
       // number output directory if it's part of the pipeline
-      dir =  params.illuminaDemultiplexed ? "09${p}_taxonomy" : "10${p}_taxonomy" 
+      num = (params.illuminaDemultiplexed ? 8 : 9) + (params.skipLulu ? 0 : 1)
+      num = String.format("%02d",num)
+
+      // number output directory if it's part of the pipeline
+      dir =  params.illuminaDemultiplexed ? "${num}${p}_taxonomy" : "${num}${p}_taxonomy" 
     } else {
       // otherwise we're standalone, so don't
       dir = "taxonomy"

@@ -272,7 +272,11 @@ process derep_usearch {
 process blast {
   label 'blast'
 
-  publishDir { params.illuminaDemultiplexed ? "07_blast" : "08_blast" }, mode: params.publishMode
+  publishDir { 
+    num = (params.illuminaDemultiplexed ? 7 : 8) + (params.skipLulu ? 0 : 1)
+    num = String.format("%02d",num)
+    params.illuminaDemultiplexed ? "${num}_blast" : "${num}_blast" 
+  }, mode: params.publishMode
 
   input:
     tuple val(sample_id), path(a), path(zotus_fasta), path(zotuTable), path(blast_db), path(custom_db)
@@ -330,7 +334,7 @@ process lulu {
 
   /* errorStrategy 'ignore' */
 
-  publishDir { params.illuminaDemultiplexed ? "08_lulu" : "09_lulu" }, mode: params.publishMode
+  publishDir { params.illuminaDemultiplexed ? "07_lulu" : "08_lulu" }, mode: params.publishMode
 
   input:
     tuple val(sample_id), path(match_list), path(zotuTable)

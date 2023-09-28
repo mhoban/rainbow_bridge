@@ -4,7 +4,7 @@ process r_taxonomy {
 
   publishDir { 
     p = params.insect ? "a" : ""
-    if (!standalone) {
+    if (!params.standaloneTaxonomy) {
       // number output directory if it's part of the pipeline
       dir =  params.illuminaDemultiplexed ? "09${p}_taxonomy" : "10${p}_taxonomy" 
     } else {
@@ -16,7 +16,7 @@ process r_taxonomy {
   }, mode: params.publishMode
 
   input:
-    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(name), val(standalone)
+    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(name)
 
   output:
     tuple path("${name}_intermediate_r.tab"), path("${name}_taxonomy_r.tab")
@@ -44,7 +44,7 @@ process py_taxonomy {
 
   publishDir { 
     p = params.insect ? "a" : ""
-    if (!standalone) {
+    if (!params.standaloneTaxonomy) {
       // number output directory if it's part of the pipeline
       dir =  params.illuminaDemultiplexed ? "09${p}_taxonomy" : "10${p}_taxonomy" 
     } else {
@@ -56,7 +56,7 @@ process py_taxonomy {
   }, mode: params.publishMode
 
   input:
-    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(name), val(standalone)
+    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(name)
 
   output:
     tuple path("${name}_intermediate_py.tab"), path("${name}_taxonomy_py.tab")

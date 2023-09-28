@@ -61,7 +61,7 @@ class helper {
     Usage: eDNAFlow.nf [options]
 
     General options:
-      --prefix [prefix]            Project prefix, applied to output filenames as "sample ID" 
+      --project [prefix]           Project prefix, applied to output filenames as "sample ID" 
                                    (default: 'seq')
       --barcode [file]             (required) Barcode file. Format must match OBITools requirements
                                    (see https://pythonhosted.org/OBITools/scripts/ngsfilter.html)
@@ -133,6 +133,7 @@ class helper {
 
     Taxonomy assignment / LCA:
       --assign-taxonomy            Perform final taxonomy assignment & LCA collapse 
+      --standalone-taxonomy        Run LCA script as standalone
       --blast-file [file]          Blast result table (only for standalone LCA assignment)
       --zotu-table [file]          zOTU table file (only for standalone LCA assignment)
       --old-taxonomy               Use the old (python-based) taxonomy script rather than the newer R-based one

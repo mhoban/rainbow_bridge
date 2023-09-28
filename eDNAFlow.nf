@@ -477,15 +477,17 @@ def check_params() {
   }
 
   // make sure the right version of single,paired,demultiplexed is passed
-  if (!params.assignTaxonomy && !helper.file_exists(params.demuxedFasta) && params.single == params.paired) {
+  if (!helper.file_exists(params.demuxedFasta) && params.single == params.paired) {
     if (!params.single) {
       println(colors.red("One of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" MUST be passed"))
     } else {
       println(colors.red("Only one of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" may be passed"))
     }
     exit(1)
-  } else if (params.assignTaxonomy && (!params.single && !params.paired)) {
-    // if assign-taxonomy is passed WITHOUT single or paired, throw an error
+  } 
+
+  // check to make sure standalone taxonomy will work
+  if (params.standaloneTaxonomy) {
     if (!helper.file_exists(params.blastFile)) {
       println(colors.red("The supplied blast result table \"${params.blastFile}\" does not exist"))  
       exit(1)
@@ -572,13 +574,11 @@ workflow {
   // make sure our arguments are all in order
   check_params()
 
+
   vsearch = (params.vsearch || params.denoiser == 'vsearch')
 
-  // check if user wants to run taxonomy assignment as standalone
-  tax_only = params.assignTaxonomy && helper.file_exists(params.blastFile) && helper.file_exists(params.zotuTable)
-
   // do standalone taxonomy assignment
-  if (tax_only) {
+  if (params.standaloneTaxonomy) {
     // build input channels and get appropriate process
     tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy_r
     zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
@@ -593,7 +593,7 @@ workflow {
         set{lineage}
     } else {
       lineage = Channel.fromPath(params.lineage, checkIfExists: true)
-      merged = Channel.fromPath(params.merged)
+      merged = Channel.fromPath(params.merged, checkIfExists: false)
       lineage | 
         combine(merged) | 
         set { lineage }
@@ -605,7 +605,6 @@ workflow {
       combine(blast_result) |
       combine(lineage) | 
       combine(Channel.of('standalone')) | 
-      combine(Channel.of(true)) | 
       tax_process
 
   } else {
@@ -628,7 +627,7 @@ workflow {
         // I guess these can probably be globs if you want them to be, but that
         // might not work properly as currently written
         if ( helper.file_exists(params.fwd) && helper.file_exists(params.rev) ) {
-          Channel.of(params.prefix) |
+          Channel.of(params.project) |
             combine(Channel.fromPath(params.fwd,checkIfExists: true)) | 
             combine(Channel.fromPath(params.rev,checkIfExists: true)) | 
             map { a,b,c -> [a,[b,c]] } |
@@ -665,7 +664,7 @@ workflow {
           // send them to --file1 and --file2 of AdapterRemoval
           Channel.fromFilePairs(pattern, checkIfExists: true) | 
             map { key,f -> [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
-            map { key,f -> key == "" ? [params.prefix,f] : [key,f] } | 
+            map { key,f -> key == "" ? [params.project,f] : [key,f] } | 
             branch { 
              gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
              regular: true
@@ -744,7 +743,7 @@ workflow {
           groupTuple | 
           filter_length | 
           (vsearch ? relabel_vsearch : relabel_usearch) | 
-          collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '05_relabeled_merged') |
+          collectFile(name: "${params.project}_relabeled.fasta", storeDir: '05_relabeled_merged') |
           set { to_dereplicate } 
 
       } else {
@@ -825,7 +824,7 @@ workflow {
           // relabel to fasta
           (vsearch ? relabel_vsearch : relabel_usearch) | 
           // collect to single relabeled fasta
-          collectFile(name: "${params.prefix}_relabeled.fasta", storeDir: '06_relabeled_merged') |
+          collectFile(name: "${params.project}_relabeled.fasta", storeDir: '06_relabeled_merged') |
           set { to_dereplicate }
       }
     } else {
@@ -838,7 +837,7 @@ workflow {
     }
 
     // build the channel, run dereplication, and set to a channel we can use again
-    Channel.of(params.prefix) | 
+    Channel.of(params.project) | 
       combine(to_dereplicate) | 
       (vsearch ? derep_vsearch : derep_usearch) |
       set { dereplicated }
@@ -894,7 +893,6 @@ workflow {
         insect_classify
     }
 
-
     // run taxonomy assignment/collapse script if so requested
     if (params.assignTaxonomy && !params.skipBlast) {
       // here we grab the blast result
@@ -908,7 +906,7 @@ workflow {
           set{lineage}
       } else {
         lineage = Channel.fromPath(params.lineage, checkIfExists: true)
-        merged = Channel.fromPath(params.merged)
+        merged = Channel.fromPath(params.merged, checkIfExists: false)
         lineage | 
           combine(merged) | 
           set { lineage }
@@ -923,7 +921,6 @@ workflow {
         combine(blast_result) |
         combine(lineage) | 
         combine(Channel.of('uncurated')) | 
-        combine(Channel.of(false)) | 
         tax_process
 
       if (!params.skipLulu) {

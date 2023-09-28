@@ -329,7 +329,7 @@ See [below](#mapping-of-custom-sample-ids) for information on how to map filenam
 ## Other options
 
 ### General options
-<small>**`--prefix [prefix]`**</small>:      Project prefix, applied to output filenames as "sample ID" (default: 'seq')  
+<small>**`--project [project]`**</small>:    Project name, applied to various output filenames (default: project directory name)  
 <small>**`--publish-mode [mode]`**</small>:  Specify how nextflow places files in output directories (default: symlink)  
 <small>**`--fastqc`**</small>:               Output FastQC reports for pre and post filter/merge steps. MultiQC is used for demultiplexed runs.  
 
@@ -385,6 +385,7 @@ These options relate to assignment/collapsing of taxonomic IDs. There are two di
 Options for the LCA method of taxonomy assignment/collapse. Note: it is also possible to run taxonomy assignment as a standalone process (i.e., separate from the rest of the pipeline). To do this, pass the `--assign-taxonomy` option along with the `--blast-file` and `--zotu-table` options.
 
 <small>**`--assign-taxonomy`**</small>: Perform taxonomy assignment & LCA collapse  
+<small>**`--standalone-taxonomy`**</small>: Run LCA script standalone against user-supplied data
 <small>**`--blast-file [file]`**</small>: (Only applicable when running taxonomy assignment as standalone) BLAST result table (output from blast step of pipeline)  
 <small>**`--zotu-table [file]`**</small>: (Only applicable when running taxonomy assignment as standalone) zOTU table file (output from denoising step of pipeline)  
 <small>**`--old-taxonomy`**</small>:  Use the old (python-based) taxonomy script rather than the newer R-based one (use in combination with `--assign-taxonomy`)  

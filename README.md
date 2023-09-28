@@ -382,8 +382,8 @@ These options relate to assignment/collapsing of taxonomic IDs. There are two di
 **Note: it is possible to run taxonomy assignment as a standalone process (i.e., separate from the rest of the pipeline). To do this, pass the `--assign-taxonomy` option along with the `--blast-file` and `--zotu-table` options.**
 
 <small>**`--assign-taxonomy`**</small>: Perform final taxonomy assignment & LCA collapse  
-<small>**`--blast-file`**</small>: (Only applicable when running taxonomy assignment as standalone) BLAST result table (output from blast step of pipeline)
-<small>**`--zotu-table`**</small>: (Only applicable when running taxonomy assignment as standalone) zOTU table file (output from denoising step of pipeline)
+<small>**`--blast-file`**</small>: (Only applicable when running taxonomy assignment as standalone) BLAST result table (output from blast step of pipeline)  
+<small>**`--zotu-table`**</small>: (Only applicable when running taxonomy assignment as standalone) zOTU table file (output from denoising step of pipeline)  
 <small>**`--old-taxonomy`**</small>:  Use the old (python-based) taxonomy script rather than the newer R-based one.  
     (use in combination with `--assign-taxonomy`).  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy assignment (default: 100)  

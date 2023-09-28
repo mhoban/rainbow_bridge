@@ -465,6 +465,12 @@ def check_params() {
     exit(0)
   }
 
+  // give a little message that --base-dir is not the way to do it
+  if (params.baseDir != "") {
+    println(colors.yellow("Parameter ") + colors.byellow("--base-dir") + colors.yellow(" has been replaced by ") + 
+            colors.byellow("--reads") + colors.yellow(". Please use ") + colors.byellow("--reads") + colors.yellow(" going forward")) 
+  }
+
   if (params.split && params.illuminaDemultiplexed) {
     println(colors.red("Parameters") + colors.bred(" --split ") + colors.red("and") + colors.bred(" --illumina-demultiplexed ") + colors.red("are mutually exclusive"))
     exit(1)

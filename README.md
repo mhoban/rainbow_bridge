@@ -384,8 +384,7 @@ These options relate to assignment/collapsing of taxonomic IDs. There are two di
 <small>**`--assign-taxonomy`**</small>: Perform final taxonomy assignment & LCA collapse  
 <small>**`--blast-file`**</small>: (Only applicable when running taxonomy assignment as standalone) BLAST result table (output from blast step of pipeline)  
 <small>**`--zotu-table`**</small>: (Only applicable when running taxonomy assignment as standalone) zOTU table file (output from denoising step of pipeline)  
-<small>**`--old-taxonomy`**</small>:  Use the old (python-based) taxonomy script rather than the newer R-based one.  
-    (use in combination with `--assign-taxonomy`).  
+<small>**`--old-taxonomy`**</small>:  Use the old (python-based) taxonomy script rather than the newer R-based one (use in combination with `--assign-taxonomy`).  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy assignment (default: 100)  
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy assignment (default: 97)  
 <small>**`--lca-diff [num]`**</small>:  Maximum difference between percent identities (when query coverage is identical) where species-level taxonomy is retained (default: 1)  

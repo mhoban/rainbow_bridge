@@ -547,8 +547,8 @@ include { multiqc as first_multiqc }  from './modules/modules.nf'
 include { multiqc as second_multiqc } from './modules/modules.nf'
 include { r_taxonomy as assign_collapse_taxonomy  } from './modules/modules.nf'
 include { r_taxonomy as assign_collapse_taxonomy_lulu  } from './modules/modules.nf'
-include { taxonomy as assign_collapse_taxonomy_py  } from './modules/modules.nf'
-include { taxonomy as assign_collapse_taxonomy_lulu_py  } from './modules/modules.nf'
+include { py_taxonomy as assign_collapse_taxonomy_py  } from './modules/modules.nf'
+include { py_taxonomy as assign_collapse_taxonomy_lulu_py  } from './modules/modules.nf'
 
 workflow {
   // make sure our arguments are all in order

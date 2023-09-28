@@ -4,14 +4,15 @@ process r_taxonomy {
 
   publishDir { 
     p = params.insect ? "a" : ""
-    return params.illuminaDemultiplexed ? "09${p}_collapsed_taxonomy_r" : "10${p}_collapsed_taxonomy_r" 
+    dir =  params.illuminaDemultiplexed ? "09${p}_taxonomy" : "10${p}_taxonomy" 
+    return "${dir}_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}"
   }, mode: params.publishMode
 
   input:
     tuple path(zotu_table), path(blast_result), path(lineage), val(name)
 
   output:
-    tuple path("${name}_intermediate_table.tab"), path("${name}_taxonomy_collapsed.tab")
+    tuple path("${name}_intermediate_r.tab"), path("${name}_taxonomy_r.tab")
 
 
   script:
@@ -22,31 +23,33 @@ process r_taxonomy {
     --pid ${params.lcaPid} \
     --diff ${params.lcaDiff} \
     ${pf} \
-    --intermediate "${name}_intermediate_table.tab" \
-    ${blast_result} ${zotu_table} ${lineage} "${name}_taxonomy_collapsed.tab"
+    --intermediate "${name}_intermediate_r.tab" \
+    ${blast_result} ${zotu_table} ${lineage} "${name}_taxonomy_r.tab"
+
   """
 }  
 
 // assign/collapse taxonomy using the original python script
-process taxonomy {
+process py_taxonomy {
   label 'python3'
 
   publishDir { 
     p = params.insect ? "a" : ""
-    return params.illuminaDemultiplexed ? "09${p}_collapsed_taxonomy" : "10${p}_collapsed_taxonomy" 
+    dir = params.illuminaDemultiplexed ? "09${p}_taxonomy" : "10${p}_taxonomy" 
+    return "${dir}_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}"
   }, mode: params.publishMode
 
   input:
     tuple path(zotu_table), path(blast_result), path(lineage), val(name)
 
   output:
-    tuple path("${name}_intermediate_table.tab"), path("${name}_taxonomy_collapsed.tab")
+    tuple path("${name}_intermediate_py.tab"), path("${name}_taxonomy_py.tab")
 
 
   script:
   """
-  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${lineage} ${name}_taxonomy_collapsed.tab 
-  mv interMediate_res.tab ${name}_intermediate_table.tab
+  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${lineage} ${name}_taxonomy_py.tab 
+  mv interMediate_res.tab ${name}_intermediate_py.tab
   """
 }  
 

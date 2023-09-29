@@ -343,7 +343,12 @@ process lulu {
 
   script:
   """
-  lulu.R ${params.luluMin}
+  lulu.R \
+    -m ${params.luluMinRatio} \
+    -t ${params.luluMinRatioType} \
+    -a ${params.luluMinMatch} \
+    -r ${params.luluMinRc} \
+    ${zotu_table} ${match_list} "lulu_zotu_table.tab" "lulu_zotu_map.tab" "lulu_result_object.rds"
   """
 }
 

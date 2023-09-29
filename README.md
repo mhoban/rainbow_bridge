@@ -419,10 +419,13 @@ These options control how (and by what tool) sequences are denoised and zOTUs ar
 <small>**`--vsearch`**</small>:  Alias for `--denoiser vsearch`  
 
 ### LULU zOTU curation
-eDNAFlow includes the option to curate zOTUs using [lulu](https://github.com/tobiasgf/lulu). 
+eDNAFlow includes the option to curate zOTUs using [lulu](https://github.com/tobiasgf/lulu). For a more detailed explantion of these parameters please see the LULU documentation.
 
 <small>**`--skip-lulu`**</small>:  Skip LULU curation  
-<small>**`--lulu-min [num]`**</small>:  Minimum threshold of sequence similarity to consider zOTUs as spurious. Choose higher values when using markers with lower genetic variation and/or few expected PCR and sequencing errors. (default: 84)  
+<small>**`--lulu-min-ratio-type [num]`**</small>: LULU minimum ratio type (accepted values: 'min', 'avg', default: 'min')  
+<small>**`--lulu-min-ratio [num]`**</small>: LULU minimum ratio (default: 1)  
+<small>**`--lulu-min-match [num]`**</small>: LULU minimum threshold of sequence similarity to consider zOTUs as spurious. Choose higher values when using markers with lower genetic variation and/or few expected PCR and sequencing errors (default: 84)  
+<small>**`--lulu-min-rc [num]`**</small>: LULU minimum relative co-occurence rate (default: 0.95)  
 
 ### Resource allocation
 These options allow you to allocate resources (CPUs and memory) to eDNAFlow processes.

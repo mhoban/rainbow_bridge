@@ -1,28 +1,43 @@
 #!/usr/bin/env Rscript 
 # This is a lulu script for post-clustering of Zotu table created by unoise3
 
-# Enable extracting command-line arguments
-args = commandArgs(trailingOnly=TRUE)
-minimum_match <- args[1]
+suppressPackageStartupMessages(library(lulu))
+suppressPackageStartupMessages(library(docopt))
 
-require(lulu)
-otutab <- read.csv("zotu_table.tab",sep='\t',header=TRUE,as.is=TRUE, row.names = 1)
-matchlist <- read.table("match_list.txt", header=FALSE,as.is=TRUE, stringsAsFactors=FALSE)
+# parse command-line options using docopt
+doc <- "Usage:
+  f.R [options] <zotu_table> <match_list> <curated_zotu_table> <curation_map> <rds>
 
-# Curation step with lulu
-curated_result <- lulu(otutab, matchlist, minimum_match = minimum_match) # This runs the default parameter of lulu (i.e. minimum_ratio_type = "min", minimum_ratio = 1, minimum_match = 84, minimum_relative_cooccurence = 0.95)
-# there are more parameters to play with in lulu command. Check lulu paper to understand how they will affect your results 
+Options: 
+  -m <mr> --min-ratio <mr>         Minimim abundance ratio between a potential error and a potential parent to be identified as an error [default: 1]
+  -t <mrt> --min-ratio-type <mrt>  Minimum ratio type. Accepted values: 'min', 'avg' [default: min]
+  -a <mm> --min-match <mm>         Minimum threshold of sequence similarity for considering any OTU as an error of another [default: 84]
+  -r <mrc> --min-rc <mrc>          Minimum relative co-ocurrence rate [default: 0.95]"
+opt <- docopt(doc)
 
-# curated_result$curated_table # Curated OTU table
-# curated_result$curated_count # Number of OTUs retained
-# curated_result$curated_otus # IDs of curated OTUs
-# curated_result$discarded_count # OTUs discarded
-# curated_result$otu_map # total - total read count, spread - the number of samples the OTU is present in
-                       # parent_id - ID of OTU with which this OTU was merged (or self)
-                       # curated - ("parent" or "merged"), was this OTU kept as a valid OTU (parent) or merged with another
-                       # rank - The rank of the OTU in terms of decreasing spread and read count
+min_ratio <- opt[['min-ratio']]
+min_ratio_type <- opt[['min-ratio-type']]
+min_match <- opt[['min-match']]
+min_rc <- opt[['min-rc']]
+zotu_table <- opt[['zotu_table']]
+match_list <- opt[['match_list']]
+curated_zotu_table <- opt[['curated_zotu_table']]
+curation_map <- opt[['curation_map']]
+rds <- opt[['rds']]
 
-# curated_result$original_table # Original OTU table
+# read zotu table and match list
+zotus <- read.csv(zotu_table,sep='\t',header=TRUE,as.is=TRUE, row.names = 1)
+matchlist <- read.table(match_list, header=FALSE,as.is=TRUE, stringsAsFactors=FALSE)
+
+# run lulu curation
+curated_result <- lulu(
+  zotus,
+  matchlist,
+  minimum_ratio_type = min_ratio_type,
+  minimum_ratio = min_ratio,
+  minimum_match = min_match,
+  minimum_relative_cooccurence = min_rc
+) 
 
 lulu_table <- curated_result$curated_table
 
@@ -33,7 +48,11 @@ lulu_table <- data.frame(
   row.names = NULL
 )
 
-write.table(lulu_table,"lulu_zotu_table.tab",sep="\t",row.names=FALSE,quote=FALSE)
+# write curated zotu table
+write.table(lulu_table,curated_zotu_table,sep="\t",row.names=FALSE,quote=FALSE)
 
-write.table(curated_result$otu_map, "lulu_zotu_map.tab", sep="\t")            # write the map info
-saveRDS(curated_result,"lulu_result_object.rds")
+# write curation map
+write.table(curated_result$otu_map, curation_map, sep="\t",quote=FALSE)
+
+# save R object
+saveRDS(curated_result,rds)

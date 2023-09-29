@@ -187,9 +187,12 @@ class helper {
 
     LULU zOTU curation:
       --skip-lulu                  Skip LULU curation
-      --lulu-min [num]             Minimum threshold of sequence similarity to consider zOTUs as spurious.
+      --lulu-min-ratio-type [num]  LULU minimum ratio type (accepted values: 'min', 'avg', default: ${params.luluMinRatioType})
+      --lulu-min-ratio [num]       LULU minimum ratio (default: ${params.luluMinRatio})
+      --lulu-min-match [num]       LULU minimum threshold of sequence similarity to consider zOTUs as spurious (default: ${params.luluMinMatch})
                                    Choose higher values when using markers with lower genetic variation 
-                                   and/or few expected PCR and sequencing errors. (default: ${params.luluMin})
+                                   and/or few expected PCR and sequencing errors. (default: ${params.luluMinMatch})
+      --lulu-min-rc [num]          LULU minimum relative co-occurence rate (default: ${params.luluMinRc})
 
     Resource allocation:
       --max-memory [mem]           Maximum memory available to nextflow processes, e.g., '8.GB' (default: ${params.maxMemory})

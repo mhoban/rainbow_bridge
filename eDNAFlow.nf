@@ -405,7 +405,7 @@ process get_lineage {
   """
   curl -LO https://ftp.ncbi.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip
   unzip -p new_taxdump.zip rankedlineage.dmp > ranked_lineage.tab
-  unzip -p new_taxdump.zip merged.dmp > merged.tab
+  unzip -p new_taxdump.zip merged.dmp > merged.dmp
   rm new_taxdump.zip
   """
 }

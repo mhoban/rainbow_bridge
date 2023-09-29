@@ -61,8 +61,7 @@ class helper {
     Usage: eDNAFlow.nf [options]
 
     General options:
-      --project [prefix]           Project prefix, applied to output filenames as "sample ID" 
-                                   (default: 'seq')
+      --project [project]          Project name, applied to various output filenames (default: ${params.project}) 
       --barcode [file]             (required) Barcode file. Format must match OBITools requirements
                                    (see https://pythonhosted.org/OBITools/scripts/ngsfilter.html)
                                    To denote multiple barcode files, this may be a glob, but it must

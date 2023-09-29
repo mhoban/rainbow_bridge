@@ -49,17 +49,17 @@ process filter_merge {
 process filter_ambiguous_indices {
   label 'obitools'
 
-  publishDir '01a_ambiguous_indices_filtered', mode: params.publishMode
+  publishDir '01a_index_filtered', mode: params.publishMode
 
   input:
     tuple val(sample_id), path(reads)
 
   output:
-    tuple val(sample_id), path("*_good_indices.fastq") 
+    tuple val(sample_id), path("*_valid_index.fastq") 
 
   script:
   """
-  obigrep --uppercase -D ':[ACGT]+\\+[ACGT]+\$' ${reads} > "${sample_id}_good_indices.fastq"
+  obigrep --uppercase -D ':[ACGT]+\\+[ACGT]+\$' ${reads} > "${sample_id}_valid_index.fastq"
   """
 }
 

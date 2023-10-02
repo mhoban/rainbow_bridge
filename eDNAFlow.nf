@@ -208,7 +208,7 @@ process derep_vsearch {
   publishDir { params.illuminaDemultiplexed ? "06_derep_vsearch" : "07_derep_vsearch" }, mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(upper_fasta) 
+    tuple val(sample_id), path(relabeled_merged) 
 
   output:
     tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab") 
@@ -221,10 +221,15 @@ process derep_vsearch {
   # 2. run denoising algorithm
   # 3. get rid of chimeras
   # 4. match original sequences to zotus by 97% identity
-  vsearch --threads 0 --derep_fulllength ${upper_fasta} --sizeout --output "${sample_id}_unique.fasta"
-  vsearch --threads 0 --cluster_unoise "${sample_id}_unique.fasta" --centroids "${sample_id}_centroids.fasta" --minsize ${params.minAbundance}	   
-  vsearch --threads 0 --uchime3_denovo "${sample_id}_centroids.fasta" --nonchimeras "${sample_id}_zotus.fasta" --relabel Zotu 
-  vsearch --threads 0 --usearch_global ${upper_fasta} --db "${sample_id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tab
+  if [ -s "${relabeled_merged}" ]; then 
+    vsearch --threads 0 --derep_fulllength ${relabeled_merged} --sizeout --output "${sample_id}_unique.fasta"
+    vsearch --threads 0 --cluster_unoise "${sample_id}_unique.fasta" --centroids "${sample_id}_centroids.fasta" --minsize ${params.minAbundance}	   
+    vsearch --threads 0 --uchime3_denovo "${sample_id}_centroids.fasta" --nonchimeras "${sample_id}_zotus.fasta" --relabel Zotu 
+    vsearch --threads 0 --usearch_global ${relabeled_merged} --db "${sample_id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tab
+  else
+    >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
+    exit 1
+  fi
   """
 }
 
@@ -236,7 +241,7 @@ process derep_usearch {
   publishDir { params.illuminaDemultiplexed ? "06_derep_usearch" : "07_derep_usearch" }, mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(upper_fasta) 
+    tuple val(sample_id), path(relabeled_merged) 
 
   output:
     tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab") 
@@ -249,15 +254,25 @@ process derep_usearch {
     # 1. get unique sequences
     # 2. run denoising & chimera removal
     # 3. generate zotu table
-    usearch -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_unique.fasta"
-    usearch -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
-    usearch -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+    if [ -s "${relabeled_merged}" ]; then
+      usearch -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${sample_id}_unique.fasta"
+      usearch -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
+      usearch -otutab ${relabeled_merged} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+    else
+      >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
+      exit 1
+    fi
     """
   } else if (exec_denoiser) {
     """
-    ${params.denoiser} -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_unique.fasta"
-    ${params.denoiser} -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
-    ${params.denoiser} -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+    if [ -s "${relabeled_merged}" ]; then
+      ${params.denoiser} -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${sample_id}_unique.fasta"
+      ${params.denoiser} -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
+      ${params.denoiser} -otutab ${relabeled_merged} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+    else
+      >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
+      exit 1
+    fi
     """
   } else {
     """

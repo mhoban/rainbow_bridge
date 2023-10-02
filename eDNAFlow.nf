@@ -357,10 +357,10 @@ process get_model {
   input:
     val(model)
   output:
-    path('classifier.rds')
+    path('insect_classifier.rds')
 
   exec:
-    classifier = task.workDir / 'classifier.rds' 
+    classifier = task.workDir / 'insect_classifier.rds' 
     url = new URL(helper.insect_classifiers[model.toLowerCase()])
     url.withInputStream { stream -> classifier << stream }
 }
@@ -370,22 +370,24 @@ process insect {
   label 'insect'
 
   publishDir { 
-    p = params.assignTaxonomy ? "b" : ""
-    return params.illuminaDemultiplexed ? "09${p}_insect_classified" : "10${p}_insect_classified" 
+    num = (params.illuminaDemultiplexed ? 8 : 9) + (params.skipLulu ? 0 : 1)
+    dir = String.format("%02d_taxonomy",num)
+    return dir
+    /* return params.illuminaDemultiplexed ? "09${p}_insect_classified" : "10${p}_insect_classified"  */
   }, mode: params.publishMode
 
   input:
     tuple path(zotus), path(classifier)
 
   output:
-    tuple path('insect_classified.csv'), path('insect_settings.txt'), path('classifier.rds')
+    tuple path('insect_classified.csv'), path('insect_settings.txt'), path('insect_classifier.rds')
 
   script:
   """
-  if [ "${classifier}" != "classifier.rds" ]; then
-    mv ${classifier} classifier.rds
+  if [ "${classifier}" != "insect_classifier.rds" ]; then
+    mv ${classifier} insect_classifier.rds
   fi
-  insect.R ${zotus} classifier.rds \
+  insect.R ${zotus} insect_classifier.rds \
     ${task.cpus} ${params.insectThreshold} \
     ${params.insectOffset} ${params.insectMinCount} \
     ${params.insectPing}

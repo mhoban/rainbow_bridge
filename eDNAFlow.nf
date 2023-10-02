@@ -273,8 +273,7 @@ process blast {
 
   publishDir { 
     num = (params.illuminaDemultiplexed ? 7 : 8) + (params.skipLulu ? 0 : 1)
-    num = String.format("%02d",num)
-    params.illuminaDemultiplexed ? "${num}_blast" : "${num}_blast" 
+    return String.format("%02d_blast",num)
   }, mode: params.publishMode
 
   input:
@@ -367,7 +366,7 @@ process get_model {
 }
 
 // run insect classifier model
-process insect_classify {
+process insect {
   label 'insect'
 
   publishDir { 
@@ -452,6 +451,42 @@ process unzip {
   for z in "\${zips[@]}"; do
     gunzip -c \$z > \${z%.gz}
   done
+  """
+}
+
+process phyloseq {
+  label 'phyloseq'
+
+  /* publishDir "phyloseq" */
+  publishDir {
+    num = (params.illuminaDemultiplexed ? 9 : 10) + (params.skipLulu ? 0 : 1)
+    return String.format("%02d_phyloseq",num)
+  }
+
+  input:
+    tuple path(tax_table), path(zotu_table), path(fasta), path(metadata), val(method)
+  
+  output:
+    path("phyloseq_${method}.rds")
+
+  script:
+  otu = "OTU"
+  t = params.noTree ? "--no-tree" : ""
+  o = params.optimizeTree ? "--optimize" : ""
+  c = params.taxColumns != "" ? "--tax-columns ${params.taxColumns}" : ""
+  if (method == "insect") {
+    otu = "representative"
+    c = "--tax-columns \"kingdom,phylum,class,order,family,genus,species,taxon,NNtaxon,NNrank\""
+  }
+  """
+  phyloseq.R \
+    --taxonomy "${tax_table}" \
+    --otu "${otu}" \
+    --otu-table "${zotu_table}" \
+    --cores ${task.cpus} \
+    --fasta "${fasta}" \
+    --metadata "${metadata}" \
+    --phyloseq "phyloseq_${method}.rds" ${t} ${o} ${c}
   """
 }
 
@@ -898,7 +933,9 @@ workflow {
       // run the insect classification
       zotus | 
         combine(classifier) | 
-        insect_classify
+        insect | 
+        set { insectized }
+      
     }
 
     // run taxonomy assignment/collapse script if so requested
@@ -921,7 +958,7 @@ workflow {
       }
 
     // get the appropriate taxonomy process
-    tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy_r
+      tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy_r
 
       // then we smash it together with the blast results 
       // and run the taxonomy assignment/collapser script
@@ -929,7 +966,9 @@ workflow {
         combine(blast_result) |
         combine(lineage) | 
         combine(Channel.of(false)) | 
-        tax_process
+        tax_process |
+        set { taxonomized }
+      
 
       if (!params.skipLulu) {
         // run the taxonomy assignment for lulu-curated zotus
@@ -939,7 +978,51 @@ workflow {
           combine(blast_result) |
           combine(lineage) | 
           combine(Channel.of(true)) | 
-          tax_process_lulu
+          tax_process_lulu |
+          set { taxonomized_lulu }
+      }
+    }
+
+    /* put all the phyloseq stuff down here */
+    if (params.phyloseq) {
+      switch (params.taxonomy) {
+        case "lca":
+          if (params.assignTaxonomy) {
+            taxonomized | 
+              map { it[1] } |
+              combine(zotu_table) | 
+              combine( dereplicated | map { sid, uniques, zotus, zotutable -> zotus } ) |
+              combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 
+              combine( Channel.of("lca") ) |
+              phyloseq 
+          }
+          break
+        case "insect":
+          if (params.insect != false) {
+            insectized | 
+              map { it[0] } |
+              combine(zotu_table) | 
+              combine( zotus ) |
+              combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 
+              combine( Channel.of("insect") ) |
+              phyloseq
+          }
+          break
+        default:
+          if (helper.file_exists(params.taxonomy)) {
+            /* input: tuple path(tax_table), path(zotu_table), path(fasta), path(metadata), val(method) */
+            /* tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab")  */
+            Channel.fromPath(params.taxonomy, checkIfExists: true) | 
+              combine(zotu_table) | 
+              combine( dereplicated | map { sid, uniques, zotus, zotutable -> zotus } ) |
+              combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 
+              combine( Channel.of("file") ) |
+              phyloseq
+          } else {
+            println(colors.red("Supplied taxonomy table ${params.taxonomy} does not exist!"))
+            exit(1)
+          }
+          break
       }
     }
   }

@@ -162,7 +162,14 @@ class helper {
       --insect-ping [num]          Numeric (between 0 and 1) indicating whether a nearest neighbor search should 
                                    be carried out, and if so, what the minimum distance to the nearest neighbor 
                                    should be for the the recursive classification algorithm to be skipped (default: ${params.insectPing})
-                                 
+
+    Generating phyloseq objects:
+      --phyloseq                   Create phyloseq object (requires --assign-taxonomy)
+      --metadata [file]            Comma or tab-separated sample metadata file (required)
+      --taxonomy [tax]               Taxonomic classifaction scheme. May be pipeline-generated or user supplied
+                                   (acceptable options: lca, insect, <filename>; default: ${params.taxonomy})
+      --no-tree                    Do not include a phylogenetic tree
+      --optimize-tree              Attempt to optimize generation of the tree (may take a long time)
 
     Demultiplexing and sequence matching:
       --illumina-demultiplexed     Sequencing run has already been demultiplexed by the sequencer

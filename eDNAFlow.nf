@@ -208,7 +208,7 @@ process derep_vsearch {
   publishDir { params.illuminaDemultiplexed ? "06_derep_vsearch" : "07_derep_vsearch" }, mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(upper_fasta) 
+    tuple val(sample_id), path(relabeled_merged) 
 
   output:
     tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab") 
@@ -221,10 +221,15 @@ process derep_vsearch {
   # 2. run denoising algorithm
   # 3. get rid of chimeras
   # 4. match original sequences to zotus by 97% identity
-  vsearch --threads 0 --derep_fulllength ${upper_fasta} --sizeout --output "${sample_id}_unique.fasta"
-  vsearch --threads 0 --cluster_unoise "${sample_id}_unique.fasta" --centroids "${sample_id}_centroids.fasta" --minsize ${params.minAbundance}	   
-  vsearch --threads 0 --uchime3_denovo "${sample_id}_centroids.fasta" --nonchimeras "${sample_id}_zotus.fasta" --relabel Zotu 
-  vsearch --threads 0 --usearch_global ${upper_fasta} --db "${sample_id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tab
+  if [ -s "${relabeled_merged}" ]; then 
+    vsearch --threads 0 --derep_fulllength ${relabeled_merged} --sizeout --output "${sample_id}_unique.fasta"
+    vsearch --threads 0 --cluster_unoise "${sample_id}_unique.fasta" --centroids "${sample_id}_centroids.fasta" --minsize ${params.minAbundance}	   
+    vsearch --threads 0 --uchime3_denovo "${sample_id}_centroids.fasta" --nonchimeras "${sample_id}_zotus.fasta" --relabel Zotu 
+    vsearch --threads 0 --usearch_global ${relabeled_merged} --db "${sample_id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tab
+  else
+    >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
+    exit 1
+  fi
   """
 }
 
@@ -236,7 +241,7 @@ process derep_usearch {
   publishDir { params.illuminaDemultiplexed ? "06_derep_usearch" : "07_derep_usearch" }, mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(upper_fasta) 
+    tuple val(sample_id), path(relabeled_merged) 
 
   output:
     tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab") 
@@ -249,15 +254,25 @@ process derep_usearch {
     # 1. get unique sequences
     # 2. run denoising & chimera removal
     # 3. generate zotu table
-    usearch -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_unique.fasta"
-    usearch -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
-    usearch -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+    if [ -s "${relabeled_merged}" ]; then
+      usearch -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${sample_id}_unique.fasta"
+      usearch -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
+      usearch -otutab ${relabeled_merged} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+    else
+      >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
+      exit 1
+    fi
     """
   } else if (exec_denoiser) {
     """
-    ${params.denoiser} -fastx_uniques ${upper_fasta} -sizeout -fastaout "${sample_id}_unique.fasta"
-    ${params.denoiser} -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
-    ${params.denoiser} -otutab ${upper_fasta} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+    if [ -s "${relabeled_merged}" ]; then
+      ${params.denoiser} -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${sample_id}_unique.fasta"
+      ${params.denoiser} -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
+      ${params.denoiser} -otutab ${relabeled_merged} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+    else
+      >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
+      exit 1
+    fi
     """
   } else {
     """
@@ -273,8 +288,7 @@ process blast {
 
   publishDir { 
     num = (params.illuminaDemultiplexed ? 7 : 8) + (params.skipLulu ? 0 : 1)
-    num = String.format("%02d",num)
-    params.illuminaDemultiplexed ? "${num}_blast" : "${num}_blast" 
+    return String.format("%02d_blast",num)
   }, mode: params.publishMode
 
   input:
@@ -358,35 +372,37 @@ process get_model {
   input:
     val(model)
   output:
-    path('classifier.rds')
+    path('insect_classifier.rds')
 
   exec:
-    classifier = task.workDir / 'classifier.rds' 
+    classifier = task.workDir / 'insect_classifier.rds' 
     url = new URL(helper.insect_classifiers[model.toLowerCase()])
     url.withInputStream { stream -> classifier << stream }
 }
 
 // run insect classifier model
-process insect_classify {
+process insect {
   label 'insect'
 
   publishDir { 
-    p = params.assignTaxonomy ? "b" : ""
-    return params.illuminaDemultiplexed ? "09${p}_insect_classified" : "10${p}_insect_classified" 
+    num = (params.illuminaDemultiplexed ? 8 : 9) + (params.skipLulu ? 0 : 1)
+    dir = String.format("%02d_taxonomy",num)
+    return dir
+    /* return params.illuminaDemultiplexed ? "09${p}_insect_classified" : "10${p}_insect_classified"  */
   }, mode: params.publishMode
 
   input:
     tuple path(zotus), path(classifier)
 
   output:
-    tuple path('insect_classified.csv'), path('insect_settings.txt'), path('classifier.rds')
+    tuple path('insect_classified.csv'), path('insect_settings.txt'), path('insect_classifier.rds')
 
   script:
   """
-  if [ "${classifier}" != "classifier.rds" ]; then
-    mv ${classifier} classifier.rds
+  if [ "${classifier}" != "insect_classifier.rds" ]; then
+    mv ${classifier} insect_classifier.rds
   fi
-  insect.R ${zotus} classifier.rds \
+  insect.R ${zotus} insect_classifier.rds \
     ${task.cpus} ${params.insectThreshold} \
     ${params.insectOffset} ${params.insectMinCount} \
     ${params.insectPing}
@@ -452,6 +468,42 @@ process unzip {
   for z in "\${zips[@]}"; do
     gunzip -c \$z > \${z%.gz}
   done
+  """
+}
+
+process phyloseq {
+  label 'phyloseq'
+
+  /* publishDir "phyloseq" */
+  publishDir {
+    num = (params.illuminaDemultiplexed ? 9 : 10) + (params.skipLulu ? 0 : 1)
+    return String.format("%02d_phyloseq",num)
+  }
+
+  input:
+    tuple path(tax_table), path(zotu_table), path(fasta), path(metadata), val(method)
+  
+  output:
+    path("phyloseq_${method}.rds")
+
+  script:
+  otu = "OTU"
+  t = params.noTree ? "--no-tree" : ""
+  o = params.optimizeTree ? "--optimize" : ""
+  c = params.taxColumns != "" ? "--tax-columns ${params.taxColumns}" : ""
+  if (method == "insect") {
+    otu = "representative"
+    c = "--tax-columns \"kingdom,phylum,class,order,family,genus,species,taxon,NNtaxon,NNrank\""
+  }
+  """
+  phyloseq.R \
+    --taxonomy "${tax_table}" \
+    --otu "${otu}" \
+    --otu-table "${zotu_table}" \
+    --cores ${task.cpus} \
+    --fasta "${fasta}" \
+    --metadata "${metadata}" \
+    --phyloseq "phyloseq_${method}.rds" ${t} ${o} ${c}
   """
 }
 
@@ -898,7 +950,9 @@ workflow {
       // run the insect classification
       zotus | 
         combine(classifier) | 
-        insect_classify
+        insect | 
+        set { insectized }
+      
     }
 
     // run taxonomy assignment/collapse script if so requested
@@ -921,7 +975,7 @@ workflow {
       }
 
     // get the appropriate taxonomy process
-    tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy_r
+      tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy_r
 
       // then we smash it together with the blast results 
       // and run the taxonomy assignment/collapser script
@@ -929,7 +983,9 @@ workflow {
         combine(blast_result) |
         combine(lineage) | 
         combine(Channel.of(false)) | 
-        tax_process
+        tax_process |
+        set { taxonomized }
+      
 
       if (!params.skipLulu) {
         // run the taxonomy assignment for lulu-curated zotus
@@ -939,7 +995,51 @@ workflow {
           combine(blast_result) |
           combine(lineage) | 
           combine(Channel.of(true)) | 
-          tax_process_lulu
+          tax_process_lulu |
+          set { taxonomized_lulu }
+      }
+    }
+
+    /* put all the phyloseq stuff down here */
+    if (params.phyloseq) {
+      switch (params.taxonomy) {
+        case "lca":
+          if (params.assignTaxonomy) {
+            taxonomized | 
+              map { it[1] } |
+              combine(zotu_table) | 
+              combine( dereplicated | map { sid, uniques, zotus, zotutable -> zotus } ) |
+              combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 
+              combine( Channel.of("lca") ) |
+              phyloseq 
+          }
+          break
+        case "insect":
+          if (params.insect != false) {
+            insectized | 
+              map { it[0] } |
+              combine(zotu_table) | 
+              combine( zotus ) |
+              combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 
+              combine( Channel.of("insect") ) |
+              phyloseq
+          }
+          break
+        default:
+          if (helper.file_exists(params.taxonomy)) {
+            /* input: tuple path(tax_table), path(zotu_table), path(fasta), path(metadata), val(method) */
+            /* tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab")  */
+            Channel.fromPath(params.taxonomy, checkIfExists: true) | 
+              combine(zotu_table) | 
+              combine( dereplicated | map { sid, uniques, zotus, zotutable -> zotus } ) |
+              combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 
+              combine( Channel.of("file") ) |
+              phyloseq
+          } else {
+            println(colors.red("Supplied taxonomy table ${params.taxonomy} does not exist!"))
+            exit(1)
+          }
+          break
       }
     }
   }

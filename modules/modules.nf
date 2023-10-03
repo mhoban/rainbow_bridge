@@ -3,13 +3,10 @@ process r_taxonomy {
   label 'phyloseq'
 
   publishDir { 
-    p = params.insect ? "a" : ""
     if (!params.standaloneTaxonomy) {
-      num = (params.illuminaDemultiplexed ? 8 : 9) + (params.skipLulu ? 0 : 1)
-      num = String.format("%02d",num)
-
       // number output directory if it's part of the pipeline
-      dir =  params.illuminaDemultiplexed ? "${num}${p}_taxonomy" : "${num}${p}_taxonomy" 
+      num = (params.illuminaDemultiplexed ? 8 : 9) + (params.skipLulu ? 0 : 1)
+      dir = String.format("%02d_taxonomy",num)
     } else {
       // otherwise we're standalone, so don't
       dir = "taxonomy"
@@ -46,14 +43,10 @@ process py_taxonomy {
   label 'python3'
 
   publishDir { 
-    p = params.insect ? "a" : ""
     if (!params.standaloneTaxonomy) {
       // number output directory if it's part of the pipeline
       num = (params.illuminaDemultiplexed ? 8 : 9) + (params.skipLulu ? 0 : 1)
-      num = String.format("%02d",num)
-
-      // number output directory if it's part of the pipeline
-      dir =  params.illuminaDemultiplexed ? "${num}${p}_taxonomy" : "${num}${p}_taxonomy" 
+      dir = String.format("%02d_taxonomy",num)
     } else {
       // otherwise we're standalone, so don't
       dir = "taxonomy"

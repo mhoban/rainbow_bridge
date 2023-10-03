@@ -1,3 +1,43 @@
+<!-- TOC start -->
+- [About eDNAFlow](#about-ednaflow)
+- [About this version](#about-this-version)
+- [Setup and testing](#setup-and-testing)
+- [Basic usage](#basic-usage)
+  * [A note on globs/wildcards](#a-note-on-globswildcards)
+  * [Usage examples](#usage-examples)
+    + [For single-end runs (not previously demultiplexed)](#for-single-end-runs-not-previously-demultiplexed)
+    + [For previously-demultiplexed single-end runs](#for-previously-demultiplexed-single-end-runs)
+    + [For non-demultiplexed paired-end runs](#for-non-demultiplexed-paired-end-runs)
+      - [Specifying reads by directory](#specifying-reads-by-directory)
+      - [Specifying reads by forward/reverse filenames](#specifying-reads-by-forwardreverse-filenames)
+    + [For previously-demultiplexed paired-end runs](#for-previously-demultiplexed-paired-end-runs)
+  * [Contents of output directories](#contents-of-output-directories)
+  * [When things go wrong (interpreting errors)](#when-things-go-wrong-interpreting-errors)
+- [Description of run options](#description-of-run-options)
+  * [Required options for processing fastq input (demultiplexed or not)](#required-options-for-processing-fastq-input-demultiplexed-or-not)
+    + [Specifying sequencing run type](#specifying-sequencing-run-type)
+    + [Specifying fastq files](#specifying-fastq-files)
+  * [Required options](#required-options)
+  * [Sample IDs](#sample-ids)
+  * [Other options](#other-options)
+    + [General options](#general-options)
+    + [Mapping of custom sample IDs](#mapping-of-custom-sample-ids)
+    + [Splitting input](#splitting-input)
+    + [Length, quality, and merge settings](#length-quality-and-merge-settings)
+    + [Demultiplexing and sequence matching](#demultiplexing-and-sequence-matching)
+    + [BLAST settings](#blast-settings)
+    + [Taxonomy assignment](#taxonomy-assignment)
+      - [LCA assignment](#lca-assignment)
+      - [Insect classification](#insect-classification)
+    + [Generating phyloseq objects](#generating-phyloseq-objects)
+    + [Denoising and zOTU inference](#denoising-and-zotu-inference)
+    + [LULU zOTU curation](#lulu-zotu-curation)
+    + [Resource allocation](#resource-allocation)
+    + [Singularity options](#singularity-options)
+- [Downloading the NCBI BLAST nucleotide database](#downloading-the-ncbi-blast-nucleotide-database)
+- [LCA (Lowest Common Ancestor) script for assigning taxonomy](#lca-lowest-common-ancestor-script-for-assigning-taxonomy)
+- [Specifying parameters in a parameter file](#specifying-parameters-in-a-parameter-file)
+<!-- TOC end -->
 <!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
 
 - [About eDNAFlow](#about-ednaflow)
@@ -29,7 +69,8 @@
       + [Taxonomy assignment](#taxonomy-assignment)
          - [LCA assignment](#lca-assignment)
          - [Insect classification](#insect-classification)
-      + [Denoising and zOTU inference:  ](#denoising-and-zotu-inference)
+      + [Generating phyloseq objects](#generating-phyloseq-objects)
+      + [Denoising and zOTU inference](#denoising-and-zotu-inference)
       + [LULU zOTU curation](#lulu-zotu-curation)
       + [Resource allocation](#resource-allocation)
       + [Singularity options](#singularity-options)
@@ -111,7 +152,7 @@ example_project/analysis/   # directory to hold eDNAFlow analysis output
 
 Analysis is started from within the analysis directory.
 
-## For single-end runs (not previously demultiplexed)
+### For single-end runs (not previously demultiplexed)
 
 ```bash
 user@srv:~/example_project/analysis$ eDNAFlow.nf \
@@ -121,7 +162,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
   [options]
 ```
 
-## For previously-demultiplexed single-end runs
+### For previously-demultiplexed single-end runs
 
 ```bash
 user@srv:~/example_project/analysis$ eDNAFlow.nf \
@@ -132,11 +173,11 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
   [options]
 ```
 
-## For non-demultiplexed paired-end runs
+### For non-demultiplexed paired-end runs
 
 In non-demultiplexed runs, the pipeline assumes you have exactly one forward read file and one reverse read. There are a few ways you can specify where these are found. Two are presented here and you can find a more detailed discussion [below](#description-of-run-options).
 
-### Specifying reads by directory
+#### Specifying reads by directory
 With this method, the `--reads` option points to the directory where .fastq reads can be found. By default, the eDNAFlow assumes forward reads are named with "R1" (\*R1\*.fastq\*) in the filename and reverse reads are named with "R2" (\*R2\*.fastq\*). For customization options, see [below](#specifying-fastq-files).
 
 ```bash
@@ -147,7 +188,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
   [options]
 ```
 
-### Specifying reads by forward/reverse filenames
+#### Specifying reads by forward/reverse filenames
 With this method, you can specify the forward/reverse read files directly using the `--fwd` and `--rev` options. 
 
 ```bash
@@ -159,7 +200,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
   [options]
 ```
 
-## For previously-demultiplexed paired-end runs
+### For previously-demultiplexed paired-end runs
 
 For demultiplexed runs, the pipeline combines the values of the `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2` options to make a glob that is used to find sequence reads. A simple example is given here, but for a detailed discussion of how these things go together, see [below](#specifying-fastq-files).
 
@@ -194,6 +235,23 @@ Directory|Description|Condition
 work|All internal files processed by nextflow|
 .nextflow|Nextflow generated folder holding history info|
 
+## When things go wrong (interpreting errors)
+
+Occasionally your pipeline run will encounter something it doesn't know how to handle and it will fail. There are two general failure modes: silent and loud. 
+
+In some limited cases, the pipeline can fail silently. In this case it will appear to process various steps and then it will stop without any message. Sometimes you can tell something went wrong because all the status boxes are empty. We have done our best to avoid this failure mode but it's occasionally possible that you will encounter it. If you do, the best way to go about solving it is to make sure you have provided all the required command line options, your input files are all there and contain data, and any options that point to files actually point to the files you said they did. 
+
+In most cases when something goes wrong, you will see something like this:
+
+![eDNAFlow error output](images/err.png)
+
+This can be a bit intimidating at first, but there are a few ways to use this information to figure out what went wrong. First, toward the bottom of the readout, you'll see the "Command error". This contains any error message that the failed process may have produced (technically, anything the script output to stderr). If that's empty, there may still be some output you can look at. To see any output the process may have produced (just note that sometimes it's empty), take a look at the "Work dir" and do the following (here we're using the work dir from the above example):
+
+```bash
+$ cat work/2a/7da7dd31811a49b03af88632257520/.command.out
+```
+
+In the example above, there was error output but nothing in the `.command.out` file. Looking at the error output, we can see that the merged FASTA file was empty. This commonly occurs when your PCR primers fail to match any sequences in the raw reads. In this case, check your barcode file to make sure you're using the correct primers for the sequencing run you're processing. In general, once you've worked out what you think has gone wrong, you can simply run the pipeline again, adjusting any relevant command-line options to hopefully fix the issue.
 
 # Description of run options
 eDNAFlow allows for a good deal of customization with regard to which and how various elements of the pipeline are run. All command-line options can be either be passed as-is or saved in a parameters file. For information on file formats and calling convention, see [below](#specifying-parameters-in-a-parameter-file).
@@ -411,7 +469,16 @@ Options for taxonomy assignment using the insect algorithm.
 <small>**`--insect-min-count [num]`**</small>:  Minimum number of training sequences belonging to a selected child node for the classification to progress (default: 5)  
 <small>**`--insect-ping [num]`**</small>:  Numeric (between 0 and 1) indicating whether a nearest neighbor search should be carried out, and if so, what the minimum distance to the nearest neighbor should be for the the recursive classification algorithm to be skipped (default: 0.98)  
 
-### Denoising and zOTU inference:  
+### Generating phyloseq objects
+eDNAFlow supports generation of [phyloseq](https://joey711.github.io/phyloseq/) objects from pipeline output or user-supplied data. This will produce an RDS file that you can load directly into R and use for downstream analyses. There are a few options that can be specified for this process. Pipeline-generated (i.e., [insect](#insect) or [LCA](#lca)) or user-supplied taxonomic classifications can be used along with the required user-supplied sample metadata.
+
+<small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--asign-taxonomy` option).  
+<small>**`--metadata [file]`**</small>: A comma- or tab-separated sample metadata table (required). This can contain any arbitrary sample information, but it must have a header and the first column (preferably called 'sample') must contain sample IDs.  
+<small>**`--taxonomy [taxonomy]`**</small>: Taxonomic classification scheme. This can be one of either `lca` (to use LCA taxonomy, the default), `insect` (for insect taxonomy), or the filename of a comma/tab-separated taxonomy table. If user-supplied, the first column of the taxonomy table must be named "OTU" (case-sensitive) and contain zOTU IDs. It may have any number of arbitrary columns of taxonomic classification (e.g., domain, kingdom, phylum, etc.) after that.  
+<small>**`--no-tree`**</small>: Skip creation of phylogenetic tree.  
+<small>**`--optimize-tree`**</small>: Attempt to optimize tree inference. This may take a long time, particularly if there are many zOTU sequences.
+
+### Denoising and zOTU inference
 These options control how (and by what tool) sequences are denoised and zOTUs are infered. By default, eDNAFlow uses the 32-bit (free) version of [usearch](https://www.drive5.com/usearch/). However, this version is limited to 4GB of memory and may fail for large sequence files, so it's also possible to specify either the 64-bit (commercial) version of usearch or [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch). 
 
 <small>**`--min-abundance [num]`**</small>:  Minimum zOTU abundance; zOTUs below threshold will be discarded (default: 8)   

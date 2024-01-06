@@ -403,6 +403,8 @@ sample_CL1  CL1_S2_L001_R1_001.fastq  CL1_S2_L001_R2_001.fastq
 sample_CL2  CL2_S3_L001_R1_001.fastq  CL2_S3_L001_R2_001.fastq 
 ```
 
+**NOTE: if your fastq files are gzipped, DO NOT include the .gz extension in your sample map file, because the files will be unzipped (and .gz extension stripped) BEFORE sample IDs are remapped**
+
 ### Splitting input
 To improve performance, large input files can be split into multiple smaller files and processed in parallel. This option is only available for runs that have *not* previously been demultiplexed. With the `--split` option, eDNAFlow will break up the input reads into smaller files (with the number of reads per file customizable as explained below) and process them all in parallel in the same way that demultiplexed runs are processed. 
 

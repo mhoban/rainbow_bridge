@@ -233,7 +233,7 @@ The pipeline accepts three main input formats:
 - Data that has been demultiplexed by the sequencer. This is typically done when you use Illumina indices to delineate samples. You will have fastq files for each individual sample, and sequences should still have primers attached, like this:  
   ```
   <FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER>
-  ```  
+  ```
   
   In many cases sequences like this have their Illumina indices included in the fastq header, like this:  
   <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAATGTGG+TTCGAAGA</strong></pre></code>
@@ -271,14 +271,18 @@ For fastq-based analyses, you must specify whether the sequencing run is single 
 <small>**Note: one of the above options is required (specifying both will throw an error)**</small>
 
 ### Specifying fastq files
-In all cases, if you're processing fastq runs, you must specify the location of your sequence reads. Generally, if you're processing runs that have *not* been demultiplexed by the sequencer, you will have either one (single-end) or two (paired-end) fastq files. If your runs *have* been demultiplexed, you will have as many files as you have individual samples (twice as many for paired-end). There are a few ways you tell eDNAFlow where your reads are:
+In all cases, if you're processing fastq runs, you must specify the location of your sequence reads. Generally, if you're processing runs that have *not* been demultiplexed by the sequencer, you will have either one (single-end) or two (paired-end) fastq files. If your runs *have* been demultiplexed, you will have as many files as you have individual samples (twice as many for paired-end).  
+
+**Note: unless you are specifying forward/reverse reads directly (i.e. as individual files), it is generally best practice to keep files from different sequencing runs in separate directories. If you do not, because of the way the pipeline uses globs to find files, you could end up with unexpected behavior.**
+
+There are a few ways you tell eDNAFlow where your reads are:
 
 - For single-ended runs  
   - Non-demultiplexed  
     <small>**`--reads`**</small>: For non-demultiplexed runs, this points directly to your fastq reads, e.g., '../fastq/B1_S7_L001.fastq'.   
   - Demultiplexed  
     <small>**`--reads`**</small>: For demultiplexed runs, this is a glob indicating where all the demultiplexed reads can be found, e.g., '../fastq/\*.fastq'  
-- For paired-end runs
+- For paired-end runs  
   - Non-demultiplexed  
     <small>**`--fwd`**</small> and <small>**`--rev`**</small>: For non-demultiplexed runs, you may use these parameters to specify the forward (`--fwd`) and reverse (`--rev`) fastq files directly.  
   - Demultiplexed  
@@ -428,6 +432,7 @@ Options for taxonomy assignment using the insect algorithm.
     MiFish, Crust16S, Fish16S, 18SUni, 18SV4, p23S, mlCOIint, SCL5.8S  
     (see [here](https://github.com/shaunpwilkinson/insect#classifying-sequences) for information on classifiers)  
     
+
 <small>**`--insect-threshold [num]`**</small>:  Minimum Akaike weight for the recursive classification procedure to continue toward the leaves of the tree (default: 0.8)  
 <small>**`--insect-offset [num]`**</small>: Log-odds score offset parameter governing whether the minimum score is met at each node (default: 0)  
 <small>**`--insect-min-count [num]`**</small>:  Minimum number of training sequences belonging to a selected child node for the classification to progress (default: 5)  
@@ -540,5 +545,4 @@ $ eDNAFlow.nf \
   --assign-taxonomy \
   --primer-mismatch 3
 ```
-
 

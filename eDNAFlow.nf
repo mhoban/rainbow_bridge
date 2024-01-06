@@ -436,18 +436,16 @@ process remap_samples {
   script:
   if (reads instanceof Path) {
     """
-    pattern=${reads}
-    new_id=\$(grep "\$pattern" ${sample_map} | cut -d\$'\t' -f 1 | head -1)
+    new_id=\$(awk -F \$'\\t' '\$2 == "${reads}" {print \$1}' ${sample_map})
     if [ -z "\$new_id" ]; then
-      new_id=${id}
+      new_id="${id}"
     fi
     """
   } else {
     """
-    pattern=\$'${reads[0]}\t${reads[1]}'
-    new_id=\$(grep "\$pattern" ${sample_map} | cut -d\$'\t' -f 1 | head -1)
+    new_id=\$(awk -F \$'\\t' '\$2 == "${reads[0]}" && \$3 == "${reads[1]}" {print \$1}' ${sample_map})
     if [ -z "\$new_id" ]; then
-      new_id=${id}
+      new_id="${id}"
     fi
     """
   }

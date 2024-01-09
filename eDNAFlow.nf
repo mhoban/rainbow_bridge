@@ -535,7 +535,7 @@ def check_params() {
   }
 
   // make sure the right version of single,paired,demultiplexed is passed
-  if (!helper.file_exists(params.demuxedFasta) && params.single == params.paired) {
+  if (!helper.file_exists(params.demuxedFasta) && !params.standaloneTaxonomy && params.single == params.paired) {
     if (!params.single) {
       println(colors.red("One of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" MUST be passed"))
     } else {

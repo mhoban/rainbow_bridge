@@ -441,7 +441,7 @@ Options for taxonomy assignment using the insect algorithm.
 ### Generating phyloseq objects
 eDNAFlow supports generation of [phyloseq](https://joey711.github.io/phyloseq/) objects from pipeline output or user-supplied data. This will produce an RDS file that you can load directly into R and use for downstream analyses. There are a few options that can be specified for this process. Pipeline-generated (i.e., [insect](#insect) or [LCA](#lca)) or user-supplied taxonomic classifications can be used along with the required user-supplied sample metadata.
 
-<small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--asign-taxonomy` option).  
+<small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--assign-taxonomy` option).  
 <small>**`--metadata [file]`**</small>: A comma- or tab-separated sample metadata table (required). This can contain any arbitrary sample information, but it must have a header and the first column (preferably called 'sample') must contain sample IDs.  
 <small>**`--taxonomy [taxonomy]`**</small>: Taxonomic classification scheme. This can be one of either `lca` (to use LCA taxonomy, the default), `insect` (for insect taxonomy), or the filename of a comma/tab-separated taxonomy table. If user-supplied, the first column of the taxonomy table must be named "OTU" (case-sensitive) and contain zOTU IDs. It may have any number of arbitrary columns of taxonomic classification (e.g., domain, kingdom, phylum, etc.) after that.  
 <small>**`--no-tree`**</small>: Skip creation of phylogenetic tree.  

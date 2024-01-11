@@ -82,6 +82,9 @@ class helper {
                                    sample3	CL1_S2_L001_R1_001.fastq	CL1_S2_L001_R2_001.fastq
                                    sample4	CL2_S3_L001_R1_001.fastq	CL2_S3_L001_R2_001.fastq 
                                    ---
+                                   NOTE: if your fastq files are gzipped, DO NOT include the .gz extension 
+                                   in your sample map file, because the files will be unzipped 
+                                   (and .gz extension stripped) BEFORE sample IDs are remapped
 
     For single-end sequencing runs:
       --single                     Specify single-ended sequencing run (required)

@@ -2,23 +2,13 @@
 process r_taxonomy {
   label 'phyloseq'
 
-  publishDir { 
-    if (!params.standaloneTaxonomy) {
-      // number output directory if it's part of the pipeline
-      num = (params.illuminaDemultiplexed ? 8 : 9) + (params.skipLulu ? 0 : 1)
-      dir = String.format("%02d_taxonomy",num)
-    } else {
-      // otherwise we're standalone, so don't
-      dir = "taxonomy"
-    }
-    return dir
-  }, mode: params.publishMode
+  publishDir "${params.outDir}/taxonomy/lca", mode: params.publishMode 
 
   input:
     tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(curated)
 
   output:
-    tuple path("intermediate*.tab"), path("taxonomy*.tab")
+    tuple path("lca_intermediate*.tab"), path("lca_taxonomy*.tab")
 
 
   script:
@@ -32,8 +22,8 @@ process r_taxonomy {
     --merged ${merged} \
     --dropped ${params.dropped} \
     ${pf} \
-    --intermediate "intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tab" \
-    ${blast_result} ${zotu_table} ${lineage} "taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tab"
+    --intermediate "lca_intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tab" \
+    ${blast_result} ${zotu_table} ${lineage} "lca_taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tab"
 
   """
 }  
@@ -42,30 +32,22 @@ process r_taxonomy {
 process py_taxonomy {
   label 'python3'
 
-  publishDir { 
-    if (!params.standaloneTaxonomy) {
-      // number output directory if it's part of the pipeline
-      num = (params.illuminaDemultiplexed ? 8 : 9) + (params.skipLulu ? 0 : 1)
-      dir = String.format("%02d_taxonomy",num)
-    } else {
-      // otherwise we're standalone, so don't
-      dir = "taxonomy"
-    }
-    return dir
-  }, mode: params.publishMode
+  publishDir "${params.outDir}/taxonomy/lca", mode: params.publishMode 
 
   input:
     tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(curated)
 
   output:
-    tuple path("intermediate*.tab"), path("taxonomy*.tab")
+    tuple path("lca_intermediate*.tab"), path("lca_taxonomy*.tab")
 
 
   script:
   c = curated ? "lulu_" : ""
   """
-  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${lineage} "taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tab" 
-  mv interMediate_res.tab "intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tab"
+  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} \
+    ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${lineage} \
+    "lca_taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tab" 
+  mv interMediate_res.tab "lca_intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tab"
   """
 }  
 
@@ -73,7 +55,7 @@ process py_taxonomy {
 process fastqc {
   label 'fastqc'
 
-  publishDir { "00_fastqc_${step}" }, mode: params.publishMode
+  publishDir "${params.outDir}/fastqc/fastqc_${step}", mode: params.publishMode
 
   input:
     tuple val(step), val(sample_id), path(read) 
@@ -100,7 +82,7 @@ process fastqc {
 process multiqc {
   label 'multiqc'
 
-  publishDir { "00_fastqc_${step}" }, mode: params.publishMode
+  publishDir "${params.outDir}/fastqc/fastqc_${step}", mode: params.publishMode
 
   input:
     tuple path(fastqc_files), val(step)

@@ -14,10 +14,7 @@ thresh <- as.numeric(args[4])
 offs <- as.numeric(args[5])
 mincount <- as.numeric(args[6])
 pingr <- as.numeric(args[7])
-
-settings <- c("zOTU file: {zf}","Classifier model: {cf}","cores: {cores}","threshold: {thresh}","offset: {offs}","mincount: {mincount}","ping: {pingr}")
-settings <- map_chr(settings,str_glue)
-write_lines(settings,"insect_settings.txt")
+output <- args[8]
 
 
 zotus <- readFASTA(zf)
@@ -33,5 +30,5 @@ classified <- classify(
   ping = pingr
 )
 
-write_csv(classified,"insect_classified.csv")
+write_csv(classified,output)
 

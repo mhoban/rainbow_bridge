@@ -13,7 +13,7 @@ process filter_merge {
   label 'adapterRemoval'
   label 'demux_cpus'
 
-  publishDir { params.illuminaDemultiplexed ? '01_demultiplexed_filter_merge' : '01_filter_merge' }, mode: params.publishMode
+  publishDir "${params.preDir}/trim_merge", mode: params.publishMode
 
   input:
     tuple val(sample_id), path(reads)
@@ -49,7 +49,7 @@ process filter_merge {
 process filter_ambiguous_indices {
   label 'obitools'
 
-  publishDir '01a_index_filtered', mode: params.publishMode
+  publishDir "${params.preDir}/index_filtered", mode: params.publishMode
 
   input:
     tuple val(sample_id), path(reads)
@@ -68,7 +68,7 @@ process filter_ambiguous_indices {
 process ngsfilter {
   label 'obitools'
 
-  publishDir "02_ngsfilter"
+  publishDir "${params.preDir}/ngsfilter", mode: params.publishMode
 
   input:
     tuple val(sample_id), path(read), path(barcode) 
@@ -87,7 +87,7 @@ process ngsfilter {
 process filter_length {
   label 'obitools'
 
-  publishDir "03_length_filtered"
+  publishDir "${params.preDir}/length_filtered", mode: params.publishMode
 
   input: 
     tuple val(sample_id), val(barcode_file), path(fastq_file) 
@@ -109,7 +109,7 @@ process filter_length {
 process split_samples {
   label 'obitools'
 
-  publishDir "04_split_samples", mode: params.publishMode
+  publishDir "${params.preDir}/split_samples", mode: params.publishMode
 
   input:
     tuple val(sample_id), path(fastq) 
@@ -127,16 +127,18 @@ process split_samples {
 process relabel_vsearch {
   label 'vsearch'
 
-  publishDir { params.illuminaDemultiplexed ? "04_relabel_vsearch" : "05_relabel_vsearch" }, mode: params.publishMode
+  publishDir "${params.preDir}/relabeled", mode: params.publishMode
 
   input:
     tuple val(sample_id), path(fastq)
-
   output:
-    path('*_relabeled.fasta')
+    path('*_relabeled.fasta'), emit: result
+    path 'settings.txt'
+
 
   script:
   """
+  echo "denoiser: vsearch" > settings.txt
   # this may or may not be necessary anymore, but it seems like a good sanity check
   # since this will fail on empty files
   if [ -s "${fastq}" ]; then 
@@ -152,17 +154,19 @@ process relabel_vsearch {
 process relabel_usearch {
   label 'usearch'
 
-  publishDir { params.illuminaDemultiplexed ? "04_relabel_usearch" : "05_relabel_usearch" }, mode: params.publishMode
+  publishDir "${params.preDir}/relabeled", mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(fastq) 
-
+    tuple val(sample_id), path(fastq)
   output:
-    path('*_relabeled.fasta')
+    path('*_relabeled.fasta'), emit: result
+    path 'settings.txt'
+
 
   script:
   if (!exec_denoiser) {
     """
+    echo "denoiser: usearch" > settings.txt
     if [ -s "${fastq}" ]; then 
       # we have to convert everything to uppercase because obisplit --uppercase is broken
       usearch -fastx_relabel ${fastq} -prefix "${sample_id}." -fastaout /dev/stdout | tail -n+7 | \
@@ -173,6 +177,7 @@ process relabel_usearch {
     """
   } else if (exec_denoiser) {
     """
+    echo "denoiser: ${params.denoiser}" > settings.txt
     for files in ${fastqs}; do
       label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
       ${params.denoiser} -fastx_relabel \$files -prefix \${label}. -fastqout \${label}.relabeled.fastq
@@ -205,16 +210,19 @@ process derep_vsearch {
   label 'vsearch'
   label 'all_cpus'
 
-  publishDir { params.illuminaDemultiplexed ? "06_derep_vsearch" : "07_derep_vsearch" }, mode: params.publishMode
+  publishDir "${params.outDir}/zotus", mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(relabeled_merged) 
+    tuple val(id), path(relabeled_merged)
 
   output:
-    tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab") 
+    tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tab"), emit: result
+    path 'settings.txt'
 
   script:
   """
+  echo "denoiser: vsearch" > settings.txt
+  echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
   # pass 0 threads to use all available cores
   # steps:
   # 1. get unique sequence variants
@@ -222,10 +230,10 @@ process derep_vsearch {
   # 3. get rid of chimeras
   # 4. match original sequences to zotus by 97% identity
   if [ -s "${relabeled_merged}" ]; then 
-    vsearch --threads 0 --derep_fulllength ${relabeled_merged} --sizeout --output "${sample_id}_unique.fasta"
-    vsearch --threads 0 --cluster_unoise "${sample_id}_unique.fasta" --centroids "${sample_id}_centroids.fasta" --minsize ${params.minAbundance}	   
-    vsearch --threads 0 --uchime3_denovo "${sample_id}_centroids.fasta" --nonchimeras "${sample_id}_zotus.fasta" --relabel Zotu 
-    vsearch --threads 0 --usearch_global ${relabeled_merged} --db "${sample_id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tab
+    vsearch --threads 0 --derep_fulllength ${relabeled_merged} --sizeout --output "${id}_unique.fasta"
+    vsearch --threads 0 --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance}	   
+    vsearch --threads 0 --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" --relabel Zotu 
+    vsearch --threads 0 --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tab
   else
     >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
     exit 1
@@ -238,26 +246,29 @@ process derep_usearch {
   label 'usearch'
   label 'all_cpus'
 
-  publishDir { params.illuminaDemultiplexed ? "06_derep_usearch" : "07_derep_usearch" }, mode: params.publishMode
+  publishDir "${params.outDir}/zotus", mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(relabeled_merged) 
+    tuple val(id), path(relabeled_merged) 
 
   output:
-    tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab") 
+    tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tab"), emit: result
+    path 'settings.txt'
 
   script:
   if (!exec_denoiser)
   {
     """
+    echo "denoiser: usearch" > settings.txt
+    echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
     # steps:
     # 1. get unique sequences
     # 2. run denoising & chimera removal
     # 3. generate zotu table
     if [ -s "${relabeled_merged}" ]; then
-      usearch -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${sample_id}_unique.fasta"
-      usearch -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
-      usearch -otutab ${relabeled_merged} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+      usearch -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${id}_unique.fasta"
+      usearch -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance}
+      usearch -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
     else
       >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
       exit 1
@@ -265,10 +276,12 @@ process derep_usearch {
     """
   } else if (exec_denoiser) {
     """
+    echo "denoiser: ${params.denoiser}" > settings.txt
+    echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
     if [ -s "${relabeled_merged}" ]; then
-      ${params.denoiser} -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${sample_id}_unique.fasta"
-      ${params.denoiser} -unoise3 "${sample_id}_unique.fasta"  -zotus "${sample_id}_zotus.fasta" -tabbedout "${sample_id}_unique_unoise3.txt" -minsize ${params.minAbundance}
-      ${params.denoiser} -otutab ${relabeled_merged} -zotus ${sample_id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+      ${params.denoiser} -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${id}_unique.fasta"
+      ${params.denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance}
+      ${params.denoiser} -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
     else
       >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
       exit 1
@@ -286,16 +299,13 @@ process derep_usearch {
 process blast {
   label 'blast'
 
-  publishDir { 
-    num = (params.illuminaDemultiplexed ? 7 : 8) + (params.skipLulu ? 0 : 1)
-    return String.format("%02d_blast",num)
-  }, mode: params.publishMode
+  publishDir "${params.outDir}/blast", mode: params.publishMode 
 
   input:
     tuple val(sample_id), path(a), path(zotus_fasta), path(zotu_table), path(blast_db), path(custom_db)
 
   output:
-    tuple val(sample_id), path("${sample_id}_blast_result.tab")
+    tuple val(sample_id), path("${sample_id}_blast_result.tab"), emit: result
 
   script:
   def cdb = (String)custom_db
@@ -305,6 +315,7 @@ process blast {
     cdb = "${cdb}/${params.customDbName}"
   }
   """
+
   # this environment variable needs to be there for the taxonomy to show up properly
   export BLASTDB="${blast_db}"
   # blast our zotus
@@ -314,8 +325,8 @@ process blast {
     -perc_identity ${params.percentIdentity} -evalue ${params.evalue} \
     -best_hit_score_edge 0.05 -best_hit_overhang 0.25 \
     -qcov_hsp_perc ${params.qcov} -max_target_seqs ${params.maxQueryResults} \
-    -query ${zotus_fasta} -out ${sample_id}_blast_result.tab \
-    -num_threads ${task.cpus}
+    -query ${zotus_fasta} -num_threads ${task.cpus} \
+    -out blast_p${params.percentIdentity}_e${params.evalue}_q${params.qcov}_m${params.maxQueryResults}.tab
   """
 }
 
@@ -345,18 +356,21 @@ process lulu_blast {
 process lulu {
   label 'lulu'
 
-  /* errorStrategy 'ignore' */
-
-  publishDir { params.illuminaDemultiplexed ? "07_lulu" : "08_lulu" }, mode: params.publishMode
+  publishDir "${params.outDir}/lulu", mode: params.publishMode
 
   input:
     tuple val(sample_id), path(match_list), path(zotu_table)
 
   output:
-    tuple path("lulu_zotu_table.tab"), path("lulu_zotu_map.tab"), path("lulu_result_object.rds")
+    tuple path("lulu_zotu_table.tab"), path("lulu_zotu_map.tab"), path("lulu_result_object.rds"), emit: result
+    path 'settings.txt'
 
   script:
   """
+  echo "minimum ratio: ${params.luluMinRatio}" > settings.txt
+  echo "minimum ratio type: ${params.luluMinRatioType}" >> settings.txt
+  echo "minimum match: ${params.luluMinMatch}" >> settings.txt
+  echo "minimum RC: ${params.luluMinRc}" >> settings.txt
   lulu.R \
     -m ${params.luluMinRatio} \
     -t ${params.luluMinRatioType} \
@@ -372,11 +386,12 @@ process get_model {
   input:
     val(model)
   output:
-    path('insect_classifier.rds')
+    path('insect_model.rds')
 
   exec:
-    classifier = task.workDir / 'insect_classifier.rds' 
-    url = new URL(helper.insect_classifiers[model.toLowerCase()])
+    m = model.toLowerCase()
+    classifier = task.workDir / 'insect_model.rds' 
+    url = new URL(helper.insect_classifiers[m])
     url.withInputStream { stream -> classifier << stream }
 }
 
@@ -384,28 +399,24 @@ process get_model {
 process insect {
   label 'insect'
 
-  publishDir { 
-    num = (params.illuminaDemultiplexed ? 8 : 9) + (params.skipLulu ? 0 : 1)
-    dir = String.format("%02d_taxonomy",num)
-    return dir
-    /* return params.illuminaDemultiplexed ? "09${p}_insect_classified" : "10${p}_insect_classified"  */
-  }, mode: params.publishMode
+  publishDir "${params.outDir}/taxonomy/insect", mode: params.publishMode 
 
   input:
     tuple path(zotus), path(classifier)
 
   output:
-    tuple path('insect_classified.csv'), path('insect_settings.txt'), path('insect_classifier.rds')
+    tuple path('insect_*.csv'), path('insect_model.rds'), emit: result
 
   script:
   """
-  if [ "${classifier}" != "insect_classifier.rds" ]; then
-    mv ${classifier} insect_classifier.rds
+  if [ "${classifier}" != "insect_model.rds" ]; then
+    mv ${classifier} insect_model.rds
   fi
-  insect.R ${zotus} insect_classifier.rds \
+  insect.R ${zotus} insect_model.rds \
     ${task.cpus} ${params.insectThreshold} \
     ${params.insectOffset} ${params.insectMinCount} \
-    ${params.insectPing}
+    ${params.insectPing} \
+    "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.csv"
   """
 }
 
@@ -472,11 +483,7 @@ process unzip {
 process phyloseq {
   label 'phyloseq'
 
-  /* publishDir "phyloseq" */
-  publishDir {
-    num = (params.illuminaDemultiplexed ? 9 : 10) + (params.skipLulu ? 0 : 1)
-    return String.format("%02d_phyloseq",num)
-  }
+  publishDir "${params.outDir}/phyloseq", mode: params.publishMode
 
   input:
     tuple path(tax_table), path(zotu_table), path(fasta), path(metadata), val(method)
@@ -504,6 +511,7 @@ process phyloseq {
     --phyloseq "phyloseq_${method}.rds" ${t} ${o} ${c}
   """
 }
+
 
 // sanity check to make sure command-line parameters are correct and valid
 def check_params() {
@@ -606,7 +614,7 @@ def check_params() {
 
   // make sure insect parameter is valid: either a file or one of the pretrained models
   if (params.insect) {
-    if (!helper.insect_classifiers[params.insect.toLowerCase()]) {
+    if (!helper.insect_classifiers.containsKey(params.insect.toLowerCase())) {
       if (!helper.file_exists(params.insect)) {
         println(colors.red("Value passed to ") + colors.bred("--insect") + colors.red(" must be one of the supported builtins or an RDS file"))
         println(colors.red("containing a trained insect classifier model."))
@@ -800,9 +808,11 @@ workflow {
           ngsfilter | 
           groupTuple | 
           filter_length | 
-          (vsearch ? relabel_vsearch : relabel_usearch) | 
-          collectFile(name: "${params.project}_relabeled.fasta", storeDir: '05_relabeled_merged') |
-          set { to_dereplicate } 
+          (vsearch ? relabel_vsearch : relabel_usearch) | set { relabeled }
+
+          relabeled.result | 
+            collectFile(name: "${params.project}_relabeled.fasta", storeDir: "${params.preDir}/merged") |
+            set { to_dereplicate } 
 
       } else {
         // this is where reads are all in one fwd or fwd/rev file and have NOT been demultiplexed
@@ -880,10 +890,11 @@ workflow {
           // get rid of the '__split__' business in the filenames
           map { [it.baseName.replaceFirst(/^__split__/,""), it] } | 
           // relabel to fasta
-          (vsearch ? relabel_vsearch : relabel_usearch) | 
+          (vsearch ? relabel_vsearch : relabel_usearch) | set { relabeled }
           // collect to single relabeled fasta
-          collectFile(name: "${params.project}_relabeled.fasta", storeDir: '06_relabeled_merged') |
-          set { to_dereplicate }
+          relabeled.result | 
+            collectFile(name: "${params.project}_relabeled.fasta", storeDir: "${params.preDir}/merged") |
+            set { to_dereplicate }
       }
     } else {
       // here we've already demultiplexed and relabeled sequences 
@@ -897,8 +908,10 @@ workflow {
     // build the channel, run dereplication, and set to a channel we can use again
     Channel.of(params.project) | 
       combine(to_dereplicate) | 
-      (vsearch ? derep_vsearch : derep_usearch) |
-      set { dereplicated }
+      (vsearch ? derep_vsearch : derep_usearch) | set { dereplicated }
+
+      dereplicated.result | 
+        set { dereplicated }
 
     // make blast databases path channels so singularity will automount it properly
     blast_db = Channel.fromPath(params.blastDb, type: 'dir')
@@ -956,7 +969,7 @@ workflow {
     // run taxonomy assignment/collapse script if so requested
     if (params.assignTaxonomy && !params.skipBlast) {
       // here we grab the blast result
-      blast.out | 
+      blast.out.result | 
         map { sid, blast_result -> blast_result } | 
         set { blast_result }
 
@@ -988,7 +1001,7 @@ workflow {
       if (!params.skipLulu) {
         // run the taxonomy assignment for lulu-curated zotus
         tax_process_lulu = params.oldTaxonomy ? assign_collapse_taxonomy_lulu_py : assign_collapse_taxonomy_lulu_r
-        lulu.out | 
+        lulu.out.result | 
           map { zotutable, zotu_map, result_object -> zotutable } | 
           combine(blast_result) |
           combine(lineage) | 
@@ -1014,7 +1027,7 @@ workflow {
           break
         case "insect":
           if (params.insect != false) {
-            insectized | 
+            insectized.result | 
               map { it[0] } |
               combine(zotu_table) | 
               combine( zotus ) |

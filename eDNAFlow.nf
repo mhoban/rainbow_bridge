@@ -216,7 +216,7 @@ process derep_vsearch {
     tuple val(id), path(relabeled_merged)
 
   output:
-    tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tab"), emit: result
+    tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tsv"), emit: result
     path 'settings.txt'
 
   script:
@@ -233,7 +233,7 @@ process derep_vsearch {
     vsearch --threads 0 --derep_fulllength ${relabeled_merged} --sizeout --output "${id}_unique.fasta"
     vsearch --threads 0 --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance}	   
     vsearch --threads 0 --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" --relabel Zotu 
-    vsearch --threads 0 --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tab
+    vsearch --threads 0 --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tsv
   else
     >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
     exit 1
@@ -252,7 +252,7 @@ process derep_usearch {
     tuple val(id), path(relabeled_merged) 
 
   output:
-    tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tab"), emit: result
+    tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tsv"), emit: result
     path 'settings.txt'
 
   script:
@@ -268,7 +268,7 @@ process derep_usearch {
     if [ -s "${relabeled_merged}" ]; then
       usearch -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${id}_unique.fasta"
       usearch -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance}
-      usearch -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+      usearch -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zmap.txt
     else
       >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
       exit 1
@@ -281,7 +281,7 @@ process derep_usearch {
     if [ -s "${relabeled_merged}" ]; then
       ${params.denoiser} -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${id}_unique.fasta"
       ${params.denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance}
-      ${params.denoiser} -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tab -mapout zmap.txt
+      ${params.denoiser} -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zmap.txt
     else
       >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
       exit 1
@@ -305,7 +305,7 @@ process blast {
     tuple val(sample_id), path(a), path(zotus_fasta), path(zotu_table), path(blast_db), path(custom_db)
 
   output:
-    tuple val(sample_id), path("${sample_id}_blast_result.tab"), emit: result
+    tuple val(sample_id), path("${sample_id}_blast_result.tsv"), emit: result
 
   script:
   def cdb = (String)custom_db
@@ -326,7 +326,7 @@ process blast {
     -best_hit_score_edge 0.05 -best_hit_overhang 0.25 \
     -qcov_hsp_perc ${params.qcov} -max_target_seqs ${params.maxQueryResults} \
     -query ${zotus_fasta} -num_threads ${task.cpus} \
-    -out blast_p${params.percentIdentity}_e${params.evalue}_q${params.qcov}_m${params.maxQueryResults}.tab
+    -out blast_p${params.percentIdentity}_e${params.evalue}_q${params.qcov}_m${params.maxQueryResults}.tsv
   """
 }
 
@@ -362,7 +362,7 @@ process lulu {
     tuple val(sample_id), path(match_list), path(zotu_table)
 
   output:
-    tuple path("lulu_zotu_table.tab"), path("lulu_zotu_map.tab"), path("lulu_result_object.rds"), emit: result
+    tuple path("lulu_zotu_table.tsv"), path("lulu_zotu_map.tsv"), path("lulu_result_object.rds"), emit: result
     path 'settings.txt'
 
   script:
@@ -376,7 +376,7 @@ process lulu {
     -t ${params.luluMinRatioType} \
     -a ${params.luluMinMatch} \
     -r ${params.luluMinRc} \
-    ${zotu_table} ${match_list} "lulu_zotu_table.tab" "lulu_zotu_map.tab" "lulu_result_object.rds"
+    ${zotu_table} ${match_list} "lulu_zotu_table.tsv" "lulu_zotu_map.tsv" "lulu_result_object.rds"
   """
 }
 
@@ -426,12 +426,12 @@ process get_lineage {
   label 'python3'
 
   output:
-    tuple path('ranked_lineage.tab'), path('merged.dmp')
+    tuple path('ranked_lineage.tsv'), path('merged.dmp')
 
   script:
   """
   curl -LO https://ftp.ncbi.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip
-  unzip -p new_taxdump.zip rankedlineage.dmp > ranked_lineage.tab
+  unzip -p new_taxdump.zip rankedlineage.dmp > ranked_lineage.tsv
   unzip -p new_taxdump.zip merged.dmp > merged.dmp
   rm new_taxdump.zip
   """
@@ -1039,7 +1039,7 @@ workflow {
         default:
           if (helper.file_exists(params.taxonomy)) {
             /* input: tuple path(tax_table), path(zotu_table), path(fasta), path(metadata), val(method) */
-            /* tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tab")  */
+            /* tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tsv")  */
             Channel.fromPath(params.taxonomy, checkIfExists: true) | 
               combine(zotu_table) | 
               combine( dereplicated | map { sid, uniques, zotus, zotutable -> zotus } ) |

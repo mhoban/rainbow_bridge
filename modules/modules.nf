@@ -8,7 +8,7 @@ process r_taxonomy {
     tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(curated)
 
   output:
-    tuple path("lca_intermediate*.tab"), path("lca_taxonomy*.tab")
+    tuple path("lca_intermediate*.tsv"), path("lca_taxonomy*.tsv")
 
 
   script:
@@ -22,8 +22,8 @@ process r_taxonomy {
     --merged ${merged} \
     --dropped ${params.dropped} \
     ${pf} \
-    --intermediate "lca_intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tab" \
-    ${blast_result} ${zotu_table} ${lineage} "lca_taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tab"
+    --intermediate "lca_intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tsv" \
+    ${blast_result} ${zotu_table} ${lineage} "lca_taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tsv"
 
   """
 }  
@@ -38,7 +38,7 @@ process py_taxonomy {
     tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(curated)
 
   output:
-    tuple path("lca_intermediate*.tab"), path("lca_taxonomy*.tab")
+    tuple path("lca_intermediate*.tsv"), path("lca_taxonomy*.tsv")
 
 
   script:
@@ -46,8 +46,8 @@ process py_taxonomy {
   """
   runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} \
     ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${lineage} \
-    "lca_taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tab" 
-  mv interMediate_res.tab "lca_intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tab"
+    "lca_taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tsv" 
+  mv interMediate_res.tab "lca_intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tsv"
   """
 }  
 

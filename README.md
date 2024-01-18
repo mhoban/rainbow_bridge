@@ -20,9 +20,9 @@
       + [Specifying fastq files](#specifying-fastq-files)
    * [Required options](#required-options)
    * [Sample IDs](#sample-ids)
+      + [Mapping of custom sample IDs](#mapping-of-custom-sample-ids)
    * [Other options](#other-options)
       + [General options](#general-options)
-      + [Mapping of custom sample IDs](#mapping-of-custom-sample-ids)
       + [Splitting input](#splitting-input)
       + [Length, quality, and merge settings](#length-quality-and-merge-settings)
       + [Demultiplexing and sequence matching](#demultiplexing-and-sequence-matching)
@@ -38,6 +38,7 @@
 - [Downloading the NCBI BLAST nucleotide database](#downloading-the-ncbi-blast-nucleotide-database)
 - [LCA (Lowest Common Ancestor) script for assigning taxonomy](#lca-lowest-common-ancestor-script-for-assigning-taxonomy)
 - [Specifying parameters in a parameter file](#specifying-parameters-in-a-parameter-file)
+- [Notification](#notification)
 
 <!-- TOC end -->
 
@@ -164,7 +165,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
 
 ### For previously-demultiplexed paired-end runs
 
-For demultiplexed runs, the pipeline combines the values of the `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2` options to make a glob that is used to find sequence reads. A simple example is given here, but for a detailed discussion of how these things go together, see [below](#specifying-fastq-files).
+For demultiplexed runs, the pipeline combines the values of the `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2` options to make a [glob](#a-note-on-globswildcards) that is used to find sequence reads. A simple example is given here, but for a detailed discussion of how these things go together, see [below](#specifying-fastq-files).
 
 ```bash
 user@srv:~/example_project/analysis$ eDNAFlow.nf \
@@ -176,26 +177,27 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
 ```
 ## Contents of output directories
 
-When the pipeline is run, output from each step will be placed in sequentially numbered directories. Directory numbering will vary based on which options you pass and whether you're working from sequences that were demultiplexed by the sequencer or not, but you'll have roughly the same steps in each pipeline run. The contents of most output directories will by symlinked to files contained within the work directory hierarchy. Here is an exhaustive list of all possible output directories:
+When the pipeline is run, output from each step can be found in directories corresponding to each process. All output will fall under one of two directories: `output` or `preprocess`. `Output` will contain things like QA/QC, zOTU tables, and taxonomy results. `Preprocess` will contain things like merged, filtered, and relabeled reads. The contents of output directories will by symlinked to files contained within the nextflow-generated internal `work` directory hierarchy (which you shouldn't have to access directly, except maybe in some case of error). Here is an exhaustive list of all possible output directories:
 
-Directory|Description|Condition
----|---|--
-00_fastQC_*|FastQC/MultiQC output contents|--fastqc option
-01\_&lt;demultiplexed&gt;\_filter_merge|Length/quality filtered and (optionally) merged reads|
-01a_ambiguous_indices_filtered|Above with sequences containing ambiguous indices removed|--remove-ambiguous-indices
-02_ngsfilter|`ngsfilter` processed reads: primer mismatch and sample annotation (if not previously demultiplexed)|
-03_length_filtered|Length filtered|
-04_split_samples|Annotated samples split into individual files|not previously demultiplexed
-04/05_relabeled_(u\|v)search|Relabled combined FASTA files for usearch/vsearch input|depends on which denoising tool you've chosen
-05/06_relabeled_merged|Merged relabeled FASTA file for usearch, etc.|
-06/07_derep_(u\|v)search|usearch/vsearch dereplication results (i.e. zotus)|denoising tool
-07/08_blast|BLAST results|
-08/09_lulu|LULU curation results|
-09/10_collapsed_taxonomy_r|Results of R-based taxonomy collapser script|--assign-taxonomy
-09/10_collapsed_taxonomy|Results of python-based taxonomy collapser script|--old-taxonomy
-09/10_insect_classified|Insect classification results|--insect option passed
-work|All internal files processed by nextflow|
-.nextflow|Nextflow generated folder holding history info|
+
+| Directory   | Subdirectory                        | Description                                                  | Condition                                                |
+| ----------- | ----------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------- |
+| preprocess/ | trim_merge                          | Length/quality filtered and (for paired-end runs) merged reads |                                                          |
+|             | index_filtered                      | Filtered/merged sequences with ambiguous indices filtered out | --remove-ambiguous-indices<br />--illumina-demultiplexed |
+|             | ngsfilter                           | ngsfilter-processed reads: primer mismatch and sample annotation (if not previously demultiplexed) |                                                          |
+|             | length_filtered                     | Length filtered                                              |                                                          |
+|             | split_samples                       | Annotated samples split into individual files                | Sequencing run not previously demultiplexed              |
+|             | relabeled                           | Relabeled combined FASTA files for denoiser (usearch/vsearch) input |                                                          |
+|             | merged                              | Merged relabeled FASTA file for denoising                    |                                                          |
+| output/     | fastqc_initial<br />fastqc_filtered | FastQC/MultiQC reports                                       | --fastqc                                                 |
+|             | zotus                               | Dereplicated/denoised sequence results<br />(unique sequences, zOTU sequences, zOTU table) |                                                          |
+|             | blast                               | BLAST results                                                |                                                          |
+|             | lulu                                | LULU curation results                                        |                                                          |
+|             | taxonomy/lca                        | Results of taxonomy collapser script(s)                      | --assign-taxonomy<br />--old-taxonomy                    |
+|             | taxonomy/insect                     | Insect classification results                                | --insect                                                 |
+|             | phyloseq                            | Phyloseq object                                              | --phyloseq and associated options                        |
+| work/       | A bunch of nonsense                 | All internal and intermediate files processed by nextflow    |                                                          |
+| .nextflow/  | various                             | Hidden nextflow-generated internal folder                    |                                                          |
 
 ## When things go wrong (interpreting errors)
 
@@ -211,6 +213,7 @@ This can be a bit intimidating at first, but there are a few ways to use this in
 
 ```bash
 $ cat work/2a/7da7dd31811a49b03af88632257520/.command.out
+$ cat work/2a/7da7dd31811a49b03af88632257520/.command.err # (though this will be empty if "Command error" was empty)
 ```
 
 In the example above, there was error output but nothing in the `.command.out` file. Looking at the error output, we can see that the merged FASTA file was empty. This commonly occurs when your PCR primers fail to match any sequences in the raw reads. In this case, check your barcode file to make sure you're using the correct primers for the sequencing run you're processing. In general, once you've worked out what you think has gone wrong, you can simply run the pipeline again, adjusting any relevant command-line options to hopefully fix the issue.
@@ -225,7 +228,7 @@ $ eDNAFlow.nf --help
 
 The pipeline accepts three main input formats:
 
-- Raw data from the sequencer (i.e. non-demultiplexed). This typically consists of forward/reverse reads each in single large (optionally gzipped) fastq files. For this type of data, the demultiplexer assumes that you have used barcoded primers, such that sequences look like this:  
+- Raw data from the sequencer (i.e. non-demultiplexed). This typically consists of forward/reverse reads each in single large (optionally gzipped) fastq files. For this type of data, the demultiplexer assumes that you have used barcoded primers, such that sequence reads look like this:  
   ```
   <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSER_BARCODE>
   ```
@@ -239,6 +242,7 @@ The pipeline accepts three main input formats:
   <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAATGTGG+TTCGAAGA</strong></pre></code>
 
 - <a name="demux-fasta"></a>Data that has been demultiplexed to individual samples and concatenated into a FASTA file in usearch format. Use this option if you want to re-run the pipeline using demultiplexed data produced by a previous run. The expected format is a FASTA file with each sequence labled as `<samplename>.N` where `samplename` is the name of the sample and `N` is just a sequential number:
+  
   ```fasta
   >sample1.1
   AGCGTCCGATGACTGACTGACTAGCT
@@ -271,28 +275,28 @@ For fastq-based analyses, you must specify whether the sequencing run is single 
 <small>**Note: one of the above options is required (specifying both will throw an error)**</small>
 
 ### Specifying fastq files
-In all cases, if you're processing fastq runs, you must specify the location of your sequence reads. Generally, if you're processing runs that have *not* been demultiplexed by the sequencer, you will have either one (single-end) or two (paired-end) fastq files. If your runs *have* been demultiplexed, you will have as many files as you have individual samples (twice as many for paired-end).  
+In all cases, if you're processing fastq runs, you must specify the location of your sequence reads. Generally, if you're processing runs that have *not* been demultiplexed by the sequencer, you will have either one (single-end) or two (paired-end) fastq files. If your runs *have* been demultiplexed, you will have as many files as you have individual samples (twice that for paired-end runs).  
 
-**Note: unless you are specifying forward/reverse reads directly (i.e. as individual files), it is generally best practice to keep files from different sequencing runs in separate directories. If you do not, because of the way the pipeline uses globs to find files, you could end up with unexpected behavior.**
+**Note: unless you are specifying forward/reverse reads directly (i.e. as individual files), it is generally best practice to keep readsd (fastq files) from different sequencing runs in separate directories. If you do not, because of the way the pipeline uses [globs](#a-note-on-globswildcards) to find files, you could end up with unexpected behavior.**
 
-There are a few ways you tell eDNAFlow where your reads are:
+There are a few ways you can tell eDNAFlow where your reads are:
 
 - For single-ended runs  
   - Non-demultiplexed  
     <small>**`--reads`**</small>: For non-demultiplexed runs, this points directly to your fastq reads, e.g., '../fastq/B1_S7_L001.fastq'.   
   - Demultiplexed  
-    <small>**`--reads`**</small>: For demultiplexed runs, this is a glob indicating where all the demultiplexed reads can be found, e.g., '../fastq/\*.fastq'  
+    <small>**`--reads`**</small>: For demultiplexed runs, this is a [glob](#a-note-on-globswildcards) indicating where all the demultiplexed reads can be found, e.g., '../fastq/\*.fastq'  
 - For paired-end runs  
   - Non-demultiplexed  
     <small>**`--fwd`**</small> and <small>**`--rev`**</small>: For non-demultiplexed runs, you may use these parameters to specify the forward (`--fwd`) and reverse (`--rev`) fastq files directly.  
   - Demultiplexed  
-    Demultiplexed sequence reads are found using a glob built internally using the `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2` values.   
+    Demultiplexed sequence reads are found using a [glob](#a-note-on-globswildcards) built internally with the `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2` values.   
     
     <small>**`--reads`**</small>: This parameter specifies the base-*directory* where forward and reverse reads may be found. If no other option is specified,  the glob is built using the default values of `--fwd`, `--rev`, `--r1`, and `--r2` (see below)  
     <small>**`--r1`**</small> (default: 'R1'), <small>**`--r2`**</small> (default: 'R2'): these parameters specify the pattern that distinguishes forward from reverse reads. The default values ('R1' and 'R2') are typical of most files you will receive from the sequencer.  
     <small>**`--fwd`**</small> (default: empty), <small>**`--rev`**</small> (default: empty): these parameters optionally specify subdirectories where forward and reverse reads are stored. These subdirectories must be *within* the directory specified with `--reads`.  
     
-    Using the above parameters, the following glob is constructed:  
+    Using the above parameters, the following [glob](#a-note-on-globswildcards) is constructed:  
     If `fwd` and `rev` are specified: '\<reads\>/{\<fwd\>,\<rev\>}/\*{\<r1\>,\<r2\>}\*.fastq\*' \
     Otherwise: '\<reads\>/\*{\<r1\>,\<r2\>}\*.fastq\*'   
     
@@ -300,11 +304,11 @@ There are a few ways you tell eDNAFlow where your reads are:
     
     For example, if eDNAFlow is invoked with the following options:   
     `--reads ../fastq --fwd forward --rev reverse`  
-    fastq files will be looked for using the following glob:  
+    fastq files will be looked for using the following [glob](#a-note-on-globswildcards):  
     '../fastq/{forward,reverse}/\*{R1,R2}\*.fastq\*'  
 
 ## Required options
-<small>**`--barcode [barcode file(s)]`**</small>: Aside from specifying how to find your sequence reads, you must specify a barcode file using the `--barcode` option. The file should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to specify sample barcodes and amplicon primers. It will vary slightly based on whether your runs have been demultiplexed or not.
+<small>**`--barcode [barcode file(s)]`**</small>: Aside from specifying how to find your sequence reads, you must specify a barcode file using the `--barcode` option. The barcode file should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to specify sample barcodes and amplicon primers. It will vary slightly based on whether your runs have been demultiplexed or not. Note that the pipeline can perform a few standalone tasks that do not require barcode files (e.g. collapsing taxonomy).
 
 - Non-demultiplexed runs: This format contains forward/reverse barcodes and forward/reverse primers to separate sequences into the appropriate samples. For example:
   #assay|sample|barcodes|forward_primer|reverse_primer|extra_information
@@ -318,9 +322,9 @@ There are a few ways you tell eDNAFlow where your reads are:
   
   In this case, it's not super critical what you call your 'sample' since the files are already separated.
 
-**BLAST database settings**: <a name="blast-settings"></a>For each run, you must specify the appropriate BLAST settings. This can be one or more of the following options:  
+**BLAST database settings**: <a name="blast-settings"></a>For runs where you aer performing BLAST queries, you must specify the appropriate settings. This can be one or more of the following options:  
 <small>**`--blast-db [blast dir]`**</small>: Location of the local BLAST nucleotide (nt) database *directory* (do NOT include the final "/nt"). This option may also be specified using the $BLASTDB environment variable.  
-<small>**`--custom-db [db dir]`**</small>: Path to a custom BLAST database *directory*. \
+<small>**`--custom-db [db dir]`**</small>: Path to a custom BLAST database *directory*.  
 <small>**`--custom-db-name [db name]`**</small>: Name of custom BLAST database (i.e., basename of .ndb, etc. files)  
 <small>**Note that passing --custom-db and --blast-db directories with the same name (e.g., /dir1/blast and /dir2/blast) will result in an error!**</small>  
 <small>**`--skip-blast`**</small>: Pass this if you don't want to run a BLAST query at all.   
@@ -329,14 +333,10 @@ There are a few ways you tell eDNAFlow where your reads are:
 For non-demultiplexed sequencing runs, samples will be named based on the sample IDs specified in the `sample` column of the barcode file. For demultiplexed runs, samples will by default be named based on the first part of the filename before the fwd/rev (R1/R2) pattern. For example, the following read files:
 
 ```
-B1_S7_L001_R1_001.fastq
-B1_S7_L001_R2_001.fastq
-B2_S8_L001_R1_001.fastq
-B2_S8_L001_R2_001.fastq
-CL1_S2_L001_R1_001.fastq
-CL1_S2_L001_R2_001.fastq
-CL2_S3_L001_R1_001.fastq
-CL2_S3_L001_R2_001.fastq
+B1_S7_L001_R1_001.fastq, B1_S7_L001_R2_001.fastq
+B2_S8_L001_R1_001.fastq, B2_S8_L001_R2_001.fastq
+CL1_S2_L001_R1_001.fastq, CL1_S2_L001_R2_001.fastq
+CL2_S3_L001_R1_001.fastq, CL2_S3_L001_R2_001.fastq
 ```
 
 Will result in the following sample IDs:
@@ -348,28 +348,28 @@ CL1_S2_L001
 CL2_S3_L001
 ```
 
-See [below](#mapping-of-custom-sample-ids) for information on how to map filenames to custom sample names.
+### Mapping of custom sample IDs
+By default, eDNAFlow interprets sample IDs from filenames. However, it is possible to specify a mapping file that will translate filenames into custom sample IDs.
+
+<small>**`--sample-map [mapfile]`**</small>: A headerless tab-delimited file that maps sample names to sequence-read filenames.  
+The specified map file should be a tab-delimited table (*without* headers) where the first column contains the sample ID, the second column contains the read filename (forward read for paired-end reads), and the third column (for paired-end reads only) contains the reverse read filename. Using the filenames from the example given [above](#sample-ids), a map file would look like this (spaces below must be tabs): 
+
+```
+sample_B1   B1_S7_L001_R1_001.fastq   B1_S7_L001_R2_001.fastq
+sample_B2   B2_S8_L001_R1_001.fastq   B2_S8_L001_R2_001.fastq
+sample_CL1  CL1_S2_L001_R1_001.fastq  CL1_S2_L001_R2_001.fastq
+sample_CL2  CL2_S3_L001_R1_001.fastq  CL2_S3_L001_R2_001.fastq 
+```
+
+**NOTE: if your fastq files are gzipped, DO NOT include the .gz extension in your sample map file, because the files will be unzipped (and .gz extension stripped) BEFORE sample IDs are remapped**
 
 ## Other options
 
 ### General options
 <small>**`--project [project]`**</small>:    Project name, applied to various output filenames (default: project directory name)  
 <small>**`--publish-mode [mode]`**</small>:  Specify how nextflow places files in output directories (default: symlink)  
-<small>**`--fastqc`**</small>:               Output FastQC reports for pre and post filter/merge steps. MultiQC is used for demultiplexed runs.  
+<small>**`--fastqc`**</small>:               Output FastQC reports for pre and post filter/merge steps. MultiQC is used for demultiplexed or split runs.  
 
-### Mapping of custom sample IDs
-By default, eDNAFlow interprets sample IDs from filenames. However, it is possible to specify a mapping file that will translate filenames into custom sample IDs.
-
-<small>**`--sample-map [mapfile]`**</small>: A headerless tab-delimited file mapping sample names to sequence-read filenames. 
-The specified mapfile should be a tab-delimited table (*without* headers) with the first column containing the sample ID, the second column containing the read filename (forward read for paired-end reads), and the third column optionally (for paired-end reads only) containing the reverse read filename. Using the filenames from the example given [above](#sample-ids), a mapfile would look like this (spaces are tabs):
-```
-sample_B1  B1_S7_L001_R1_001.fastq  B1_S7_L001_R2_001.fastq
-sample_B2  B2_S8_L001_R1_001.fastq  B2_S8_L001_R2_001.fastq
-sample_CL1  CL1_S2_L001_R1_001.fastq  CL1_S2_L001_R2_001.fastq
-sample_CL2  CL2_S3_L001_R1_001.fastq  CL2_S3_L001_R2_001.fastq 
-```
-
-**NOTE: if your fastq files are gzipped, DO NOT include the .gz extension in your sample map file, because the files will be unzipped (and .gz extension stripped) BEFORE sample IDs are remapped**
 
 ### Splitting input
 To improve performance, large input files can be split into multiple smaller files and processed in parallel. This option is only available for runs that have *not* previously been demultiplexed. With the `--split` option, eDNAFlow will break up the input reads into smaller files (with the number of reads per file customizable as explained below) and process them all in parallel in the same way that demultiplexed runs are processed. 
@@ -385,13 +385,13 @@ These settings allow you to set values related to quality filtering and paired-e
 <small>**`--min-len [num]`**</small>:         Minimum overall sequence length (default: 50)  
 
 ### Demultiplexing and sequence matching
-These settings controld demultiplexing and sequence matching (e.e., allowable PCR primer mismatch).
+These settings controld demultiplexing and sequence matching (e.g., allowable PCR primer mismatch).
 
 <small>**`--primer-mismatch [num]`**</small>:  Allowed number of mismatched primer bases (default: 2)  
 <small>**`--illumina-demultiplexed`**</small>:  Required if sequencing run is already demultiplexed  
 <small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed sequencing runs, remove reads that have ambiguous indices (i.e. they have bases other than AGCT). This assumes Illumina indices are included in fastq headers:  
-    <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAAWGTGG+TTCNAAGA</strong></pre></code>
-<small>**`--demuxed-fasta [file]`**</small>:  Skip demultiplexing step and use supplied FASTA (must be in usearch/vsearch format). See [above](#demux-fasta).  \
+    <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAAWGTGG+TTCNAAGA</strong></code></pre>
+<small>**`--demuxed-fasta [file]`**</small>:  Skip demultiplexing step and use supplied FASTA (must be in usearch/vsearch format). See [above](#demux-fasta).  
 <small>**`--demuxed-example`**</small>:  Spit out example usearch/vsearch demultiplexed FASTA format  
 <small>**`--demux-only`**</small>:  Stop after demultiplexing and splitting raw reads  
 
@@ -408,7 +408,7 @@ These settings allow you to customize BLAST searches. See [above](#blast-setting
 These options relate to assignment/collapsing of taxonomic IDs. There are two different methods of collapsing taxonomy (see [below](#taxonomy) for details): the "old" way (using a python script) and the "new" way (using R). Both methods take essentially the same approach and can be customized using the same options. The old method is retained for completeness (and because the new method may still have bugs). In each case, top BLAST results for each zOTU are compared to one another and a decision is made whether or not to collapse to the next highest taxonomic rank based on how different those results are from one another. This is the so-called lowest common ancestor (LCA) approach. In addition to the taxonomy collapser scripts, eDNA can use [insect](https://github.com/shaunpwilkinson/insect) to assign taxonomic IDs to zOTUs. This is particularly useful for assigning higher-order (e.g. phylum, order) taxonomy to zOTUs that are otherwise unidentified. To run insect on your sequences, you must specify either one of the [pre-trained](https://github.com/shaunpwilkinson/insect#classifying-sequences) classifier models OR one that you've trained yourself. Insect also takes various parameters to tweak how it does its assignments.
 
 #### LCA assignment
-Options for the LCA method of taxonomy assignment/collapse. Note: it is also possible to run taxonomy assignment as a standalone process (i.e., separate from the rest of the pipeline). To do this, pass the `--assign-taxonomy` option along with the `--blast-file` and `--zotu-table` options.
+Options for the LCA method of taxonomy assignment/collapse. Note: it is also possible to run taxonomy assignment as a standalone process (i.e., separate from the rest of the pipeline). To do this, pass the `--standalone-taxonomy` option along with the `--blast-file` and `--zotu-table` options.
 
 <small>**`--assign-taxonomy`**</small>: Perform taxonomy assignment & LCA collapse  
 <small>**`--standalone-taxonomy`**</small>: Run LCA script standalone against user-supplied data  
@@ -427,11 +427,22 @@ Options for the LCA method of taxonomy assignment/collapse. Note: it is also pos
 Options for taxonomy assignment using the insect algorithm. 
 
 <small>**`--insect [classifier]`**</small>:  Perform taxonomy assignment using insect. Accepted values of [classifier] are:  
+
   - Filename of local .rds R object containing classifier model  
   - One of the following (case-insensitive) primer names:   
-    MiFish, Crust16S, Fish16S, 18SUni, 18SV4, p23S, mlCOIint, SCL5.8S  
-    (see [here](https://github.com/shaunpwilkinson/insect#classifying-sequences) for information on classifiers)  
-    
+     MiFish, Crust16S, Fish16S, 18SUni, 18SV4, p23S, mlCOIint, SCL5.8S
+| Option value | Marker | Target                 | Primers                                                  | Date trained |
+|--------------|--------|------------------------|----------------------------------------------------------|--------------|
+| MiFish       | 12S    | Fish                   | MiFishUF/MiFishUR (Miya et al., 2015)                    | 11-11-2018   |
+| Crust16S     | 16S    | Marine crustaceans     | Crust16S_F/Crust16S_R (Berry et al., 2017)               | 06-26-2018   |
+| Fish16S      | 16S    | Marine fish            | Fish16sF/16s2R (Berry et al., 2017; Deagle et al., 2007) | 06-27-2018   |
+| 18SUni       | 18S    | Marine eukaryotes      | 18S_1F/18S_400R (Pochon et al., 2017)                    | 07-09-2018   |
+| 18SV4        | 18S    | Marine eukaryotes      | 18S_V4F/18S_V4R (Stat et al., 2017)                      | 05-25-2018   |
+| p23S         | 23S    | Algae                  | p23SrV_f1/p23SrV_r1 (Sherwood & Presting 2007)           | 07-15-2018   |
+| mlCOIint     | COI    | Metazoans              | mlCOIintF/jgHCO2198 (Leray et al., 2013)                 | 11-24-2018   |
+| SCL5.8S      | ITS2   | Cnidarians and sponges | scl58SF/scl28SR (Brian et al., 2019)                     | 09-20-2018   |  
+
+(see [here](https://github.com/shaunpwilkinson/insect#classifying-sequences) for more information on classifiers)  
 
 <small>**`--insect-threshold [num]`**</small>:  Minimum Akaike weight for the recursive classification procedure to continue toward the leaves of the tree (default: 0.8)  
 <small>**`--insect-offset [num]`**</small>: Log-odds score offset parameter governing whether the minimum score is met at each node (default: 0)  
@@ -546,3 +557,9 @@ $ eDNAFlow.nf \
   --primer-mismatch 3
 ```
 
+# Notification
+Nextflow enables the user to be notified upon completion or failure of the pipeline run. To do this, simply pass your email address with the `-N` option when running eDNAFlow.nf (again, note the single dash). For example, if you want to launch the pipeline using an options file and receive an email when the run completes:
+
+```bash
+$ eDNAFlow.nf -params-file options.yml -N someguy@nobody.com
+```

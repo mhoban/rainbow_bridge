@@ -430,7 +430,7 @@ Options for taxonomy assignment using the insect algorithm.
 
   - Filename of local .rds R object containing classifier model  
   - One of the following (case-insensitive) primer names:   
-     MiFish, Crust16S, Fish16S, 18SUni, 18SV4, p23S, mlCOIint, SCL5.8S
+     MiFish, Crust16S, Fish16S, 18SUni, 18SV4, p23S, mlCOIint, SCL5.8S  
 | Option value | Marker | Target                 | Primers                                                  | Date trained |
 |--------------|--------|------------------------|----------------------------------------------------------|--------------|
 | MiFish       | 12S    | Fish                   | MiFishUF/MiFishUR (Miya et al., 2015)                    | 11-11-2018   |

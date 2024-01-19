@@ -656,7 +656,7 @@ workflow {
         println(colors.yellow("Lineage file '${params.lineage}' does not exist and will be downloaded"))
       }
       get_lineage |
-        set{lineage}
+        set{ lineage }
     } else {
       lineage = Channel.fromPath(params.lineage, checkIfExists: true)
       merged = Channel.fromPath(params.merged, checkIfExists: false)

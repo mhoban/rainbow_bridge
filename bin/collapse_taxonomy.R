@@ -164,12 +164,7 @@ if (file_exists(opt$options$merged)) {
   merged <- read_tsv(opt$options$merged,col_types="i_i_",col_names=c("old_taxid","new_taxid"))
   filtered <- filtered %>%
     left_join(merged,by=c("taxid" = "old_taxid")) %>%
-    mutate(
-      taxid = case_when(
-        !is.na(new_taxid) ~ new_taxid,
-        .default = taxid
-      )
-    ) %>%
+    mutate( taxid = coalesce(new_taxid,taxid)) %>%
   select(-new_taxid)
 }
 

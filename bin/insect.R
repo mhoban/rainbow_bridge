@@ -158,9 +158,8 @@ if (file_exists(lineage_dump)) {
         .default = domain
       )
     ) %>%
-    # insert the domain column
-    # NOTE: I think there's a cleaner (tidier) way to do this, with something like insert_before
-    select(1:5,domain,everything())
+    # insert the domain column before the kingdom one
+    relocate(domain,.before=kingdom)
 }
 
 # merge zotu table, if desired

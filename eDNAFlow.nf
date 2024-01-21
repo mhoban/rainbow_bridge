@@ -402,7 +402,7 @@ process insect {
   publishDir "${params.outDir}/taxonomy/insect", mode: params.publishMode 
 
   input:
-    tuple path(zotus), path(classifier)
+    tuple path(zotus), path(classifier), path(zotu_table), path(lineage), path(merged)
 
   output:
     tuple path('insect_*.csv'), path('insect_model.rds'), emit: result
@@ -412,11 +412,22 @@ process insect {
   if [ "${classifier}" != "insect_model.rds" ]; then
     mv ${classifier} insect_model.rds
   fi
-  insect.R ${zotus} insect_model.rds \
-    ${task.cpus} ${params.insectThreshold} \
-    ${params.insectOffset} ${params.insectMinCount} \
-    ${params.insectPing} \
-    "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.csv"
+  insect.R \
+     --cores ${task.cpus} \
+     --threshold ${params.insectThreshold} \
+     --offset ${params.insectOffset} \
+     --min-count ${params.insectMinCount} \
+     --ping ${params.insectPing} \
+     --zotu-table ${zotu_table} \ 
+     --lineage ${lineage} \ 
+     --merged ${merged} \
+     ${params.zotus} insect_model.rds "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.csv"
+
+  # insect.R ${zotus} insect_model.rds \
+  #   ${task.cpus} ${params.insectThreshold} \
+  #   ${params.insectOffset} ${params.insectMinCount} \
+  #   ${params.insectPing} \
+  #   "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.csv"
   """
 }
 
@@ -940,6 +951,21 @@ workflow {
         lulu
     }
 
+    // get NCBI lineage dump if needed
+    if ((params.assignTaxonomy && !params.skipBlast) || params.insect) {
+      // get the NCBI ranked taxonomic lineage dump
+      if (!helper.file_exists(params.lineage)) {
+        get_lineage |
+          set{lineage}
+      } else {
+        lineage = Channel.fromPath(params.lineage, checkIfExists: true)
+        merged = Channel.fromPath(params.merged, checkIfExists: false)
+        lineage | 
+          combine(merged) | 
+          set { lineage }
+      }
+    }
+
     // run the insect classifier, if so desired
     // this should run in parallel with the blast & lulu processes
     if (params.insect) {
@@ -961,6 +987,8 @@ workflow {
       // run the insect classification
       zotus | 
         combine(classifier) | 
+        combine(zotu_table | 
+        combine(lineage) | 
         insect | 
         set { insectized }
       
@@ -972,18 +1000,6 @@ workflow {
       blast.out.result | 
         map { sid, blast_result -> blast_result } | 
         set { blast_result }
-
-      // get the NCBI ranked taxonomic lineage dump
-      if (!helper.file_exists(params.lineage)) {
-        get_lineage |
-          set{lineage}
-      } else {
-        lineage = Channel.fromPath(params.lineage, checkIfExists: true)
-        merged = Channel.fromPath(params.merged, checkIfExists: false)
-        lineage | 
-          combine(merged) | 
-          set { lineage }
-      }
 
     // get the appropriate taxonomy process
       tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy_r

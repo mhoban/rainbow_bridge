@@ -421,7 +421,7 @@ process insect {
      --zotu-table ${zotu_table} \
      --lineage ${lineage} \
      --merged ${merged} \
-     ${params.zotus} insect_model.rds "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.csv"
+     ${zotus} insect_model.rds "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.csv"
   """
 }
 

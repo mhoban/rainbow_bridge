@@ -418,16 +418,10 @@ process insect {
      --offset ${params.insectOffset} \
      --min-count ${params.insectMinCount} \
      --ping ${params.insectPing} \
-     --zotu-table ${zotu_table} \ 
-     --lineage ${lineage} \ 
+     --zotu-table ${zotu_table} \
+     --lineage ${lineage} \
      --merged ${merged} \
      ${params.zotus} insect_model.rds "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.csv"
-
-  # insect.R ${zotus} insect_model.rds \
-  #   ${task.cpus} ${params.insectThreshold} \
-  #   ${params.insectOffset} ${params.insectMinCount} \
-  #   ${params.insectPing} \
-  #   "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.csv"
   """
 }
 
@@ -956,7 +950,7 @@ workflow {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.lineage)) {
         get_lineage |
-          set{lineage}
+          set { lineage }
       } else {
         lineage = Channel.fromPath(params.lineage, checkIfExists: true)
         merged = Channel.fromPath(params.merged, checkIfExists: false)

@@ -981,7 +981,7 @@ workflow {
       // run the insect classification
       zotus | 
         combine(classifier) | 
-        combine(zotu_table | 
+        combine(zotu_table) | 
         combine(lineage) | 
         insect | 
         set { insectized }

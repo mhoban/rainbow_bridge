@@ -6,6 +6,7 @@ suppressPackageStartupMessages(library(readr))
 suppressPackageStartupMessages(library(stringr))
 suppressPackageStartupMessages(library(purrr))
 suppressPackageStartupMessages(library(optparse))
+suppressPackageStartupMessages(library(dplyr))
 
 nice_formatter <- function(object) {
   cat(object@usage, fill = TRUE)

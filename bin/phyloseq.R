@@ -9,7 +9,7 @@
 # Modified: Adam Bennett
 # 22/02/2023
 # Modified: Mykle Hoban
-# 11/07/2023 (That's in July)
+# 11/07/2023 (That's in July), and subsequently multiple times thereafter
 #===========================================================================
 
 suppressPackageStartupMessages(library(phyloseq))

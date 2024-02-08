@@ -1,6 +1,6 @@
 // assign/collapse taxonomy using the R port of the original python script
-process r_taxonomy {
-  label 'phyloseq'
+process r_lca {
+  label 'r'
 
   publishDir "${params.outDir}/taxonomy/lca", mode: params.publishMode 
 
@@ -29,7 +29,7 @@ process r_taxonomy {
 }  
 
 // assign/collapse taxonomy using the original python script
-process py_taxonomy {
+process py_lca {
   label 'python3'
 
   publishDir "${params.outDir}/taxonomy/lca", mode: params.publishMode 

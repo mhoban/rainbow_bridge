@@ -305,7 +305,7 @@ process blast {
     tuple val(sample_id), path(a), path(zotus_fasta), path(zotu_table), path(blast_db), path(custom_db)
 
   output:
-    tuple val(sample_id), path("${sample_id}_blast_result.tsv"), emit: result
+    tuple val(sample_id), path("blast_p${params.percentIdentity}_e${params.evalue}_q${params.qcov}_m${params.maxQueryResults}.tsv"), emit: result
 
   script:
   def cdb = (String)custom_db
@@ -354,7 +354,7 @@ process lulu_blast {
 
 // LULU curation
 process lulu {
-  label 'lulu'
+  label 'r'
 
   publishDir "${params.outDir}/lulu", mode: params.publishMode
 
@@ -486,7 +486,7 @@ process unzip {
 }
 
 process phyloseq {
-  label 'phyloseq'
+  label 'r'
 
   publishDir "${params.outDir}/phyloseq", mode: params.publishMode
 
@@ -636,10 +636,10 @@ include { fastqc as first_fastqc }    from './modules/modules.nf'
 include { fastqc as second_fastqc }   from './modules/modules.nf'
 include { multiqc as first_multiqc }  from './modules/modules.nf'
 include { multiqc as second_multiqc } from './modules/modules.nf'
-include { r_taxonomy as assign_collapse_taxonomy_r  } from './modules/modules.nf'
-include { r_taxonomy as assign_collapse_taxonomy_lulu_r  } from './modules/modules.nf'
-include { py_taxonomy as assign_collapse_taxonomy_py  } from './modules/modules.nf'
-include { py_taxonomy as assign_collapse_taxonomy_lulu_py  } from './modules/modules.nf'
+include { r_lca as collapse_taxonomy_r  } from './modules/modules.nf'
+include { r_lca as collapse_taxonomy_lulu_r  } from './modules/modules.nf'
+include { py_lca as collapse_taxonomy_py  } from './modules/modules.nf'
+include { py_lca as collapse_taxonomy_lulu_py  } from './modules/modules.nf'
 
 workflow {
   // make sure our arguments are all in order
@@ -651,7 +651,7 @@ workflow {
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
     // build input channels and get appropriate process
-    tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy_r
+    tax_process = params.oldTaxonomy ? collapse_taxonomy_py : collapse_taxonomy_r
     zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
     blast_result = Channel.fromPath(params.blastFile, checkIfExists: true)
 
@@ -996,7 +996,7 @@ workflow {
         set { blast_result }
 
     // get the appropriate taxonomy process
-      tax_process = params.oldTaxonomy ? assign_collapse_taxonomy_py : assign_collapse_taxonomy_r
+      tax_process = params.oldTaxonomy ? collapse_taxonomy_py : collapse_taxonomy_r
 
       // then we smash it together with the blast results 
       // and run the taxonomy assignment/collapser script
@@ -1010,7 +1010,7 @@ workflow {
 
       if (!params.skipLulu) {
         // run the taxonomy assignment for lulu-curated zotus
-        tax_process_lulu = params.oldTaxonomy ? assign_collapse_taxonomy_lulu_py : assign_collapse_taxonomy_lulu_r
+        tax_process_lulu = params.oldTaxonomy ? collapse_taxonomy_lulu_py : collapse_taxonomy_lulu_r
         lulu.out.result | 
           map { zotutable, zotu_map, result_object -> zotutable } | 
           combine(blast_result) |

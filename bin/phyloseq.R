@@ -238,9 +238,9 @@ if (!no_tree) {
 OTU    <- otu_table(otu, taxa_are_rows = TRUE)
 TAX    <- tax_table(taxa)
 META   <- sample_data(metadata)
-TREE   <- phy_tree(tree$tree)
 
 if (!no_tree) {
+  TREE   <- phy_tree(tree$tree)
   physeq <- phyloseq(OTU, TAX, META, TREE)
 } else {
   physeq <- phyloseq(OTU, TAX, META)

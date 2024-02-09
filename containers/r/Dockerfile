@@ -6,6 +6,6 @@ MAINTAINER "Mykle Hoban" mykle.hoban@hawaii.edu
 RUN /rocker_scripts/install_tidyverse.sh
 
 # install packages
-RUN Rscript -e 'install.packages(c("insect","optparse","phangorn","furrr"))' -e 'devtools::install_github("tobiasgf/lulu")'
+RUN Rscript -e 'install.packages(c("insect","optparse","phangorn","furrr","docopt"))' -e 'devtools::install_github("tobiasgf/lulu")'
 
 RUN Rscript -e 'BiocManager::install(c("phyloseq","dada2","DECIPHER"))'

@@ -45,7 +45,7 @@ def main():
 
     # print the header to the output file
     for lab in lable:
-        print("domain\tkingdom\tphylum\tclass\torder\tfamily\tgenus\tspecies\tOTU\tnumberOfUnq_BlastHits" +
+        print("domain\tkingdom\tphylum\tclass\torder\tfamily\tgenus\tspecies\tOTU\tunique_hits" +
               '\t' + str('\t'.join(lable[lab])))
 
     # open filtered blast results temporary file

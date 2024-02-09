@@ -42,7 +42,7 @@ curated_result <- lulu(
 lulu_table <- curated_result$curated_table
 
 lulu_table <- data.frame(
-  `#OTU ID` = rownames(lulu_table),
+  OTU = rownames(lulu_table),
   lulu_table,
   check.names = FALSE,
   row.names = NULL

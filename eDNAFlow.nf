@@ -1,4 +1,4 @@
-#!/usr/bin/env nextflow
+#!/usr/bin/env nextflow24
 nextflow.enable.dsl=2
 
 // pull in the helper class
@@ -335,10 +335,10 @@ process lulu_blast {
   label 'blast'
 
   input:
-    tuple val(sample_id), path(zotus_fasta)
+    tuple val(sample_id), path(zotus_fasta), path(zotu_table)
   
   output:
-    tuple val(sample_id), path('match_list.txt')
+    tuple val(sample_id), path('match_list.txt'), path(zotu_table)
 
   script:
   """
@@ -402,7 +402,7 @@ process insect {
   publishDir "${params.outDir}/taxonomy/insect", mode: params.publishMode 
 
   input:
-    tuple path(zotus), path(classifier), path(zotu_table), path(lineage), path(merged)
+    tuple path(classifier), path(lineage), path(merged), path(zotus), path(zotu_table)
 
   output:
     tuple path('insect_*.csv'), path('insect_model.rds'), emit: result
@@ -806,6 +806,9 @@ workflow {
             set { reads_filtered_merged }
         } 
 
+        // get relabeling process
+        relabel = vsearch ? relabel_vsearch : relabel_usearch
+
         // run the rest of the pipeline, including the primer mismatch check,
         // length filtering, and smashing together into one file
         reads_filtered_merged | 
@@ -813,7 +816,8 @@ workflow {
           ngsfilter | 
           groupTuple | 
           filter_length | 
-          (vsearch ? relabel_vsearch : relabel_usearch) | set { relabeled }
+          relabel | 
+          set { relabeled }
 
           relabeled.result | 
             collectFile(name: "${params.project}_relabeled.fasta", storeDir: "${params.preDir}/merged") |
@@ -878,6 +882,9 @@ workflow {
           }
         }
 
+        // get relabeling process
+        relabel = vsearch ? relabel_vsearch : relabel_usearch
+
         // run the rest of the pipeline, including demultiplexing, length filtering,
         // splitting, and recombination for dereplication
         reads_filtered_merged | 
@@ -895,7 +902,8 @@ workflow {
           // get rid of the '__split__' business in the filenames
           map { [it.baseName.replaceFirst(/^__split__/,""), it] } | 
           // relabel to fasta
-          (vsearch ? relabel_vsearch : relabel_usearch) | set { relabeled }
+          relabel | 
+          set { relabeled }
           // collect to single relabeled fasta
           relabeled.result | 
             collectFile(name: "${params.project}_relabeled.fasta", storeDir: "${params.preDir}/merged") |
@@ -939,9 +947,8 @@ workflow {
     if (!params.skipLulu) {
       dereplicated | 
         // get zotus and sample id
-        map { sid, uniques, zotus, zotutable -> [sid,zotus] } | 
+        map { sid, uniques, zotus, zotutable -> [sid,zotus,zotutable] } | 
         lulu_blast | 
-        combine(zotu_table) | 
         lulu
     }
 
@@ -965,7 +972,7 @@ workflow {
     if (params.insect) {
       // dereplicate returns a tuple, but we only need the zotus fasta
       dereplicated | 
-        map { sid, uniques, zotus, zotutable -> zotus } | 
+        map { sid, uniques, zotus, zotutable -> [zotus,zotutable] } | 
         set { zotus }
       
       // load the classifier model
@@ -979,13 +986,10 @@ workflow {
       }
 
       // run the insect classification
-      zotus | 
-        combine(classifier) | 
-        combine(zotu_table) | 
+      classifier | 
         combine(lineage) | 
-        insect | 
-        set { insectized }
-      
+        combine(zotus) | 
+        insect | set { insectized }
     }
 
     // run taxonomy assignment/collapse script if so requested

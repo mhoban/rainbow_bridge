@@ -557,6 +557,35 @@ def check_params() {
     exit(1)
   } 
 
+  // check phyloseq params
+  if (params.phyloseq) {
+    if (!helper.file_exists(params.metadata)) {
+      println(colors.yellow("The metadata file you passed to use with phyloseq ('${params.metadata}') does not exist"))
+      /* exit(1) */
+    }
+
+    switch(params.taxonomy) {
+      case 'lca':
+        if (!params.assignTaxonomy) {
+          println(colors.yellow("You passed --phyloseq with 'lca' as the taxonomy option, but LCA has not been run."))
+          println(colors.yellow("Did you forget the --assign-taxonomy option?"))
+        }
+        break
+      case 'insect':
+        if (!params.insect) {
+          println(colors.yellow("You passed --phyloseq with 'insect' as the taxonomy option, but insect has not been run."))
+          println(colors.yellow("Did you forget the --insect option?"))
+        }
+        break
+      default:
+        if (!helper.file_exists(params.taxonomy)) {
+          println(colors.yellow("You passed --phyloseq with a user-supplied taxonomy table, but the file '${params.taxonomy}' does not exist"))              
+          /* exit(1) */
+        }
+        break
+    }
+  }
+
   // check to make sure standalone taxonomy will work
   if (params.standaloneTaxonomy) {
     if (!helper.file_exists(params.blastFile)) {
@@ -1026,7 +1055,7 @@ workflow {
     }
 
     /* put all the phyloseq stuff down here */
-    if (params.phyloseq) {
+    if (params.phyloseq && helper.file_exists(params.metadata)) {
       switch (params.taxonomy) {
         case "lca":
           if (params.assignTaxonomy) {
@@ -1060,10 +1089,7 @@ workflow {
               combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 
               combine( Channel.of("file") ) |
               phyloseq
-          } else {
-            println(colors.red("Supplied taxonomy table ${params.taxonomy} does not exist!"))
-            exit(1)
-          }
+          } 
           break
       }
     }

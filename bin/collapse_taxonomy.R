@@ -102,11 +102,13 @@ zotus <- read_tsv(zotu_table, col_types = cols())
 # perform initial filtering
 filtered <- blast %>%
   arrange(desc(qcov),desc(pident)) %>%
-  distinct(zotu,taxid,.keep_all = TRUE) %>%
   # add in count of unique blast hits
   add_count(zotu,name="unique_hits") %>%
+  # keep only unique zotu/taxid combinations
+  distinct(zotu,taxid,.keep_all = TRUE) %>%
   # filter by percentid and query coverage thresholds
   filter(pident >= pid_thresh & qcov >= qcov_thresh) 
+
 if (semicolon) {
   # depending on how blast was run, we could potentially have multiple taxids,
   # so let's separate out rows based on the delimited ';'

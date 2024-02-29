@@ -193,7 +193,7 @@ When the pipeline is run, output from each step can be found in directories corr
 |             | zotus                               | Dereplicated/denoised sequence results<br />(unique sequences, zOTU sequences, zOTU table) |                                                          |
 |             | blast                               | BLAST results                                                |                                                          |
 |             | lulu                                | LULU curation results                                        |                                                          |
-|             | taxonomy/lca                        | Results of taxonomy collapser script(s)                      | --assign-taxonomy<br />--old-taxonomy                    |
+|             | taxonomy/lca                        | Results of taxonomy collapser script(s)                      | --collapse-taxonomy                    |
 |             | taxonomy/insect                     | Insect classification results                                | --insect                                                 |
 |             | phyloseq                            | Phyloseq object                                              | --phyloseq and associated options                        |
 | work/       | A bunch of nonsense                 | All internal and intermediate files processed by nextflow    |                                                          |
@@ -410,11 +410,10 @@ These options relate to assignment/collapsing of taxonomic IDs. There are two di
 #### LCA assignment
 Options for the LCA method of taxonomy assignment/collapse. Note: it is also possible to run taxonomy assignment as a standalone process (i.e., separate from the rest of the pipeline). To do this, pass the `--standalone-taxonomy` option along with the `--blast-file` and `--zotu-table` options.
 
-<small>**`--assign-taxonomy`**</small>: Perform taxonomy assignment & LCA collapse  
+<small>**`--collapse-taxonomy`**</small>: Collapse assigned BLAST results by least common ancestor (LCA)  
 <small>**`--standalone-taxonomy`**</small>: Run LCA script standalone against user-supplied data  
 <small>**`--blast-file [file]`**</small>: (Only applicable when running taxonomy assignment as standalone) BLAST result table (output from blast step of pipeline)  
 <small>**`--zotu-table [file]`**</small>: (Only applicable when running taxonomy assignment as standalone) zOTU table file (output from denoising step of pipeline)  
-<small>**`--old-taxonomy`**</small>:  Use the old (python-based) taxonomy script rather than the newer R-based one (use in combination with `--assign-taxonomy`)  
 <small>**`--lineage [file]`**</small>: Specify previous-download NCBI rankedlineage.dmp file (leave blank to download latest)  
 <small>**`--merged [file]`**</small>: Specify previous-download NCBI merged.dmp file (leave blank to download latest)  
 <small>**`--dropped [str]`**</small>: Placeholder for dropped taxonomic levels (default: 'dropped'). Pass "NA" for blank/NA
@@ -453,7 +452,7 @@ Options for taxonomy assignment using the insect algorithm.
 ### Generating phyloseq objects
 eDNAFlow supports generation of [phyloseq](https://joey711.github.io/phyloseq/) objects from pipeline output or user-supplied data. This will produce an RDS file that you can load directly into R and use for downstream analyses. There are a few options that can be specified for this process. Pipeline-generated (i.e., [insect](#insect) or [LCA](#lca)) or user-supplied taxonomic classifications can be used along with the required user-supplied sample metadata.
 
-<small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--assign-taxonomy` option).  
+<small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--collapse-taxonomy` option).  
 <small>**`--metadata [file]`**</small>: A comma- or tab-separated sample metadata table (required). This can contain any arbitrary sample information, but it must have a header and the first column (preferably called 'sample') must contain sample IDs.  
 <small>**`--taxonomy [taxonomy]`**</small>: Taxonomic classification scheme. This can be one of either `lca` (to use LCA taxonomy, the default), `insect` (for insect taxonomy), or the filename of a comma/tab-separated taxonomy table. If user-supplied, the first column of the taxonomy table must be named "OTU" (case-sensitive) and contain zOTU IDs. It may have any number of arbitrary columns of taxonomic classification (e.g., domain, kingdom, phylum, etc.) after that.  
 <small>**`--no-tree`**</small>: Skip creation of phylogenetic tree.  
@@ -519,7 +518,7 @@ fwd: forward
 rev: reverse
 illuminaDemultiplexed: true
 removeAmbiguousIndices: true
-assignTaxonomy: true
+collapseTaxonomy: true
 primerMismatch: 3
 ```
 
@@ -533,7 +532,7 @@ and in json format:
   "rev": "reverse",
   "illuminaDemultiplexed": true,
   "removeAmbiguousIndices": true,
-  "assignTaxonomy": true,
+  "collapseTaxonomy": true,
   "primerMismatch": 3
 }
 ```
@@ -554,7 +553,7 @@ $ eDNAFlow.nf \
   --rev reverse \
   --illumina-demultipexed \
   --remove-ambiguous-indices \
-  --assign-taxonomy \
+  --collapse-taxonomy \
   --primer-mismatch 3
 ```
 

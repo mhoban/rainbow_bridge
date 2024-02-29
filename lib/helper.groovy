@@ -134,11 +134,10 @@ class helper {
       --qcov [num]                 Percent query coverage per hsp (default: 100)
 
     Taxonomy assignment / LCA:
-      --assign-taxonomy            Perform final taxonomy assignment & LCA collapse 
+      --collapse-taxonomy          Collapse assigned BLAST results by least common ancestor (LCA)
       --standalone-taxonomy        Run LCA script as standalone
       --blast-file [file]          Blast result table (only for standalone LCA assignment)
       --zotu-table [file]          zOTU table file (only for standalone LCA assignment)
-      --old-taxonomy               Use the old (python-based) taxonomy script rather than the newer R-based one
       --lineage [file]             Previously downloaded NCBI rankedlineage.dmp file (leave blank to download)
       --merged [file]              Previously downloaded NCBI merged.dmp file (leave blank to dowload)
       --lca-qcov [num]             Minimum query coverage for LCA taxonomy assignment (default: 100)
@@ -167,7 +166,7 @@ class helper {
                                    should be for the the recursive classification algorithm to be skipped (default: ${params.insectPing})
 
     Generating phyloseq objects:
-      --phyloseq                   Create phyloseq object (requires --assign-taxonomy)
+      --phyloseq                   Create phyloseq object (requires --collapse-taxonomy)
       --metadata [file]            Comma or tab-separated sample metadata file (required)
       --taxonomy [tax]               Taxonomic classifaction scheme. May be pipeline-generated or user supplied
                                    (acceptable options: lca, insect, <filename>; default: ${params.taxonomy})

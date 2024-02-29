@@ -566,9 +566,9 @@ def check_params() {
 
     switch(params.taxonomy) {
       case 'lca':
-        if (!params.assignTaxonomy) {
+        if (!params.assignTaxonomy || !params.collapseTaxonomy) {
           println(colors.yellow("You passed --phyloseq with 'lca' as the taxonomy option, but LCA has not been run."))
-          println(colors.yellow("Did you forget the --assign-taxonomy option?"))
+          println(colors.yellow("Did you forget the --collapse-taxonomy option?"))
         }
         break
       case 'insect':
@@ -982,7 +982,7 @@ workflow {
     }
 
     // get NCBI lineage dump if needed
-    if ((params.assignTaxonomy && !params.skipBlast) || params.insect) {
+    if (((params.assignTaxonomy || params.collapseTaxonomy) && !params.skipBlast) || params.insect) {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.lineage)) {
         get_lineage |
@@ -1022,7 +1022,7 @@ workflow {
     }
 
     // run taxonomy assignment/collapse script if so requested
-    if (params.assignTaxonomy && !params.skipBlast) {
+    if ((params.assignTaxonomy || params.collapseTaxonomy) && !params.skipBlast) {
       // here we grab the blast result
       blast.out.result | 
         map { sid, blast_result -> blast_result } | 
@@ -1058,7 +1058,7 @@ workflow {
     if (params.phyloseq && helper.file_exists(params.metadata)) {
       switch (params.taxonomy) {
         case "lca":
-          if (params.assignTaxonomy) {
+          if (params.assignTaxonomy || params.collapseTaxonomy) {
             taxonomized | 
               map { it[1] } |
               combine(zotu_table) | 

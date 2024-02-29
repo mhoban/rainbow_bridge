@@ -171,5 +171,5 @@ if (file_exists(zotu_table_file)) {
 }
 
 # save final output
-write_csv(classified,output_file)
+write_tsv(classified,output_file)
 

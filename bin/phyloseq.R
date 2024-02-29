@@ -136,8 +136,7 @@ taxonomy <- load_table(taxonomy_file,col_types=cols()) %>%
 
 if (!is.na(tax_columns)) {
   to_keep <- tax_columns %>%
-    str_split(",") %>%
-    .[[1]]
+    str_split_1(",")
   taxonomy <- taxonomy %>% select(otu,all_of(to_keep))
 } else {
   taxonomy <- taxonomy %>% select(where(is.character))

@@ -405,7 +405,7 @@ process insect {
     tuple path(classifier), path(lineage), path(merged), path(zotus), path(zotu_table)
 
   output:
-    tuple path('insect_*.csv'), path('insect_model.rds'), emit: result
+    tuple path('insect_*.tsv'), path('insect_model.rds'), emit: result
 
   script:
   """
@@ -421,7 +421,7 @@ process insect {
      --zotu-table ${zotu_table} \
      --lineage ${lineage} \
      --merged ${merged} \
-     ${zotus} insect_model.rds "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.csv"
+     ${zotus} insect_model.rds "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.tsv"
   """
 }
 

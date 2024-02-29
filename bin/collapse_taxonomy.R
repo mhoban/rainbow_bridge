@@ -101,7 +101,11 @@ zotus <- read_tsv(zotu_table, col_types = cols())
 
 # perform initial filtering
 filtered <- blast %>%
+  # sort by descending pid
   arrange(desc(qcov),desc(pident)) %>%
+  # keep only unique sequence matches since you can get a ton of matches to the same sequence
+  # if it's something like a whole mito/genome 
+  distinct(seqid,.keep_all = TRUE) %>%
   # add in count of unique blast hits
   add_count(zotu,name="unique_hits") %>%
   # keep only unique zotu/taxid combinations

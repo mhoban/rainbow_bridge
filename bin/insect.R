@@ -167,7 +167,7 @@ if (file_exists(zotu_table_file)) {
   zotu_table <- read_tsv(zotu_table_file,col_types=cols())
   # use inner join so we only get complete data
   classified <- classified %>%
-    inner_join(zotu_table,by=set_names(colnames(zotu_table)[1],"representative")) 
+    inner_join(zotu_table,by=setNames(colnames(zotu_table)[1],"representative")) 
 }
 
 # save final output

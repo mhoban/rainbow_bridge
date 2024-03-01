@@ -530,6 +530,12 @@ def check_params() {
     exit(0)
   }
 
+  // since we changed the way --filter-uncultured works, let's warn the user about it
+  if (params.filterUncultured) {
+    println(colors.yellow("The parameter --filter-uncultured is no longer recognized. We now filter out uncultured/cloned/whatever sequences by default."))
+    println(colors.yellow("To retain those sequences, use the --keep-uncultured argument"))
+  }
+
   // give example of what a demultiplexed FASTA file looks like
   if (params.demuxedExample) {
     helper.demuxed_example()

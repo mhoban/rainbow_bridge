@@ -12,7 +12,7 @@ process r_lca {
 
 
   script:
-  pf = params.filterUncultured ? "-f" : ""
+  pf = params.keepUncultured ? "-u" : ""
   c = curated ? "lulu_" : ""
   """
   collapse_taxonomy.R \

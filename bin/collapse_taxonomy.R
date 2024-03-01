@@ -42,7 +42,7 @@ option_list = list(
   make_option(c("-q", "--qcov"), action="store", default=NA, type='double', help="Minimum query coverage threshold"),
   make_option(c("-p", "--pid"), action="store", default=NA, type='double', help="Minimum percent match ID threshold"),
   make_option(c("-d", "--diff"), action="store", default=NA, type='double', help="Percent ID difference threshold for matching query coverage"),
-  make_option(c("-f", "--filter-uncultured"), action="store_true", default=FALSE, type='logical', help="Ignore uncultured/environmental/cloned, etc. sequences"),
+  make_option(c("-u", "--keep-uncultured"), action="store_true", default=FALSE, type='logical', help="Retain uncultured/environmental/cloned, etc. sequences"),
   make_option(c("-i", "--intermediate"), action="store", default=NA, type='character', help="Store intermediate filtered BLAST results in specified file"),
   make_option(c("-s", "--semicolon"), action="store_true", default=FALSE, type='logical', help="Interpret taxids split by semicolon"),
   make_option(c("-m", "--merged"), action="store", default="", type="character", help="NCBI merged.dmp file"),
@@ -78,7 +78,7 @@ output_table <- opt$args[4]
 qcov_thresh <- opt$options$qcov
 pid_thresh <- opt$options$pid
 diff_thresh <- opt$options$diff
-filter_uncultured <- opt$options$filter_uncultured
+filter_uncultured <- !opt$options$keep_uncultured
 intermediate <- opt$options$intermediate
 semicolon <- opt$options$semicolon
 drop_blank <- opt$options$drop_blank

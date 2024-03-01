@@ -420,7 +420,7 @@ Options for the LCA method of taxonomy assignment/collapse. Note: it is also pos
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy assignment (default: 100)  
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy assignment (default: 97)  
 <small>**`--lca-diff [num]`**</small>:  Maximum difference between percent identities (when query coverage is identical) where species-level taxonomy is retained (default: 1)  
-<small>**`--filter-uncultured`**</small>:  Optionally get rid of sequences that are listed as 'uncultured', 'environmental sample', 'clone', or 'synthetic'  
+<small>**`--keep-uncultured`**</small>:  Keep sequences that are listed as 'uncultured', 'environmental sample', 'clone', or 'synthetic'  
 
 #### Insect classification
 Options for taxonomy assignment using the insect algorithm. 

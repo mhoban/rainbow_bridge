@@ -6,7 +6,7 @@ suppressPackageStartupMessages(library(docopt))
 
 # parse command-line options using docopt
 doc <- "Usage:
-  f.R [options] <zotu_table> <match_list> <curated_zotu_table> <curation_map> <rds>
+  lulu.R [options] <zotu_table> <match_list> <curated_zotu_table> <curation_map> <rds>
 
 Options: 
   -m <mr> --min-ratio <mr>         Minimim abundance ratio between a potential error and a potential parent to be identified as an error [default: 1]

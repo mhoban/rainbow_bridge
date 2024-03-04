@@ -101,8 +101,8 @@ option_list = list(
 # parse command-line args
 opt = parse_args2(OptionParser(option_list=option_list,formatter=nice_formatter))
 
-taxonomy_file      <- opt$options$taxonomy
-otu_file         <- opt$options$otu_table
+taxonomy_file <- opt$options$taxonomy
+otu_file      <- opt$options$otu_table
 otu_col       <- opt$options$otu
 fasta_file    <- opt$options$fasta
 metadata_file <- opt$options$metadata

@@ -8,6 +8,172 @@ import colors
 /* some global variables */
 exec_denoiser = false
 
+
+// quick check if variable is numeric
+def is_num(x) {
+  return x instanceof Number
+}
+
+// quickly make a number
+def num(x) {
+  if (!is_num(x)) {
+    return Float.parseFloat(x)
+  } else {
+    return x
+  }
+}
+
+// sanity check to make sure command-line parameters are correct and valid
+def check_params() {
+  // show help message and bail
+  if (params.help) {
+    helper.usage(params)
+    if (params.debug) {
+      println("\n\n\n")
+      println(params)
+    }
+    exit(0)
+  }
+
+  if (params.oldTaxonomy) {
+    println(colors.yellow("The parameter --old-taxonomy no longer does anything, since the original python script has been phased out."))
+  }
+
+  // since we changed the way --filter-uncultured works, let's warn the user about it
+  if (params.filterUncultured) {
+    println(colors.yellow("The parameter --filter-uncultured is no longer recognized, we now filter out uncultured/cloned/whatever sequences by default."))
+    println(colors.yellow("To retain those sequences, use the --keep-uncultured argument"))
+  }
+
+  // give example of what a demultiplexed FASTA file looks like
+  if (params.demuxedExample) {
+    helper.demuxed_example()
+    exit(0)
+  }
+
+  // give a little message that --base-dir is not the way to do it
+  if (params.baseDir != "") {
+    println(colors.yellow("Parameter ") + colors.byellow("--base-dir") + colors.yellow(" has been replaced by ") + 
+            colors.byellow("--reads") + colors.yellow(". Please use ") + colors.byellow("--reads") + colors.yellow(" going forward")) 
+  }
+
+  if (params.split && params.illuminaDemultiplexed) {
+    println(colors.red("Parameters") + colors.bred(" --split ") + colors.red("and") + colors.bred(" --illumina-demultiplexed ") + colors.red("are mutually exclusive"))
+    exit(1)
+  }
+
+  // make sure the right version of single,paired,demultiplexed is passed
+  if (!helper.file_exists(params.demuxedFasta) && !params.standaloneTaxonomy && params.single == params.paired) {
+    if (!params.single) {
+      println(colors.red("One of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" MUST be passed"))
+    } else {
+      println(colors.red("Only one of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" may be passed"))
+    }
+    exit(1)
+  } 
+
+  // check phyloseq params
+  if (params.phyloseq) {
+    if (!helper.file_exists(params.metadata)) {
+      println(colors.yellow("The metadata file you passed to use with phyloseq ('${params.metadata}') does not exist"))
+      /* exit(1) */
+    }
+
+    switch(params.taxonomy) {
+      case 'lca':
+        if (!params.assignTaxonomy && !params.collapseTaxonomy) {
+          println(colors.yellow("You passed --phyloseq with 'lca' as the taxonomy option, but LCA has not been run."))
+          println(colors.yellow("Did you forget the --collapse-taxonomy option?"))
+        }
+        break
+      case 'insect':
+        if (!params.insect) {
+          println(colors.yellow("You passed --phyloseq with 'insect' as the taxonomy option, but insect has not been run."))
+          println(colors.yellow("Did you forget the --insect option?"))
+        }
+        break
+      default:
+        if (!helper.file_exists(params.taxonomy)) {
+          println(colors.yellow("You passed --phyloseq with a user-supplied taxonomy table, but the file '${params.taxonomy}' does not exist"))              
+          /* exit(1) */
+        }
+        break
+    }
+  }
+
+  // check to make sure standalone taxonomy will work
+  if (params.standaloneTaxonomy) {
+    if (!helper.file_exists(params.blastFile)) {
+      println(colors.red("The supplied blast result table \"${params.blastFile}\" does not exist"))  
+      exit(1)
+    }
+    if (!helper.file_exists(params.zotuTable)) {
+      println(colors.red("The supplied zOTU table \"${params.zotuTable}\" does not exist"))  
+      exit(1)
+    }
+  }
+
+  if (params.sampleMap != "" && !helper.file_exists(params.sampleMap)) {
+    println(colors.red("The supplied sample map file ${params.sampleMap} does not exist"))
+    exit(1)
+  }
+
+  // if denoiser is an executable, treat it as such
+  // otherwise check to make sure it's a valid input
+  if (helper.executable(params.denoiser)) {
+    exec_denoiser = true
+  } else {
+    if (!(params.denoiser in ['usearch','usearch32','vsearch'])) {
+      println(colors.bred("--denoiser") + colors.red(" must be either 'usearch', 'usearch32', 'vsearch', or a path to an executable (e.g., /opt/sw/bin/usearch64)"))
+      exit(1)
+    }
+  }
+
+  // sanity check, blast database
+  if (!helper.is_dir(params.blastDb)) {
+    println(colors.red("BLAST database must be specified either with the ") + colors.bred("--blast-db") + colors.red(" argument"))
+    println(colors.red("or using the \$BLASTDB environment variable. It must point to the directory"))
+    println(colors.red("containing the `nt` database (do not include /nt in the path)"))
+    exit(1)
+  }
+
+  // make sure custom blast database is specified correctly
+  if (params.customDbName != "NOTHING" || params.customDb != "NOTHING") {
+    if (!helper.is_dir(params.customDb)) {
+      println(colors.red("Custom BLAST database must be specified as follows:"))
+      println(colors.bred("--custom-db-dir") + colors.red(" <path to custom BLAST db directory>"))
+      println(colors.bred("--custom-db") + colors.red(" <name of custom BLAST db (basename of .ndb, etc. files)>"))
+      println(colors.red("example:"))
+      println(colors.bred("--custom-db-dir") + colors.red(" /storage/blast ") + colors.bred("--custom-db") + colors.red(" test"))
+      exit(1)
+    }
+    if (params.customDbName == "NOTHING") {
+      println(colors.red("Name of custom BLAST db must be specified with the ") + colors.bred("--custom-db") + colors.red(" option"))
+      exit(1)
+    }
+  }
+
+  // another blast database sanity check
+  if (helper.basename(params.blastDb) == helper.basename(params.customDb)) {
+    println(colors.red("Due to the vicissitudes of nextflow internality, the directory names"))
+    println(colors.red("of the main and custom BLAST databases must be different."))
+    println(colors.red("As specified, both reside in directories called ${helper.basename(params.blastDb)}"))
+    exit(1)
+  }
+
+  // make sure insect parameter is valid: either a file or one of the pretrained models
+  if (params.insect) {
+    if (!helper.insect_classifiers.containsKey(params.insect.toLowerCase())) {
+      if (!helper.file_exists(params.insect)) {
+        println(colors.red("Value passed to ") + colors.bred("--insect") + colors.red(" must be one of the supported builtins or an RDS file"))
+        println(colors.red("containing a trained insect classifier model."))
+        println(colors.red("See eDNAFlow.nf ") + colors.bred("--help") + colors.red(" for supported builtin models"))
+        exit(1)
+      }
+    }    
+  }
+}
+
 // trim and (where relevant) merge paired-end reads
 process filter_merge {
   label 'adapterRemoval'
@@ -299,13 +465,19 @@ process derep_usearch {
 process blast {
   label 'blast'
 
-  publishDir "${params.outDir}/blast", mode: params.publishMode 
+  publishDir { 
+    pid = String.format("%d",(Integer)num(params.percentIdentity ))
+    evalue = String.format("%.3f",num(params.evalue))
+    qcov = String.format("%d",(Integer)num(params.qcov))
+    return "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}" 
+  }, mode: params.publishMode 
 
   input:
     tuple val(sample_id), path(a), path(zotus_fasta), path(zotu_table), path(blast_db), path(custom_db)
 
   output:
-    tuple val(sample_id), path("blast_p${params.percentIdentity}_e${params.evalue}_q${params.qcov}_m${params.maxQueryResults}.tsv"), emit: result
+    tuple val(sample_id), path("blast_result.tsv"), emit: result
+    path 'blast_settings.txt'
 
   script:
   def cdb = (String)custom_db
@@ -314,7 +486,16 @@ process blast {
   } else {
     cdb = "${cdb}/${params.customDbName}"
   }
+
+  def pid = String.format("%d",(Integer)num(params.percentIdentity ))
+  def evalue = String.format("%.3f",num(params.evalue))
+  def qcov = String.format("%d",(Integer)num(params.qcov))           
   """
+  # record blast settings
+  echo "Percent identity: ${pid}" > blast_settings.txt
+  echo "e-value: ${evalue}" >> blast_settings.txt
+  echo "Query qoverage: ${qcov}" >> blast_settings.txt
+  echo "Max. target sequences: ${params.maxQueryResults}" >> blast_settings.txt
 
   # this environment variable needs to be there for the taxonomy to show up properly
   export BLASTDB="${blast_db}"
@@ -326,7 +507,7 @@ process blast {
     -best_hit_score_edge 0.05 -best_hit_overhang 0.25 \
     -qcov_hsp_perc ${params.qcov} -max_target_seqs ${params.maxQueryResults} \
     -query ${zotus_fasta} -num_threads ${task.cpus} \
-    -out blast_p${params.percentIdentity}_e${params.evalue}_q${params.qcov}_m${params.maxQueryResults}.tsv
+    -out blast_result.tsv
   """
 }
 
@@ -399,16 +580,34 @@ process get_model {
 process insect {
   label 'insect'
 
-  publishDir "${params.outDir}/taxonomy/insect", mode: params.publishMode 
+  publishDir { 
+    offs = String.format("%d",(Integer)num(params.insectOffset))
+    thresh = String.format("%.2f",num(params.insectThreshold))
+    minc = String.format("%d",(Integer)num(params.insectMinCount))
+    ping = String.format("%.2f",num(params.insectPing))
+    return "${params.outDir}/taxonomy/insect_thresh${thresh}_offset${offs}_mincount${minc}_ping${ping}"
+  }, mode: params.publishMode 
 
   input:
     tuple path(classifier), path(lineage), path(merged), path(zotus), path(zotu_table)
 
   output:
     tuple path('insect_*.tsv'), path('insect_model.rds'), emit: result
+    path 'insect_settings.txt'
 
   script:
+  def offs = String.format("%d",(Integer)num(params.insectOffset))
+  def thresh = String.format("%.2f",num(params.insectThreshold))
+  def minc = String.format("%d",(Integer)num(params.insectMinCount))
+  def ping = String.format("%.2f",num(params.insectPing))
+
   """
+  # record insect settings
+  echo "Offset: ${offs}" > insect_settings.txt
+  echo "Threshold: ${thresh}" >> insect_settings.txt
+  echo "Minimum count: ${minc}" >> insect_settings.txt
+  echo "Ping: ${ping}" >> insect_settings.txt
+
   if [ "${classifier}" != "insect_model.rds" ]; then
     mv ${classifier} insect_model.rds
   fi
@@ -421,7 +620,7 @@ process insect {
      --zotu-table ${zotu_table} \
      --lineage ${lineage} \
      --merged ${merged} \
-     ${zotus} insect_model.rds "insect_t${params.insectThreshold}_o${params.insectOffset}_m${params.insectMinCount}_p${params.insectPing}.tsv"
+     ${zotus} insect_model.rds "insect_taxonomy.tsv"
   """
 }
 
@@ -518,163 +717,14 @@ process phyloseq {
 }
 
 
-// sanity check to make sure command-line parameters are correct and valid
-def check_params() {
-  // show help message and bail
-  if (params.help) {
-    helper.usage(params)
-    if (params.debug) {
-      println("\n\n\n")
-      println(params)
-    }
-    exit(0)
-  }
-
-  // since we changed the way --filter-uncultured works, let's warn the user about it
-  if (params.filterUncultured) {
-    println(colors.yellow("The parameter --filter-uncultured is no longer recognized. We now filter out uncultured/cloned/whatever sequences by default."))
-    println(colors.yellow("To retain those sequences, use the --keep-uncultured argument"))
-  }
-
-  // give example of what a demultiplexed FASTA file looks like
-  if (params.demuxedExample) {
-    helper.demuxed_example()
-    exit(0)
-  }
-
-  // give a little message that --base-dir is not the way to do it
-  if (params.baseDir != "") {
-    println(colors.yellow("Parameter ") + colors.byellow("--base-dir") + colors.yellow(" has been replaced by ") + 
-            colors.byellow("--reads") + colors.yellow(". Please use ") + colors.byellow("--reads") + colors.yellow(" going forward")) 
-  }
-
-  if (params.split && params.illuminaDemultiplexed) {
-    println(colors.red("Parameters") + colors.bred(" --split ") + colors.red("and") + colors.bred(" --illumina-demultiplexed ") + colors.red("are mutually exclusive"))
-    exit(1)
-  }
-
-  // make sure the right version of single,paired,demultiplexed is passed
-  if (!helper.file_exists(params.demuxedFasta) && !params.standaloneTaxonomy && params.single == params.paired) {
-    if (!params.single) {
-      println(colors.red("One of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" MUST be passed"))
-    } else {
-      println(colors.red("Only one of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" may be passed"))
-    }
-    exit(1)
-  } 
-
-  // check phyloseq params
-  if (params.phyloseq) {
-    if (!helper.file_exists(params.metadata)) {
-      println(colors.yellow("The metadata file you passed to use with phyloseq ('${params.metadata}') does not exist"))
-      /* exit(1) */
-    }
-
-    switch(params.taxonomy) {
-      case 'lca':
-        if (!params.assignTaxonomy || !params.collapseTaxonomy) {
-          println(colors.yellow("You passed --phyloseq with 'lca' as the taxonomy option, but LCA has not been run."))
-          println(colors.yellow("Did you forget the --collapse-taxonomy option?"))
-        }
-        break
-      case 'insect':
-        if (!params.insect) {
-          println(colors.yellow("You passed --phyloseq with 'insect' as the taxonomy option, but insect has not been run."))
-          println(colors.yellow("Did you forget the --insect option?"))
-        }
-        break
-      default:
-        if (!helper.file_exists(params.taxonomy)) {
-          println(colors.yellow("You passed --phyloseq with a user-supplied taxonomy table, but the file '${params.taxonomy}' does not exist"))              
-          /* exit(1) */
-        }
-        break
-    }
-  }
-
-  // check to make sure standalone taxonomy will work
-  if (params.standaloneTaxonomy) {
-    if (!helper.file_exists(params.blastFile)) {
-      println(colors.red("The supplied blast result table \"${params.blastFile}\" does not exist"))  
-      exit(1)
-    }
-    if (!helper.file_exists(params.zotuTable)) {
-      println(colors.red("The supplied zOTU table \"${params.zotuTable}\" does not exist"))  
-      exit(1)
-    }
-  }
-
-  if (params.sampleMap != "" && !helper.file_exists(params.sampleMap)) {
-    println(colors.red("The supplied sample map file ${params.sampleMap} does not exist"))
-    exit(1)
-  }
-
-  // if denoiser is an executable, treat it as such
-  // otherwise check to make sure it's a valid input
-  if (helper.executable(params.denoiser)) {
-    exec_denoiser = true
-  } else {
-    if (!(params.denoiser in ['usearch','usearch32','vsearch'])) {
-      println(colors.bred("--denoiser") + colors.red(" must be either 'usearch', 'usearch32', 'vsearch', or a path to an executable (e.g., /opt/sw/bin/usearch64)"))
-      exit(1)
-    }
-  }
-
-  // sanity check, blast database
-  if (!helper.is_dir(params.blastDb)) {
-    println(colors.red("BLAST database must be specified either with the ") + colors.bred("--blast-db") + colors.red(" argument"))
-    println(colors.red("or using the \$BLASTDB environment variable. It must point to the directory"))
-    println(colors.red("containing the `nt` database (do not include /nt in the path)"))
-    exit(1)
-  }
-
-  // make sure custom blast database is specified correctly
-  if (params.customDbName != "NOTHING" || params.customDb != "NOTHING") {
-    if (!helper.is_dir(params.customDb)) {
-      println(colors.red("Custom BLAST database must be specified as follows:"))
-      println(colors.bred("--custom-db-dir") + colors.red(" <path to custom BLAST db directory>"))
-      println(colors.bred("--custom-db") + colors.red(" <name of custom BLAST db (basename of .ndb, etc. files)>"))
-      println(colors.red("example:"))
-      println(colors.bred("--custom-db-dir") + colors.red(" /storage/blast ") + colors.bred("--custom-db") + colors.red(" test"))
-      exit(1)
-    }
-    if (params.customDbName == "NOTHING") {
-      println(colors.red("Name of custom BLAST db must be specified with the ") + colors.bred("--custom-db") + colors.red(" option"))
-      exit(1)
-    }
-  }
-
-  // another blast database sanity check
-  if (helper.basename(params.blastDb) == helper.basename(params.customDb)) {
-    println(colors.red("Due to the vicissitudes of nextflow internality, the directory names"))
-    println(colors.red("of the main and custom BLAST databases must be different."))
-    println(colors.red("As specified, both reside in directories called ${helper.basename(params.blastDb)}"))
-    exit(1)
-  }
-
-  // make sure insect parameter is valid: either a file or one of the pretrained models
-  if (params.insect) {
-    if (!helper.insect_classifiers.containsKey(params.insect.toLowerCase())) {
-      if (!helper.file_exists(params.insect)) {
-        println(colors.red("Value passed to ") + colors.bred("--insect") + colors.red(" must be one of the supported builtins or an RDS file"))
-        println(colors.red("containing a trained insect classifier model."))
-        println(colors.red("See eDNAFlow.nf ") + colors.bred("--help") + colors.red(" for supported builtin models"))
-        exit(1)
-      }
-    }    
-  }
-}
-
 // we reuse fastqc/multiqc processes at different steps so they're
 // included from an external module
 include { fastqc as first_fastqc }    from './modules/modules.nf'
 include { fastqc as second_fastqc }   from './modules/modules.nf'
 include { multiqc as first_multiqc }  from './modules/modules.nf'
 include { multiqc as second_multiqc } from './modules/modules.nf'
-include { r_lca as collapse_taxonomy_r  } from './modules/modules.nf'
-include { r_lca as collapse_taxonomy_lulu_r  } from './modules/modules.nf'
-include { py_lca as collapse_taxonomy_py  } from './modules/modules.nf'
-include { py_lca as collapse_taxonomy_lulu_py  } from './modules/modules.nf'
+include { lca as collapse_taxonomy  } from './modules/modules.nf'
+include { lca as collapse_taxonomy_lulu  } from './modules/modules.nf'
 
 workflow {
   // make sure our arguments are all in order
@@ -686,7 +736,6 @@ workflow {
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
     // build input channels and get appropriate process
-    tax_process = params.oldTaxonomy ? collapse_taxonomy_py : collapse_taxonomy_r
     zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
     blast_result = Channel.fromPath(params.blastFile, checkIfExists: true)
 
@@ -711,7 +760,7 @@ workflow {
       combine(blast_result) |
       combine(lineage) | 
       combine(Channel.of(false)) | 
-      tax_process
+      collapse_taxonomy
 
   } else {
     if (!helper.file_exists(params.demuxedFasta)) {
@@ -1034,30 +1083,26 @@ workflow {
         map { sid, blast_result -> blast_result } | 
         set { blast_result }
 
-    // get the appropriate taxonomy process
-      tax_process = params.oldTaxonomy ? collapse_taxonomy_py : collapse_taxonomy_r
-
       // then we smash it together with the blast results 
       // and run the taxonomy assignment/collapser script
       zotu_table |
         combine(blast_result) |
         combine(lineage) | 
         combine(Channel.of(false)) | 
-        tax_process |
+        collapse_taxonomy |
         set { taxonomized }
       
 
-      if (!params.skipLulu) {
+      /* if (!params.skipLulu) {
         // run the taxonomy assignment for lulu-curated zotus
-        tax_process_lulu = params.oldTaxonomy ? collapse_taxonomy_lulu_py : collapse_taxonomy_lulu_r
         lulu.out.result | 
           map { zotutable, zotu_map, result_object -> zotutable } | 
           combine(blast_result) |
           combine(lineage) | 
           combine(Channel.of(true)) | 
-          tax_process_lulu |
+          collapse_taxonomy_lulu |
           set { taxonomized_lulu }
-      }
+      } */
     }
 
     /* put all the phyloseq stuff down here */
@@ -1065,7 +1110,7 @@ workflow {
       switch (params.taxonomy) {
         case "lca":
           if (params.assignTaxonomy || params.collapseTaxonomy) {
-            taxonomized | 
+            taxonomized.result | 
               map { it[1] } |
               combine(zotu_table) | 
               combine( dereplicated | map { sid, uniques, zotus, zotutable -> zotus } ) |

@@ -1,20 +1,26 @@
 // assign/collapse taxonomy using the R port of the original python script
-process r_lca {
+process lca {
   label 'r'
 
-  publishDir "${params.outDir}/taxonomy/lca", mode: params.publishMode 
+  publishDir "${params.outDir}/taxonomy/lca_qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}", mode: params.publishMode 
 
   input:
     tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(curated)
 
   output:
-    tuple path("lca_intermediate*.tsv"), path("lca_taxonomy*.tsv")
+    tuple path("lca_intermediate*.tsv"), path("lca_taxonomy*.tsv"), emit: result
+    path 'lca_settings.txt'
 
 
   script:
   pf = params.keepUncultured ? "-u" : ""
-  c = curated ? "lulu_" : ""
+  c = curated ? "_lulu" : ""
   """
+  # save settings
+  echo "Minimum query coverage %: ${params.lcaQcov}" > lca_settings.txt
+  echo "Minimum percent identity: ${params.lcaPid}" >> lca_settings.txt
+  echo "Minium percent identity difference: ${params.lcaDiff}" >> lca_settings.txt
+
   collapse_taxonomy.R \
     --qcov ${params.lcaQcov} \
     --pid ${params.lcaPid} \
@@ -22,9 +28,8 @@ process r_lca {
     --merged ${merged} \
     --dropped ${params.dropped} \
     ${pf} \
-    --intermediate "lca_intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tsv" \
-    ${blast_result} ${zotu_table} ${lineage} "lca_taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}r.tsv"
-
+    --intermediate "lca_intermediate${c}.tsv" \
+    ${blast_result} ${zotu_table} ${lineage} "lca_taxonomy${c}.tsv"
   """
 }  
 

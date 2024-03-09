@@ -170,6 +170,9 @@ if (file_exists(zotu_table_file)) {
     inner_join(zotu_table,by=setNames(colnames(zotu_table)[1],"representative")) 
 }
 
+classified <- classified %>%
+  select(zotu=representative,taxid=taxID,domain:species,everything())
+
 # save final output
 write_tsv(classified,output_file)
 

@@ -47,7 +47,8 @@ option_list = list(
   make_option(c("-s", "--semicolon"), action="store_true", default=FALSE, type='logical', help="Interpret taxids split by semicolon"),
   make_option(c("-m", "--merged"), action="store", default="", type="character", help="NCBI merged.dmp file"),
   make_option(c("-k", "--drop-blank"), action="store_true", default=TRUE, type="logical", help="Drop entries with completely blank taxonomic lineages"),
-  make_option(c("-r", "--dropped"), action="store", default="dropped", type='character', help="Placeholder for dropped taxonomic levels (default: dropped)")
+  make_option(c("-r", "--dropped"), action="store", default="dropped", type='character', help="Placeholder for dropped taxonomic levels (default: dropped)"),
+  make_option(c("-z","--zotu-table"),action="store",default=NA,type="character",help="Optional (tab-separated) OTU table to merge with results (first column must be OTU ID)")
 )
 
 # parse command-line options
@@ -56,14 +57,14 @@ opt = parse_args(
     option_list=option_list,
     formatter=nice_formatter,
     prog="collapse_taxonomy.R",
-    usage="%prog [options] <blast_result> <zotu_table> <lineage_dump> <output_table>"
+    usage="%prog [options] <blast_result> <lineage_dump> <output_table>"
   ), 
   convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 4
+  positional_arguments = 3
 )
 
 # check that passed files all exist and bail on failure
-fe <- file_exists(opt$args[1:3])
+fe <- file_exists(opt$args[1:2])
 if (any(!fe)) {
   bad <- fe[!fe]
   msg <- str_c(str_glue("Missing/bad filename: {names(bad)}"),collapse="\n")
@@ -72,9 +73,8 @@ if (any(!fe)) {
 
 # store filenames
 blast_file <- opt$args[1]
-zotu_table <- opt$args[2]
-lineage_dump <- opt$args[3]
-output_table <- opt$args[4]
+lineage_dump <- opt$args[2]
+output_table <- opt$args[3]
 qcov_thresh <- opt$options$qcov
 pid_thresh <- opt$options$pid
 diff_thresh <- opt$options$diff
@@ -83,6 +83,8 @@ intermediate <- opt$options$intermediate
 semicolon <- opt$options$semicolon
 drop_blank <- opt$options$drop_blank
 dropped <- opt$options$dropped
+zotu_table_file <- opt$options$zotu_table
+
 if (str_to_lower(dropped) == "na") {
   dropped <- NA_character_
 }
@@ -95,9 +97,6 @@ blast <- read_tsv(
                 "gapopen","gaps","qstart","wend","sstart","send","stitle","evalue","bitscore","qcov","qcovhsp"),
   col_types="ccccccnnnnnnnnnnncnnnn"
 )
-
-# read zotu table
-zotus <- read_tsv(zotu_table, col_types = cols())
 
 # perform initial filtering
 filtered <- blast %>%
@@ -162,8 +161,8 @@ if (!is.na(intermediate)) {
 # because NCBI uses '\t|\t' as their delimiter, we'll have a bunch of columns
 # that just contain a pipe
 lineage <- read_tsv(lineage_dump,col_types = "i_c_c_c_c_c_c_c_c_c_",
-                    col_names = c("taxid","species","fakespecies","genus","family","order","class","phylum","kingdom","domain")) %>%
-  select(taxid,domain,kingdom,phylum,class,order,family,genus,species)
+                    col_names = c("taxid","taxon","species","genus","family","order","class","phylum","kingdom","domain")) %>%
+  select(taxid,domain,kingdom,phylum,class,order,family,genus,species,taxon)
 
 # get new taxids for any merged taxa, if relevant
 if (file_exists(opt$options$merged)) {
@@ -178,7 +177,11 @@ if (file_exists(opt$options$merged)) {
 filtered <- filtered %>%
   rename(blast_species=species,blast_kingdom=kingdom) %>%
   mutate(taxid=as.integer(taxid)) %>%
-  left_join(lineage,by="taxid") 
+  left_join(lineage,by="taxid") %>%
+  # this next line works because blast results always contain
+  # species-level taxids
+  mutate(species = coalesce(species,taxon)) #%>%
+  # mutate(across(domain:species,~replace_na(.x,"incertae sedis")))
 
 # filter out any uncultured, environmental, etc.
 if (filter_uncultured) {
@@ -201,11 +204,31 @@ filtered <- filtered %>%
 
 # join the zOTU table, using its first column as the zotu column
 # use inner join because some zOTUs don't end up in the table
+# collapsed <- filtered %>%
+	# inner_join(zotus,by=setNames(colnames(zotus)[1],"zotu")) %>%
+	# select(domain:species,OTU=zotu,unique_hits,everything()) %>%
+	# # arrange(domain,kingdom,phylum,class,order,family,genus,species,parse_number(OTU))
+	# arrange(parse_number(OTU))
 collapsed <- filtered %>%
-  inner_join(zotus,by=setNames(colnames(zotus)[1],"zotu")) %>%
-  select(domain:species,OTU=zotu,unique_hits,everything()) %>%
-  # arrange(domain,kingdom,phylum,class,order,family,genus,species,parse_number(OTU))
-  arrange(parse_number(OTU))
+  mutate(
+    across(domain:species,~replace(.x,which(is.na(.x)),"...")),
+    across(domain:species,~replace(.x,which(.x == dropped),NA))
+  ) %>%
+  mutate(last_level = coalesce(species,genus,family,order,class,phylum,kingdom,domain)) %>%
+  left_join(lineage %>% select(taxon,taxid),by=c("last_level" = "taxon")) %>%
+  mutate(
+    across(domain:species,~replace(.x,which(.x == "..."),"")),
+    across(domain:species,~replace_na(.x,dropped))
+  ) %>%
+	select(zotu,unique_hits,domain:species,taxid)
+
+# merge zotu table, if desired
+if (file_exists(zotu_table_file)) {
+  zotu_table <- read_tsv(zotu_table_file,col_types=cols())
+  # use inner join so we only get complete data
+  collapsed <- collapsed %>%
+    inner_join(zotu_table,by=setNames(colnames(zotu_table)[1],"zotu")) 
+}
 
 # save the output table
 write_tsv(collapsed,output_table,na="")

@@ -5,7 +5,7 @@ process lca {
   publishDir "${params.outDir}/taxonomy/lca_qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}", mode: params.publishMode 
 
   input:
-    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(curated)
+    tuple path(blast_result), path(lineage), path(merged), val(curated)
 
   output:
     tuple path("lca_intermediate*.tsv"), path("lca_taxonomy*.tsv"), emit: result
@@ -20,6 +20,7 @@ process lca {
   echo "Minimum query coverage %: ${params.lcaQcov}" > lca_settings.txt
   echo "Minimum percent identity: ${params.lcaPid}" >> lca_settings.txt
   echo "Minium percent identity difference: ${params.lcaDiff}" >> lca_settings.txt
+  echo "Retain \"uncultured\" results: ${params.keepUncultured ? 'yes' : 'no'}" >> lca_settings.txt
 
   collapse_taxonomy.R \
     --qcov ${params.lcaQcov} \
@@ -29,7 +30,7 @@ process lca {
     --dropped ${params.dropped} \
     ${pf} \
     --intermediate "lca_intermediate${c}.tsv" \
-    ${blast_result} ${zotu_table} ${lineage} "lca_taxonomy${c}.tsv"
+    ${blast_result} ${lineage} "lca_taxonomy${c}.tsv"
   """
 }  
 

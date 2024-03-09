@@ -589,10 +589,10 @@ process insect {
   }, mode: params.publishMode 
 
   input:
-    tuple path(classifier), path(lineage), path(merged), path(zotus), path(zotu_table)
+    tuple path(classifier), path(lineage), path(merged), path(zotus)
 
   output:
-    tuple path('insect_*.tsv'), path('insect_model.rds'), emit: result
+    tuple path('insect_taxonomy.tsv'), path('insect_model.rds'), emit: result
     path 'insect_settings.txt'
 
   script:
@@ -617,7 +617,6 @@ process insect {
      --offset ${params.insectOffset} \
      --min-count ${params.insectMinCount} \
      --ping ${params.insectPing} \
-     --zotu-table ${zotu_table} \
      --lineage ${lineage} \
      --merged ${merged} \
      ${zotus} insect_model.rds "insect_taxonomy.tsv"
@@ -716,6 +715,49 @@ process phyloseq {
   """
 }
 
+process finalize {
+  label 'r'
+  
+  publishDir "${params.outDir}/final", mode: params.publishMode
+
+  input:
+    tuple path(zotu_table), path(curated_zotu_table), path(lca_taxonomy), path(insect_taxonomy)
+
+  output:
+    tuple path("zotu_table_raw.tsv"), path("taxonomy_raw.tsv"), path("zotu_table_final*.tsv")
+
+  script:
+  def opt = []
+  if (params.abundanceFilter) {
+    opt.add("--abundance-filter")
+  }
+  if (params.rarefy) {
+    opt.add("--rarefy")
+  }
+  if (params.filterMinimum) {
+    opt.add("--filter-min")
+  }
+  """
+  finalize.R \
+    --filter "${params.taxonFilter}" \
+    --remap "${params.taxonRemap}" \
+    --insect "${insect_taxonomy}" \
+    --lca "${lca_taxonomy}" \
+    --controls "${params.negatives}" \
+    --control-action "${params.controlAction}" \
+    --control-threshold "${params.controlThreshold}" \
+    --decontam-method "${params.decontamMethod}" \
+    --concentration "${params.dnaConcentration}" \
+    --abundance-threshold "${params.abundanceThreshold}" \
+    --rarefaction-method "${params.rarefactionMethod}" \
+    --permutations "${params.permutations}" \
+    --taxon-priority "${params.taxonPriority}" \
+    --curated "${curated_zotu_table}" \
+    ${opt.join(" ")} \
+    ${zotu_table}
+  """
+}
+
 
 // we reuse fastqc/multiqc processes at different steps so they're
 // included from an external module
@@ -730,8 +772,8 @@ workflow {
   // make sure our arguments are all in order
   check_params()
 
-
-  vsearch = (params.vsearch || params.denoiser == 'vsearch')
+  def lca = params.collapseTaxonomy || params.assignTaxonomy
+  def vsearch = (params.vsearch || params.denoiser == 'vsearch')
 
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
@@ -756,8 +798,7 @@ workflow {
 
 
     // run taxonomy process
-    zotu_table |
-      combine(blast_result) |
+    blast_result |
       combine(lineage) | 
       combine(Channel.of(false)) | 
       collapse_taxonomy
@@ -1037,7 +1078,7 @@ workflow {
     }
 
     // get NCBI lineage dump if needed
-    if (((params.assignTaxonomy || params.collapseTaxonomy) && !params.skipBlast) || params.insect) {
+    if ((lca && !params.skipBlast) || params.insect) {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.lineage)) {
         get_lineage |
@@ -1056,7 +1097,7 @@ workflow {
     if (params.insect) {
       // dereplicate returns a tuple, but we only need the zotus fasta
       dereplicated | 
-        map { sid, uniques, zotus, zotutable -> [zotus,zotutable] } | 
+        map { sid, uniques, zotus, zotutable -> [zotus] } | 
         set { zotus }
       
       // load the classifier model
@@ -1073,11 +1114,12 @@ workflow {
       classifier | 
         combine(lineage) | 
         combine(zotus) | 
-        insect | set { insectized }
+        insect | 
+        set { insectized }
     }
 
     // run taxonomy assignment/collapse script if so requested
-    if ((params.assignTaxonomy || params.collapseTaxonomy) && !params.skipBlast) {
+    if (lca && !params.skipBlast) {
       // here we grab the blast result
       blast.out.result | 
         map { sid, blast_result -> blast_result } | 
@@ -1085,31 +1127,54 @@ workflow {
 
       // then we smash it together with the blast results 
       // and run the taxonomy assignment/collapser script
-      zotu_table |
-        combine(blast_result) |
+      blast_result |
         combine(lineage) | 
         combine(Channel.of(false)) | 
         collapse_taxonomy |
         set { taxonomized }
       
 
-      /* if (!params.skipLulu) {
-        // run the taxonomy assignment for lulu-curated zotus
-        lulu.out.result | 
-          map { zotutable, zotu_map, result_object -> zotutable } | 
-          combine(blast_result) |
-          combine(lineage) | 
-          combine(Channel.of(true)) | 
-          collapse_taxonomy_lulu |
-          set { taxonomized_lulu }
-      } */
     }
+
+    // prepare for final output
+    if (lca && !params.skipBlast) {
+      taxonomized.result | 
+        map { it[1] } | 
+        set { lca_taxonomy }
+    } else {
+      Channel.fromPath("NOTADANGFILE.nothing",checkIfExists: false) | 
+        set { lca_taxonomy } 
+    }
+
+    if (params.insect) {
+      insectized.result | 
+        map { it[0] } |
+        set { insect_taxonomy }
+    } else {
+      Channel.fromPath("NOTADANGFILE.nothing", checkIfExists: false) | 
+        set { insect_taxonomy }
+    }
+
+    if (!params.skipLulu) {
+      lulu.out.result |
+        map { it[0] } |
+        set { curated_zotu_table }
+    } else {
+      Channel.fromPath("NOTADANGFILE.nothing", checkIfExists: false) | 
+        set { curated_zotu_table }
+    }
+
+    zotu_table |
+      combine(curated_zotu_table) | 
+      combine(lca_taxonomy) | 
+      combine(insect_taxonomy) |
+      finalize
 
     /* put all the phyloseq stuff down here */
     if (params.phyloseq && helper.file_exists(params.metadata)) {
       switch (params.taxonomy) {
         case "lca":
-          if (params.assignTaxonomy || params.collapseTaxonomy) {
+          if (lca) {
             taxonomized.result | 
               map { it[1] } |
               combine(zotu_table) | 
@@ -1132,8 +1197,6 @@ workflow {
           break
         default:
           if (helper.file_exists(params.taxonomy)) {
-            /* input: tuple path(tax_table), path(zotu_table), path(fasta), path(metadata), val(method) */
-            /* tuple val(sample_id), path("${sample_id}_unique.fasta"), path("${sample_id}_zotus.fasta"), path("zotu_table.tsv")  */
             Channel.fromPath(params.taxonomy, checkIfExists: true) | 
               combine(zotu_table) | 
               combine( dereplicated | map { sid, uniques, zotus, zotutable -> zotus } ) |

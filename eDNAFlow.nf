@@ -1,4 +1,5 @@
-#!/usr/bin/env nextflow24
+#!/usr/bin/env nextflow
+
 nextflow.enable.dsl=2
 
 // pull in the helper class

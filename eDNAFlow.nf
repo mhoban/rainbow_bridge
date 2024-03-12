@@ -744,7 +744,7 @@ process finalize {
     --remap "${params.taxonRemap}" \
     --insect "${insect_taxonomy}" \
     --lca "${lca_taxonomy}" \
-    --controls "${params.negatives}" \
+    --controls "${params.controls}" \
     --control-action "${params.controlAction}" \
     --control-threshold "${params.controlThreshold}" \
     --decontam-method "${params.decontamMethod}" \

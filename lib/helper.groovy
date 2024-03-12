@@ -99,123 +99,142 @@ class helper {
       <reads>/<fwd>|<rev>/*<r1>|<r2>*.fastq*
 
     Options:
-      --reads [dir]                Location (directory) where sequence reads can be found (default: .) 
-      --fwd [dir]                  (Optional) forward reads directory (default: ${params.fwd})
-                                   For runs that have NOT been demultiplexed, --fwd may also point
-                                   directly at the raw forward reads (R1) sequence file.
-      --rev [dir]                  (Optional) reverse reads directory (default: ${params.rev})
-                                   For runs that have NOT been demultiplexed, --rev may also point
-                                   directly at the raw reverse reads (R2) sequence file.
-      --r1 [pattern]               Pattern distinguishing forward read files (default: ${params.r1})
-      --r2 [pattern]               Pattern distinguishing reverse read files (default: ${params.r2})
+      --reads [dir]                 Location (directory) where sequence reads can be found (default: .) 
+      --fwd [dir]                   (Optional) forward reads directory (default: ${params.fwd})
+                                    For runs that have NOT been demultiplexed, --fwd may also point
+                                    directly at the raw forward reads (R1) sequence file.
+      --rev [dir]                   (Optional) reverse reads directory (default: ${params.rev})
+                                    For runs that have NOT been demultiplexed, --rev may also point
+                                    directly at the raw reverse reads (R2) sequence file.
+      --r1 [pattern]                Pattern distinguishing forward read files (default: ${params.r1})
+      --r2 [pattern]                Pattern distinguishing reverse read files (default: ${params.r2})
 
     Length, quality, and merge settings:
-      --min-quality [num]          Minimum Phred score for sequence retention 
-                                   (default: ${params.minQuality})
-      --min-align-len [num]        Minimum sequence overlap when merging forward/reverse reads
-                                   (default: ${params.minAlignLen})
-      --min-len [num]              Minimum overall sequence length (default: ${params.minLen})
+      --min-quality [num]           Minimum Phred score for sequence retention 
+                                    (default: ${params.minQuality})
+      --min-align-len [num]         Minimum sequence overlap when merging forward/reverse reads
+                                    (default: ${params.minAlignLen})
+      --min-len [num]               Minimum overall sequence length (default: ${params.minLen})
 
     BLAST settings (one or more of --blast-db or --custom-db is required):
-      --skip-blast                 Skip BLAST searches
-      --blast-db [dir]             Location of local BLAST nucleotide (nt) database *directory*
-                                   (do NOT include the final "/nt")
-                                   May be specified using the \$BLASTDB environment variable
-                                   (current value: ${get_env("BLASTDB")})
-      --custom-db [dir]            (optional) Path to custom BLAST database *directory*
-                                   Passing --custom-db and --blast-db values that point to directories
-                                   with the same name (e.g., /dir1/blast and /dir2/blast) will result 
-                                   in an error!
-      --custom-db-name [name]      Name of custom BLAST database (i.e., basename of .ndb, etc. files)
-      --blast-task [task]          Set blast+ task (default: "blastn")
-      --max-query-results [num]    Maxmimum number of BLAST results to return per zOTU (default: 10)
-      --percent-identity [num]     Minimum percent identity of matches to report (default: 95)
-      --evalue [num]               Expectation value threshold for saving hits (default: 0.001)
-      --qcov [num]                 Percent query coverage per hsp (default: 100)
+      --skip-blast                  Skip BLAST searches
+      --blast-db [dir]              Location of local BLAST nucleotide (nt) database *directory*
+                                    (do NOT include the final "/nt")
+                                    May be specified using the \$BLASTDB environment variable
+                                    (current value: ${get_env("BLASTDB")})
+      --custom-db [dir]             (optional) Path to custom BLAST database *directory*
+                                    Passing --custom-db and --blast-db values that point to directories
+                                    with the same name (e.g., /dir1/blast and /dir2/blast) will result 
+                                    in an error!
+      --custom-db-name [name]       Name of custom BLAST database (i.e., basename of .ndb, etc. files)
+      --blast-task [task]           Set blast+ task (default: "blastn")
+      --max-query-results [num]     Maxmimum number of BLAST results to return per zOTU (default: 10)
+      --percent-identity [num]      Minimum percent identity of matches to report (default: 95)
+      --evalue [num]                Expectation value threshold for saving hits (default: 0.001)
+      --qcov [num]                  Percent query coverage per hsp (default: 100)
 
-    Taxonomy assignment / LCA:
-      --collapse-taxonomy          Collapse assigned BLAST results by least common ancestor (LCA)
-      --standalone-taxonomy        Run LCA script as standalone
-      --blast-file [file]          Blast result table (only for standalone LCA assignment)
-      --zotu-table [file]          zOTU table file (only for standalone LCA assignment)
-      --lineage [file]             Previously downloaded NCBI rankedlineage.dmp file (leave blank to download)
-      --merged [file]              Previously downloaded NCBI merged.dmp file (leave blank to dowload)
-      --lca-qcov [num]             Minimum query coverage for LCA taxonomy assignment (default: 100)
-      --lca-pid [num]              Minimum percent identity for LCA taxonomy assignment (default: 97)
-      --lca-diff [num]             The difference between percent identities (when query coverage is
-                                   identical) where species-level taxonomy is retained (default: 1)
-      --keep-uncultured            Keep sequences that are listed as 'uncultured', 'environmental sample',
-                                   'synthetic', or 'clone'
-      --dropped [str]              Placeholder text for dropped taxonomic levels (use "NA" for blank/NA)
+    LCA taxonomy collapse:
+      --collapse-taxonomy           Collapse assigned BLAST results by least common ancestor (LCA)
+      --standalone-taxonomy         Run LCA script as standalone
+      --blast-file [file]           Blast result table (only for standalone LCA assignment)
+      --zotu-table [file]           zOTU table file (only for standalone LCA assignment)
+      --lineage [file]              Previously downloaded NCBI rankedlineage.dmp file (leave blank to download)
+      --merged [file]               Previously downloaded NCBI merged.dmp file (leave blank to dowload)
+      --lca-qcov [num]              Minimum query coverage for LCA taxonomy assignment (default: 100)
+      --lca-pid [num]               Minimum percent identity for LCA taxonomy assignment (default: 97)
+      --lca-diff [num]              The difference between percent identities (when query coverage is
+                                    identical) where species-level taxonomy is retained (default: 1)
+      --keep-uncultured             Keep sequences that are listed as 'uncultured', 'environmental sample',
+                                    'synthetic', or 'clone'
+      --dropped [str]               Placeholder text for dropped taxonomic levels (use "NA" for blank/NA)
 
     Insect taxonomy classification:
-      --insect [classifier]        Perform taxonomy assignment using insect
-                                   Accepted values of [classifier] are:
-                                   - Filename to local .rds containing classifier model
-                                   - One of the following (case-insensitive) primer names: 
-                                     MiFish, Crust16S, Fish16S, 18SUni, 18SV4, p23S, mlCOIint, SCL5.8S
-                                     (see https://github.com/shaunpwilkinson/insect#classifying-sequences)
-      --insect-threshold [num]     Minimum Akaike weight for the recursive classification procedure to continue 
-                                   toward the leaves of the tree (default: ${params.insectThreshold})
-      --insect-offset [num]        Log-odds score offset parameter governing whether the minimum score is 
-                                   met at each node (default: ${params.insectOffset})
-      --insect-min-count [num]     Minimum number of training sequences belonging to a selected child node 
-                                   for the classification to progress (default: ${params.insectMinCount})
-      --insect-ping [num]          Numeric (between 0 and 1) indicating whether a nearest neighbor search should 
-                                   be carried out, and if so, what the minimum distance to the nearest neighbor 
-                                   should be for the the recursive classification algorithm to be skipped (default: ${params.insectPing})
+      --insect [classifier]         Perform taxonomy assignment using insect
+                                    Accepted values of [classifier] are:
+                                    - Filename to local .rds containing classifier model
+                                    - One of the following (case-insensitive) primer names: 
+                                      MiFish, Crust16S, Fish16S, 18SUni, 18SV4, p23S, mlCOIint, SCL5.8S
+                                      (see https://github.com/shaunpwilkinson/insect#classifying-sequences)
+      --insect-threshold [num]      Minimum Akaike weight for the recursive classification procedure to continue 
+                                    toward the leaves of the tree (default: ${params.insectThreshold})
+      --insect-offset [num]         Log-odds score offset parameter governing whether the minimum score is 
+                                    met at each node (default: ${params.insectOffset})
+      --insect-min-count [num]      Minimum number of training sequences belonging to a selected child node 
+                                    for the classification to progress (default: ${params.insectMinCount})
+      --insect-ping [num]           Numeric (between 0 and 1) indicating whether a nearest neighbor search should 
+                                    be carried out, and if so, what the minimum distance to the nearest neighbor 
+                                    should be for the the recursive classification algorithm to be skipped (default: ${params.insectPing})
 
     Generating phyloseq objects:
-      --phyloseq                   Create phyloseq object (requires --collapse-taxonomy)
-      --metadata [file]            Comma or tab-separated sample metadata file (required)
-      --taxonomy [tax]               Taxonomic classifaction scheme. May be pipeline-generated or user supplied
-                                   (acceptable options: lca, insect, <filename>; default: ${params.taxonomy})
-      --no-tree                    Do not include a phylogenetic tree
-      --optimize-tree              Attempt to optimize generation of the tree (may take a long time)
+      --phyloseq                    Create phyloseq object (requires --collapse-taxonomy)
+      --metadata [file]             Comma or tab-separated sample metadata file (required)
+      --taxonomy [tax]                Taxonomic classifaction scheme. May be pipeline-generated or user supplied
+                                    (acceptable options: lca, insect, <filename>; default: ${params.taxonomy})
+      --no-tree                     Do not include a phylogenetic tree
+      --optimize-tree               Attempt to optimize generation of the tree (may take a long time)
+
+    Data cleanup & rarefaction:
+      --abundance-filter            Filter reads by minimum relative abundance
+      --abundance-threshold [num]   Minimum relative abundance below which counts are set to zero
+      --filter-minimum              Filter samples by minimum read count
+      --min-reads [num]             Total read count below which samples will be filtered
+      --rarefy                      Rarefy samples to minimum depth
+      --rarefaction-method [method] Rarefaction method (available options: perm, phyloseq)
+      --permutations [num]          For 'perm' rarefaction method, number of permutations
+
+    Decontamination & taxon filtering
+      --taxon-remap [file]          Taxonomy remap file (.csv or .tsv)
+      --taxon-filter [file]         Taxonomy filter file (.csv or .tsv)
+      --taxon-priority [str]        Priority when taxonomies disagree (values: lca or insect)
+      --controls [file]             File listing negative control sample IDs
+      --control-action [action]     Negative control decontamination method ('remove', 'subtract', or 'decontam')
+      --control-threshold [num]     Minimum read threshold or decontam threshold value
+      --decontam-method [method]    Method passed to isContaminant function of decontam (default: 'auto')
+      --dna-concentration [file]    File specifying DNA concentrations by sample ID
 
     Demultiplexing and sequence matching:
-      --illumina-demultiplexed     Sequencing run has already been demultiplexed by the sequencer
+      --illumina-demultiplexed      Sequencing run has already been demultiplexed by the sequencer
 
-      --remove-ambiguous-indices   Removes reads with ambiguous indices in the header (i.e., not A,G,C,T)
-                                   (only applies to previously-demultiplexed runs with indices in header)
-      --demuxed-fasta [file]       Skip demultiplexing step and use supplied FASTA 
-                                   (must be in usearch/vsearch format)
-      --demuxed-example            Spit out example usearch/vsearch demultiplexed FASTA format
-      --demux-only                 Stop after demultiplexing and splitting raw reads
-      --primer-mismatch            Allowed number of mismatched primer bases 
-                                   (default: ${params.primerMismatch})
+      --remove-ambiguous-indices    Removes reads with ambiguous indices in the header (i.e., not A,G,C,T)
+                                    (only applies to previously-demultiplexed runs with indices in header)
+      --demuxed-fasta [file]        Skip demultiplexing step and use supplied FASTA 
+                                    (must be in usearch/vsearch format)
+      --demuxed-example             Spit out example usearch/vsearch demultiplexed FASTA format
+      --demux-only                  Stop after demultiplexing and splitting raw reads
+      --primer-mismatch             Allowed number of mismatched primer bases 
+                                    (default: ${params.primerMismatch})
 
     Denoising and zOTU inference:  
-      --min-abundance [num]        Minimum zOTU abundance; zOTUs below threshold will be discarded
-                                   (default: ${params.minAbundance}) 
-      --denoiser [tool/path]       Sets the tool used for denoising & chimera removal
-                                   accepted options: usearch/usearch32 (equivalent), vsearch, 
-                                   path to usearch64 executable (default: usearch)
-      --vsearch                    shortcut for --denoiser vsearch
+      --min-abundance [num]         Minimum zOTU abundance; zOTUs below threshold will be discarded
+                                    (default: ${params.minAbundance}) 
+      --denoiser [tool/path]        Sets the tool used for denoising & chimera removal
+                                    accepted options: usearch/usearch32 (equivalent), vsearch, 
+                                    path to usearch64 executable (default: usearch)
+      --vsearch                     shortcut for --denoiser vsearch
 
     LULU zOTU curation:
-      --skip-lulu                  Skip LULU curation
-      --lulu-min-ratio-type [num]  LULU minimum ratio type (accepted values: 'min', 'avg', default: ${params.luluMinRatioType})
-      --lulu-min-ratio [num]       LULU minimum ratio (default: ${params.luluMinRatio})
-      --lulu-min-match [num]       LULU minimum threshold of sequence similarity to consider zOTUs as spurious (default: ${params.luluMinMatch})
-                                   Choose higher values when using markers with lower genetic variation 
-                                   and/or few expected PCR and sequencing errors. (default: ${params.luluMinMatch})
-      --lulu-min-rc [num]          LULU minimum relative co-occurence rate (default: ${params.luluMinRc})
+      --skip-lulu                   Skip LULU curation
+      --lulu-min-ratio-type [num]   LULU minimum ratio type (accepted values: 'min', 'avg', default: ${params.luluMinRatioType})
+      --lulu-min-ratio [num]        LULU minimum ratio (default: ${params.luluMinRatio})
+      --lulu-min-match [num]        LULU minimum threshold of sequence similarity to consider zOTUs as spurious (default: ${params.luluMinMatch})
+                                    Choose higher values when using markers with lower genetic variation 
+                                    and/or few expected PCR and sequencing errors. (default: ${params.luluMinMatch})
+      --lulu-min-rc [num]           LULU minimum relative co-occurence rate (default: ${params.luluMinRc})
 
     Resource allocation:
-      --max-memory [mem]           Maximum memory available to nextflow processes, e.g., '8.GB' (default: ${params.maxMemory})
-      --max-cpus [num]             Maximum cores available to nextflow processes default: ${params.maxCpus})
-      --max-time [time]            Maximum time allocated to each pipeline process, e.g., '2.h' (default: ${params.maxTime})
+      --max-memory [mem]            Maximum memory available to nextflow processes, e.g., '8.GB' (default: ${params.maxMemory})
+      --max-cpus [num]              Maximum cores available to nextflow processes default: ${params.maxCpus})
+      --max-time [time]             Maximum time allocated to each pipeline process, e.g., '2.h' (default: ${params.maxTime})
 
     Singularity options:
-      --bind-dir [dir]             Space-separated list of directories to bind within singularity images
-                                   (must be surrounded by quotations if more than one directory)
-                                   Note: singularity will attempt to auto-bind all provided host paths
-                                   so this option may not be necessary, but try it if you're getting 
-                                   weird "file not found" types of errors
-      --singularity-cache [dir]    Location to store singularity images. May also be specified
-                                   with the environment variable \$NXF_SINGULARITY_CACHEDIR.
-                                   (current value: ${get_env("NXF_SINGULARITY_CACHEDIR")})
+      --bind-dir [dir]              Space-separated list of directories to bind within singularity images
+                                    (must be surrounded by quotations if more than one directory)
+                                    Note: singularity will attempt to auto-bind all provided host paths
+                                    so this option may not be necessary, but try it if you're getting 
+                                    weird "file not found" types of errors
+      --singularity-cache [dir]     Location to store singularity images. May also be specified
+                                    with the environment variable \$NXF_SINGULARITY_CACHEDIR.
+                                    (current value: ${get_env("NXF_SINGULARITY_CACHEDIR")})
 		""".stripIndent())
   }
 }

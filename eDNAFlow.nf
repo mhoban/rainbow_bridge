@@ -40,22 +40,10 @@ def check_params() {
     println(colors.yellow("The parameter --old-taxonomy no longer does anything, since the original python script has been phased out."))
   }
 
-  // since we changed the way --filter-uncultured works, let's warn the user about it
-  if (params.filterUncultured) {
-    println(colors.yellow("The parameter --filter-uncultured is no longer recognized, we now filter out uncultured/cloned/whatever sequences by default."))
-    println(colors.yellow("To retain those sequences, use the --keep-uncultured argument"))
-  }
-
   // give example of what a demultiplexed FASTA file looks like
   if (params.demuxedExample) {
     helper.demuxed_example()
     exit(0)
-  }
-
-  // give a little message that --base-dir is not the way to do it
-  if (params.baseDir != "") {
-    println(colors.yellow("Parameter ") + colors.byellow("--base-dir") + colors.yellow(" has been replaced by ") + 
-            colors.byellow("--reads") + colors.yellow(". Please use ") + colors.byellow("--reads") + colors.yellow(" going forward")) 
   }
 
   if (params.split && params.illuminaDemultiplexed) {
@@ -836,8 +824,7 @@ workflow {
         } else {
           // TODO: if params.reads is *not* a directory, should we just treat it as a glob and pass it directly into
           // fromFilePairs?
-          // fallback to legacy baseDir param if someone forgot
-          reads = params.baseDir != "" ? params.baseDir : params.reads
+          reads = params.reads
           // otherwise make a glob pattern to find where the fwd/rev reads live
           // this may get a little complex, so there are two possible options:
           // files must have some way of stating which direction they are (e.e., R1/R2)

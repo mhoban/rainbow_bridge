@@ -622,15 +622,18 @@ process insect {
 process get_lineage {
   label 'python3'
 
+  publishDir 'output/taxonomy/ncbi_taxdump'
+
   output:
-    tuple path('ranked_lineage.tsv'), path('merged.dmp')
+    tuple path('ranked_lineage.tsv'), path('merged.dmp'), emit: dumps
+    path('new_taxdump.zip')
 
   script:
   """
   curl -LO https://ftp.ncbi.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip
   unzip -p new_taxdump.zip rankedlineage.dmp > ranked_lineage.tsv
   unzip -p new_taxdump.zip merged.dmp > merged.dmp
-  rm new_taxdump.zip
+  # rm new_taxdump.zip
   """
 }
 
@@ -780,7 +783,8 @@ workflow {
       if (params.lineage != "") {
         println(colors.yellow("Lineage file '${params.lineage}' does not exist and will be downloaded"))
       }
-      get_lineage |
+      get_lineage()
+      get_lineage.out.dumps |
         set{ lineage }
     } else {
       lineage = Channel.fromPath(params.lineage, checkIfExists: true)
@@ -1074,7 +1078,8 @@ workflow {
     if ((lca && !params.skipBlast) || params.insect) {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.lineage)) {
-        get_lineage |
+        get_lineage()
+        get_lineage.out.dumps | 
           set { lineage }
       } else {
         lineage = Channel.fromPath(params.lineage, checkIfExists: true)

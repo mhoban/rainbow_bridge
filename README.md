@@ -483,12 +483,12 @@ Options for the LCA method of taxonomy refinement. This method will selectively 
 <small>**`--lca-diff [num]`**</small>:  Maximum difference between percent identities (with identical query coverage) where shared taxonomy is retained (default: 1)  
 <small>**`--keep-uncultured`**</small>:  Keep sequences that are listed as 'uncultured', 'environmental sample', 'clone', or 'synthetic' (these are filtered by default).  
 
-### Denoising and zOTU inference
-These options control how (and by what tool) sequences are denoised and zOTUs are infered. By default, eDNAFlow uses the 32-bit (free) version of [usearch](https://www.drive5.com/usearch/). However, this version is limited to 4GB of memory and may fail for large sequence files, so it's also possible to specify either the 64-bit (commercial) version of usearch or [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch). 
+### Denoising/dereplication and zOTU inference
+These options control how (and by what tool) sequences are denoised and zOTUs are inferred By default, eDNAFlow uses [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch), which does not suffer from the 4GB memory limit of the free version of [usearch](https://www.drive5.com/usearch/). You still retain the option of using either the free (32 bit) or commercial (64 bit) versions of usearch, if you really want. 
 
 <small>**`--min-abundance [num]`**</small>:  Minimum zOTU abundance; zOTUs with abundance below threshold will be discarded (default: 8)   
-<small>**`--denoiser [tool/path]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'usearch32', 'vsearch', path to 64-bit usearch executable  
-<small>**`--vsearch`**</small>:  Alias for `--denoiser vsearch`  
+<small>**`--denoiser [tool/path]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'usearch32', 'vsearch', path to 64-bit usearch executable (default: vsearch)  
+<small>**`--usearch`**</small>:  Alias for `--denoiser usearch`  
 
 ### zOTU curation using LULU
 

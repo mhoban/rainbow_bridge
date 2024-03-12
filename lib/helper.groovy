@@ -209,8 +209,8 @@ class helper {
                                     (default: ${params.minAbundance}) 
       --denoiser [tool/path]        Sets the tool used for denoising & chimera removal
                                     accepted options: usearch/usearch32 (equivalent), vsearch, 
-                                    path to usearch64 executable (default: usearch)
-      --vsearch                     shortcut for --denoiser vsearch
+                                    path to usearch64 executable (default: vsearch)
+      --usearch                     shortcut for --denoiser usearch
 
     LULU zOTU curation:
       --skip-lulu                   Skip LULU curation

@@ -107,6 +107,11 @@ def check_params() {
     exit(1)
   }
 
+  // the --vsearch param is no longer supported, but try to catch if someone still uses it
+  if (params.containsKey('vsearch')) {
+    println(colors.yellow("FYI: vsearch is now used as the default denoiser and the ") + colors.byellow("--vsearch") + colors.yellow(" option is ignored.\nIf you want to use usearch, pass the --usearch option."))
+  }
+
   // if denoiser is an executable, treat it as such
   // otherwise check to make sure it's a valid input
   if (helper.executable(params.denoiser)) {
@@ -762,7 +767,7 @@ workflow {
   check_params()
 
   def lca = params.collapseTaxonomy || params.assignTaxonomy
-  def vsearch = (params.vsearch || params.denoiser == 'vsearch')
+  def usearch = (params.usearch || params.denoiser == 'usearch')
 
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
@@ -920,7 +925,7 @@ workflow {
         } 
 
         // get relabeling process
-        relabel = vsearch ? relabel_vsearch : relabel_usearch
+        relabel = usearch ? relabel_usearch : relabel_vsearch
 
         // run the rest of the pipeline, including the primer mismatch check,
         // length filtering, and smashing together into one file
@@ -996,7 +1001,7 @@ workflow {
         }
 
         // get relabeling process
-        relabel = vsearch ? relabel_vsearch : relabel_usearch
+        relabel = usearch ? relabel_usearch : relabel_vsearch
 
         // run the rest of the pipeline, including demultiplexing, length filtering,
         // splitting, and recombination for dereplication
@@ -1034,7 +1039,7 @@ workflow {
     // build the channel, run dereplication, and set to a channel we can use again
     Channel.of(params.project) | 
       combine(to_dereplicate) | 
-      (vsearch ? derep_vsearch : derep_usearch) | set { dereplicated }
+      (usearch ? derep_usearch : derep_vsearch) | set { dereplicated }
 
       dereplicated.result | 
         set { dereplicated }

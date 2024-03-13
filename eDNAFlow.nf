@@ -1140,7 +1140,7 @@ workflow {
         map { it[1] } | 
         set { lca_taxonomy }
     } else {
-      Channel.fromPath("NOTADANGFILE.nothing",checkIfExists: false) | 
+      Channel.fromPath("NOTADANGFILE.nothing.lca",checkIfExists: false) | 
         set { lca_taxonomy } 
     }
 
@@ -1149,7 +1149,7 @@ workflow {
         map { it[0] } |
         set { insect_taxonomy }
     } else {
-      Channel.fromPath("NOTADANGFILE.nothing", checkIfExists: false) | 
+      Channel.fromPath("NOTADANGFILE.nothing.insect", checkIfExists: false) | 
         set { insect_taxonomy }
     }
 
@@ -1158,7 +1158,7 @@ workflow {
         map { it[0] } |
         set { curated_zotu_table }
     } else {
-      Channel.fromPath("NOTADANGFILE.nothing", checkIfExists: false) | 
+      Channel.fromPath("NOTADANGFILE.nothing.lulu", checkIfExists: false) | 
         set { curated_zotu_table }
     }
 

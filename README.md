@@ -36,7 +36,7 @@
          - [BLAST settings](#blast-settings-1)
          - [Insect classification](#insect-classification)
          - [LCA collapse](#lca-collapse)
-      + [Denoising and zOTU inference](#denoising-and-zotu-inference)
+      + [Denoising/dereplication and zOTU inference](#denoisingdereplication-and-zotu-inference)
       + [zOTU curation using LULU](#zotu-curation-using-lulu)
       + [Resource allocation](#resource-allocation)
       + [Singularity options](#singularity-options)
@@ -48,7 +48,7 @@
          - [Output products](#output-products)
             * [Generating phyloseq objects](#generating-phyloseq-objects)
 - [Downloading the NCBI BLAST nucleotide database](#downloading-the-ncbi-blast-nucleotide-database)
-- [Specifying parameters in a parameter file](#specifying-parameters-in-a-parameter-file)
+- [Saving command-line options in a parameter file](#saving-command-line-options-in-a-parameter-file)
 - [Notification](#notification)
 
 <!-- TOC end -->
@@ -590,7 +590,7 @@ eDNAFlow supports generation of [phyloseq](https://joey711.github.io/phyloseq/) 
 <small>**`--optimize-tree`**</small>: Attempt to optimize tree inference. This may take a long time, particularly if there are many zOTU sequences.
 
 # Downloading the NCBI BLAST nucleotide database
-Unless you pass the `--skip-blast` option, you'll need to provide a path to a local GenBank nucleotide (nt) and/or your custom BLAST database. To download the NCBI nucleotide database locally, follow the steps below:
+Unless you pass the `--skip-blast` option or you're only using a custom BLAST database, you'll need to provide a path to a local copy of the NCBI nucleotide (nt) database. To download the NCBI nucleotide database locally, follow the steps below:
 
 1. Download the official [BLAST+ container](https://github.com/ncbi/blast_plus_docs#show-blast-databases-available-for-download-from-ncbi) with Singularity:
    ```bash
@@ -605,18 +605,19 @@ Unless you pass the `--skip-blast` option, you'll need to provide a path to a lo
    $ singularity run $HOME/tmp/blast_latest.sif update_blastdb.pl --decompress nt
    ```
 
-# Specifying parameters in a parameter file
-All the options outlined in this document can either be passed as shown on the command line or defined in a parameter file in either YAML or json format using the command-line option `-params-file [file]` (**note the single dash before the option**). Option names in the parameter file must be converted from kebab-case to camelCase and leading dashes ('--') must be removed. For example, the option `--illumina-demultiplexed` should be entered as `illuminaDemultiplexed`. Boolean options (i.e., options with no parameter that are just an on/off switches such as `--filter-minimum`) should be given a value of 'true' or 'false'. Here is an example parameter file in YAML format:
+# Saving command-line options in a parameter file
+
+All the command-line options outlined in this document can either be passed as shown or, for convenience and repeatability, they may be defined in a parameter file in either YAML or json format. Then, launch the pipeline using the option `-params-file [file]` (**note the single dash before the option, this denotes a nextflow option rather than an eDNAFlow option**). Option names can be entered as-is (they must be quoted if using json format), but **leading dashes need to be removed**. For example, the option `--illumina-demultiplexed` should be entered as `illumina-demultipexed`. Boolean options (i.e., options with no parameter that are just on/off switches such as `--single` or `--paired`) should be assigned a value of 'true' or 'false'. Here is an example parameter file in YAML format:
 
 ```yaml
 paired: true
 reads: ../fastq/
 fwd: forward
 rev: reverse
-illuminaDemultiplexed: true
-removeAmbiguousIndices: true
-collapseTaxonomy: true
-primerMismatch: 3
+illumina-demultipexed: true
+remove-ambiguous-indices: true
+collapse-taxonomy: true
+primer-mismatch: 3
 ```
 
 and in json format:
@@ -627,18 +628,19 @@ and in json format:
   "reads": "../fastq/",
   "fwd": "forward",
   "rev": "reverse",
-  "illuminaDemultiplexed": true,
-  "removeAmbiguousIndices": true,
-  "collapseTaxonomy": true,
-  "primerMismatch": 3
+  "illumina-demultipexed": true,
+  "remove-ambiguous-indices": true,
+  "collapse-taxonomy": true,
+  "primer-mismatch": 3
 }
 ```
 
-Assuming the first example above is called options.yml, eDNAFlow can be then executed like this:
+If the first example above is saved as options.yml, eDNAFlow can be then executed like this:
 
 ```bash
 $ eDNAFlow.nf -params-file options.yml
 ```
+<small>**(again, note the single dash)**</small>
 
 Which is equivalent to running it like this:
 
@@ -655,7 +657,7 @@ $ eDNAFlow.nf \
 ```
 
 # Notification
-Nextflow allows the user to be notified upon completion or failure of the pipeline run. To do this, simply pass your email address with the `-N` option when running eDNAFlow.nf (again, note the single dash). For example, if you want to launch the pipeline using an options file and receive an email when the run completes:
+Nextflow allows the user to be notified upon completion (or failure) of the pipeline run. To do this, simply pass your email address with the `-N` option when running eDNAFlow.nf <small>**(again, note the single dash)**</small>. For example, if you want to launch the pipeline using an options file and receive an email when the run completes:
 
 ```bash
 $ eDNAFlow.nf -params-file options.yml -N someguy@nobody.com

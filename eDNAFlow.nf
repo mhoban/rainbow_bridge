@@ -144,7 +144,7 @@ def check_params() {
     // make sure we've got at least one db
     if (!blasts.size()) {
       println(colors.red("Unless you want to skip the BLAST query with --skip-blast, you must pass at least one value to --blast-db"))
-      println(colors.red("OR the environment variable BLASTDB must be defined and point to a valid location."))
+      println(colors.red("OR the environment variable BLASTDB must be defined and point to a instance of the `nt` (nucleotide) database."))
       exit(1)
     } else {
       // make sure all dbs exist

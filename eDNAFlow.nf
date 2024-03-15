@@ -124,35 +124,40 @@ def check_params() {
   }
 
   // sanity check, blast database
-  if (!helper.is_dir(params.blastDb)) {
-    println(colors.red("BLAST database must be specified either with the ") + colors.bred("--blast-db") + colors.red(" argument"))
-    println(colors.red("or using the \$BLASTDB environment variable. It must point to the directory"))
-    println(colors.red("containing the `nt` database (do not include /nt in the path)"))
-    exit(1)
-  }
+  if (!params.skipBlast) {
 
-  // make sure custom blast database is specified correctly
-  if (params.customDbName != "NOTHING" || params.customDb != "NOTHING") {
-    if (!helper.is_dir(params.customDb)) {
-      println(colors.red("Custom BLAST database must be specified as follows:"))
-      println(colors.bred("--custom-db-dir") + colors.red(" <path to custom BLAST db directory>"))
-      println(colors.bred("--custom-db") + colors.red(" <name of custom BLAST db (basename of .ndb, etc. files)>"))
-      println(colors.red("example:"))
-      println(colors.bred("--custom-db-dir") + colors.red(" /storage/blast ") + colors.bred("--custom-db") + colors.red(" test"))
-      exit(1)
-    }
-    if (params.customDbName == "NOTHING") {
-      println(colors.red("Name of custom BLAST db must be specified with the ") + colors.bred("--custom-db") + colors.red(" option"))
-      exit(1)
-    }
-  }
+    // get BLASTDB environment variable
+    bdb = helper.get_env("BLASTDB")
 
-  // another blast database sanity check
-  if (helper.basename(params.blastDb) == helper.basename(params.customDb)) {
-    println(colors.red("Due to the vicissitudes of nextflow internality, the directory names"))
-    println(colors.red("of the main and custom BLAST databases must be different."))
-    println(colors.red("As specified, both reside in directories called ${helper.basename(params.blastDb)}"))
-    exit(1)
+    // make --blast-db param into a list, if it isn't
+    blasts = params.blastDb
+    if (!helper.is_list(blasts)) 
+      blasts = [blasts]
+
+    // add BLASTDB first, unless we're ignoring it
+    if (bdb != "" && !params.ignoreBlastEnv)
+      blasts = blasts.plus(0,"${bdb}/nt")
+
+    // get unique vals
+    blasts = blasts.unique(false)
+
+    // make sure we've got at least one db
+    if (!blasts.size()) {
+      println(colors.red("Unless you want to skip the BLAST query with --skip-blast, you must pass at least one value to --blast-db"))
+      println(colors.red("OR the environment variable BLASTDB must be defined and point to a valid location."))
+      exit(1)
+    } else {
+      // make sure all dbs exist
+      blasts.each {
+        if (!file("${it}.ndb").exists()) {
+          println("Could not find ${d}. Please provide a path to an existing blast database.")
+          if (d =~ /~/) {
+            println("The path you entered contains a '~' that was not expanded by the shell. Try entering an absolute path.")
+          }
+          exit(1)
+        }  
+      }
+    }
   }
 
   // make sure insect parameter is valid: either a file or one of the pretrained models
@@ -257,7 +262,7 @@ process filter_length {
 
   script:
   // if we're already demultiplexed we probably don't have the forward_tag and reverse_tag annotations
-  def p = params.illuminaDemultiplexed ? "" : "-p 'forward_tag is not None and reverse_tag is not None'" 
+  p = params.illuminaDemultiplexed ? "" : "-p 'forward_tag is not None and reverse_tag is not None'" 
   """
   for fastq in ${fastq_file}; do
     obigrep --uppercase -l ${params.minLen} ${p} "\$fastq" >> "${sample_id}_length_filtered.fastq"
@@ -467,23 +472,22 @@ process blast {
   }, mode: params.publishMode 
 
   input:
-    tuple val(sample_id), path(a), path(zotus_fasta), path(zotu_table), path(blast_db), path(custom_db)
+    tuple path(zotus_fasta), path(blast_dirs), val(blast_dbs)
 
   output:
-    tuple val(sample_id), path("blast_result.tsv"), emit: result
+    path("blast_result.tsv"), emit: result
     path 'blast_settings.txt'
 
   script:
-  def cdb = (String)custom_db
-  if (cdb == "NOTHING") {
-    cdb = ""
-  } else {
-    cdb = "${cdb}/${params.customDbName}"
-  }
+  // create array of blast db arguments
+  dbs = blast_dirs.withIndex().collect { path,i ->
+    "${path}/${blast_dbs[i]}"
+  }.join(" ")
 
-  def pid = String.format("%d",(Integer)num(params.percentIdentity ))
-  def evalue = String.format("%.3f",num(params.evalue))
-  def qcov = String.format("%d",(Integer)num(params.qcov))           
+  // format settings values
+  pid = String.format("%d",(Integer)num(params.percentIdentity))
+  evalue = String.format("%.3f",num(params.evalue))
+  qcov = String.format("%d",(Integer)num(params.qcov))           
   """
   # record blast settings
   echo "Percent identity: ${pid}" > blast_settings.txt
@@ -491,11 +495,12 @@ process blast {
   echo "Query qoverage: ${qcov}" >> blast_settings.txt
   echo "Max. target sequences: ${params.maxQueryResults}" >> blast_settings.txt
 
-  # this environment variable needs to be there for the taxonomy to show up properly
-  export BLASTDB="${blast_db}"
+  # set BLASTDB to whatever the first-supplied database is
+  export BLASTDB="${blast_dirs[0]}"
+
   # blast our zotus
   blastn -task ${params.blastTask} \
-    -db "${blast_db}/nt ${cdb}" \
+    -db "${dbs}" \
     -outfmt "6 qseqid sseqid staxid ssciname scomname sskingdom pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \
     -perc_identity ${params.percentIdentity} -evalue ${params.evalue} \
     -best_hit_score_edge 0.05 -best_hit_overhang 0.25 \
@@ -590,10 +595,10 @@ process insect {
     path 'insect_settings.txt'
 
   script:
-  def offs = String.format("%d",(Integer)num(params.insectOffset))
-  def thresh = String.format("%.2f",num(params.insectThreshold))
-  def minc = String.format("%d",(Integer)num(params.insectMinCount))
-  def ping = String.format("%.2f",num(params.insectPing))
+  offs = String.format("%d",(Integer)num(params.insectOffset))
+  thresh = String.format("%.2f",num(params.insectThreshold))
+  minc = String.format("%d",(Integer)num(params.insectMinCount))
+  ping = String.format("%.2f",num(params.insectPing))
 
   """
   # record insect settings
@@ -630,7 +635,7 @@ process get_lineage {
 
   script:
   """
-  curl -LO https://ftp.ncbi.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip
+  curl -LO https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip
   unzip -p new_taxdump.zip rankedlineage.dmp > ranked_lineage.tsv
   unzip -p new_taxdump.zip merged.dmp > merged.dmp
   # rm new_taxdump.zip
@@ -724,7 +729,7 @@ process finalize {
     tuple path("zotu_table_raw.tsv"), path("taxonomy_raw.tsv"), path("zotu_table_final*.tsv")
 
   script:
-  def opt = []
+  opt = []
   if (params.abundanceFilter) {
     opt.add("--abundance-filter")
   }
@@ -769,8 +774,8 @@ workflow {
   // make sure our arguments are all in order
   check_params()
 
-  def lca = params.collapseTaxonomy || params.assignTaxonomy
-  def usearch = (params.usearch || params.denoiser == 'usearch')
+  lca = params.collapseTaxonomy || params.assignTaxonomy
+  usearch = (params.usearch || params.denoiser == 'usearch')
 
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
@@ -1048,15 +1053,40 @@ workflow {
       dereplicated.result | 
         set { dereplicated }
 
-    // make blast databases path channels so singularity will automount it properly
-    blast_db = Channel.fromPath(params.blastDb, type: 'dir')
-    custom_db = Channel.fromPath(params.customDb, type: 'dir', checkIfExists: params.customDb != "NOTHING")
-
     // run blast query, unless skipped
     if (!params.skipBlast) {
+      // get BLASTDB environment variable
+      bdb = helper.get_env("BLASTDB")
+      // make --blast-db value a list, if it's not already
+      blasts = params.blastDb
+      if (!helper.is_list(blasts)) 
+        blasts = [blasts]
+
+      // unless asked to ignore, add BLASTDB first
+      if (!params.ignoreBlastEnv && bdb != "")
+        blasts = blasts.plus(0,"${bdb}/nt")
+
+      // get unique vals
+      blasts = blasts.unique(false)
+
+      // get directories for blast databases
+      blast_dirs = blasts.collect {
+        file(it).Parent
+      }
+
+      // get blast database names
+      blast_dbs = blasts.collect {
+        file(it).BaseName
+      }
+
+      // construct input channels
+      Channel.of(blast_dirs) | toList |             // flatten channel to list
+        combine(Channel.of(blast_dbs) | toList) |   // flatten other channel to list
+        set { blastdb }
+
       dereplicated | 
-        combine(blast_db) | 
-        combine(custom_db) | 
+        map { sid, uniques, zotus, zotutable -> zotus } | 
+        combine(blastdb) |
         blast 
     }
 
@@ -1120,7 +1150,7 @@ workflow {
     if (lca && !params.skipBlast) {
       // here we grab the blast result
       blast.out.result | 
-        map { sid, blast_result -> blast_result } | 
+        /* map { sid, blast_result -> blast_result } |  */
         set { blast_result }
 
       // then we smash it together with the blast results 

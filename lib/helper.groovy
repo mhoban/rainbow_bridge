@@ -32,6 +32,11 @@ class helper {
 		
 		return System.getenv(n) ? System.getenv(n) : ""
 	}
+  
+  static public boolean is_list(object) {    
+      [Collection, Object[]].any { it.isAssignableFrom(object.getClass())  }
+  }
+
 	
 	static public void demuxed_example() {
 		System.out.println("""

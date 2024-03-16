@@ -443,7 +443,7 @@ It is possible to query your sequences agains multiple BLAST databases. As menti
 
 <a name="bdb-first"></a><small>**Note: Whether or not `$BLASTDB` is set on the system when the pipeline is run, its value be set internally (inside the pipeline) to point to the location of whichever database is passed *first*. This detail is important, because `blastn` uses `$BLASTDB` to find taxonomy information (i.e., scientific names).**</small>  
 
-<small>**Another note: If you are using multiple blast databases, each one must reside in *separate* directories, otherwise you'll get a nextflow error.**</small>  
+<small>**Another note: If you are using multiple blast databases, each one must reside in *separate* directories with different names, otherwise you'll get a nextflow error.**</small>  
 
 More BLAST options:  
 <small>**`--ignore-blast-env`**</small>: Ignore the `$BLASTDB` environment variable when running the pipeline.   

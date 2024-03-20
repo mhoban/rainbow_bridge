@@ -4,8 +4,8 @@
    * [About this version](#about-this-version)
 - [Setup and testing](#setup-and-testing)
    * [Installation](#installation)
-      + [Testing installation](#testing-installation)
       + [Manual dependency installation](#manual-dependency-installation)
+      + [Testing installation](#testing-installation)
 - [Basic usage](#basic-usage)
    * [Input requirements](#input-requirements)
    * [Usage examples](#usage-examples)
@@ -95,15 +95,60 @@ These instructions are more or less generic, excluding dependency installation. 
    $ sudo ./install_dependencies.sh
    ```
    This will install nextflow and singularity to the system. If this fails, try the instructions given [below](#manual-dependency-installation).
-
-### Testing installation
-
-Here is where I will tell you how to run the pipeline using example data, but I'm not sure if that part works yet so you'll have to just watch this space.
-
+   
 ### Manual dependency installation
 
 </a>For manual installation of Nextflow, follow the instructions at [nextflow installation](https://www.nextflow.io/docs/latest/getstarted.html). To install Singularity manually, follow the instructions at [singularity installation](https://sylabs.io/guides/3.5/admin-guide/installation.html). If working on HPC, you may need to contact your HPC helpdesk. The Singularity installation how-to is long and complicated, but if you're on a Debian-adjacent distro, there are .deb packages that can be found at [https://github.com/sylabs/singularity/releases/latest](https://github.com/sylabs/singularity/releases/latest). 
 
+### Testing installation
+
+The `eDNFlow` github repository contains representative example data for the various possible input scenarios:  
+
+* Single-end sequencing runs
+  * Demultiplexed
+  * Undemultiplexed
+* Paired-end sequencing runs
+  * Demultiplexed
+  * Undemultiplexed
+
+The pipeline assumes that for undemultiplexed datasets you have used [barcoded primers](#non-demuxed) and for demultiplexed datasets you  used [Illumina indices](#demuxed) to designate samples. You will find the test scripts inside of the `test` directory in the code tree. The script names should be self-explanatory. To run them, change into the `test` directory and run the appropriate script. You can see how the pipeline is invoked (i.e., which options are used) by viewing the contents of the test scripts. Each example uses a custom BLAST database to save processing time, and taxonomy has been arbitrarily assigned. If you try to query test zOTU sequences against the NCBI database, you'll get different results. 
+
+Here is a worked example including the sort of output you should expect to see:
+
+```bash
+$ cd eDNAFlow/test
+$ ls -l *.sh
+-rwxr-xr-x 1 justaguy justaguy 342 Mar 20 11:23 test_paired_demuxed.sh*
+-rwxr-xr-x 1 justaguy justaguy 256 Mar 20 11:23 test_paired_undemuxed.sh*
+-rwxr-xr-x 1 justaguy justaguy 306 Mar 20 11:23 test_single_demuxed.sh*
+-rwxr-xr-x 1 justaguy justaguy 265 Mar 20 11:23 test_single_undemuxed.sh*
+
+
+$ ./test_paired_demuxed.sh
+N E X T F L O W  ~  version 24.01.0-edge
+WARN: It appears you have never run this project before -- Option `-resume` is ignored
+Launching `../../eDNAFlow.nf` [drunk_dalembert] DSL2 - revision: 9f46202f2d
+executor >  local (55)
+[48/b5f639] process > unzip (1)             [100%] 8 of 8 ✔
+[c6/8408f9] process > remap_samples (8)     [100%] 8 of 8 ✔
+[06/90d159] process > filter_merge (8)      [100%] 8 of 8 ✔
+[cc/d77416] process > ngsfilter (8)         [100%] 8 of 8 ✔
+[2a/222990] process > filter_length (1)     [100%] 8 of 8 ✔
+[ec/1f97b5] process > relabel_vsearch (8)   [100%] 8 of 8 ✔
+[47/11cbff] process > derep_vsearch (1)     [100%] 1 of 1 ✔
+[04/8700dc] process > blast (1)             [100%] 1 of 1 ✔
+[7a/de8f6b] process > lulu_blast (1)        [100%] 1 of 1 ✔
+[fe/cebca4] process > lulu (1)              [100%] 1 of 1 ✔
+[8b/71f6ad] process > get_lineage           [100%] 1 of 1 ✔
+[7f/5f1111] process > collapse_taxonomy (1) [100%] 1 of 1 ✔
+[6e/5cdf01] process > finalize (1)          [100%] 1 of 1 ✔
+
+$ ls -l paired_test_demux/
+total 8
+drwxrwxr-x 1 mykle mykle    0 Mar 20 11:54 output/
+drwxrwxr-x 1 mykle mykle    0 Mar 20 11:53 preprocess/
+drwxrwxr-x 1 mykle mykle 8192 Mar 20 11:53 work/
+```
 
 # Basic usage
 
@@ -113,11 +158,13 @@ The most basic requirements for an eDNAFlow run are fastq-formatted sequence fil
 
 Details about the three input formats the pipeline expects:
 
+<a name="non-demuxed"></a>
 1. Raw data from the sequencer (i.e. non-demultiplexed). This typically consists of forward/reverse reads each in single large (optionally gzipped) fastq files. You will have one fastq file per sequencing direction, identified by some unique portion of the filename (typically R1/R2). For this type of data, the demultiplexer used in eDNAFlow assumes that you have barcoded primers, such that sequence reads look like this:  
   ```
   <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSER_BARCODE>
   ```
 
+<a name="demuxed"></a>
 1. Data that has already been demultiplexed by the sequencer. This is typically the case when you have used Illumina indices to delineate samples. You will have fastq files for each individual sample and read direction (delineated by a filename pattern like R1/R2), and sequences should still have primers attached, like this:  
   ```
   <FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER>

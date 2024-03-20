@@ -150,9 +150,9 @@ def check_params() {
       // make sure all dbs exist
       blasts.each {
         if (!file("${it}.ndb").exists()) {
-          println("Could not find ${d}. Please provide a path to an existing blast database.")
-          if (d =~ /~/) {
-            println("The path you entered contains a '~' that was not expanded by the shell. Try entering an absolute path.")
+          println(colors.red("Could not find ${it}. Please provide a path to an existing blast database."))
+          if (it =~ /~/) {
+            println(colors.yellow("The path you entered contains a '~' that was not expanded by the shell. Try entering an absolute path."))
           }
           exit(1)
         }  

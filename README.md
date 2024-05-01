@@ -488,15 +488,15 @@ By default, `eDNAFlow` will use the value of the `$BLASTDB` environment variable
 Multiple BLAST databases:  
 It is possible to query your sequences agains multiple BLAST databases. As mentioned, the pipeline will, by default, use the value of the `$BLASTDB` environment variable to locate the NCBI `nt` database. If that variable is set, any values passed to `--blast-db` will be added as additional databases. Nextflow does not support multiple values for the same option on the command line (e.g., `workflow.nf --opt val1 --opt val2`), but it *does* support them when using [parameter files](#specifying-parameters-in-a-parameter-file). Thus, if you're not using the `$BLASTDB` variable and/or you have multiple custom databases, you can pass them as a list in your parameter file ([see here](#setting-multiple-values-for-the-same-option) for an example).  
 
-<a name="bdb-first"></a><small>**Note: Whether or not `$BLASTDB` is set on the system when the pipeline is run, its value be set internally (inside the pipeline) to point to the location of whichever database is passed *first*. This detail is important, because `blastn` uses `$BLASTDB` to find taxonomy information (i.e., scientific names).**</small>  
+<a name="bdb-first"></a><small>**Note: Whether or not `$BLASTDB` is set on the system when the pipeline is run, its value will be set internally (within the virtual environment of the pipeline) to point to the location of whichever database is passed *first*. This detail is important, because `blastn` uses `$BLASTDB` to find taxonomy information (i.e., scientific names).**</small>  
 
 <small>**Another note: If you are using multiple blast databases, each one must reside in *separate* directories with different names, otherwise you'll get a nextflow error.**</small>  
 
 More BLAST options:  
-<small>**`--ignore-blast-env`**</small>: Ignore the `$BLASTDB` environment variable when running the pipeline.   
+<small>**`--ignore-blast-env`**</small>: Ignore the value of the `$BLASTDB` environment variable set on the host system when running the pipeline (variable is still set internally when the pipeline is run).   
 <small>**`--skip-blast`**</small>: Pass this if you don't want to run a BLAST query at all.   
 <small>**`--blast-task [task]`**</small>:  Set blast+ task (default: "blastn")  
-<small>**`--max-query-results [num]`**</small>:  Maximum number of BLAST results to return per zOTU (default: 10). See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter.  
+<small>**`--max-query-results [num]`**</small>:  Maximum number of BLAST results to return per zOTU (default: 10). See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter, but mayble also see [here](https://academic.oup.com/bioinformatics/article/35/15/2699/5259186) for a follow-up discussion.  
 <small>**`--percent-identity [num]`**</small>:  Minimum percent identity of matches (default: 95)  
 <small>**`--evalue [num]`**</small>:  BLAST e-value threshold (default: 0.001)  
 <small>**`--qcov [num]`**</small>:  Minimum percent query coverage (default: 100)  
@@ -548,8 +548,9 @@ Options for the LCA method of taxonomy refinement. This method will selectively 
 ### Denoising/dereplication and zOTU inference
 These options control how (and by what tool) sequences are denoised and zOTUs are inferred By default, eDNAFlow uses [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch), which does not suffer from the 4GB memory limit of the free version of [usearch](https://www.drive5.com/usearch/). You still retain the option of using either the free (32 bit) or commercial (64 bit) versions of usearch, if you really want. 
 
-<small>**`--min-abundance [num]`**</small>:  Minimum zOTU abundance; zOTUs with abundance below threshold will be discarded (default: 8)   
-<small>**`--denoiser [tool/path]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'usearch32', 'vsearch', path to 64-bit usearch executable (default: vsearch)  
+<small>**`--denoiser [tool/path]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'usearch32', 'vsearch', path to 64-bit usearch executable (default: vsearch)    
+<small>**`--min-abundance [num]`**</small>:  Minimum sequence abundance for zOTU determination; sequences with abundances below the specified threshold will be discarded during the denoising process (default: 8)   
+<small>**`--alpha [num]`**</small>: Alpha parameter passed to the UNOISE3 algorithm (see the [unoise2 paper for more info](https://doi.org/10.1101/081257)) (default: 2.0)  
 <small>**`--usearch`**</small>:  Alias for `--denoiser usearch`  
 
 ### zOTU curation using LULU

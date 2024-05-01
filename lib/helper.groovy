@@ -210,11 +210,12 @@ class helper {
                                     (default: ${params.primerMismatch})
 
     Denoising and zOTU inference:  
-      --min-abundance [num]         Minimum zOTU abundance; zOTUs below threshold will be discarded
-                                    (default: ${params.minAbundance}) 
       --denoiser [tool/path]        Sets the tool used for denoising & chimera removal
                                     accepted options: usearch/usearch32 (equivalent), vsearch, 
                                     path to usearch64 executable (default: vsearch)
+      --alpha [num]                 Sets the alpha parameter for the UNOISE3 algorithm (default: ${params.alpha})
+      --min-abundance [num]         Minimum sequence abundance for zOTU determination; sequences below threshold will be discarded
+                                    (default: ${params.minAbundance}) 
       --usearch                     shortcut for --denoiser usearch
 
     LULU zOTU curation:

@@ -396,7 +396,7 @@ process derep_vsearch {
   # 4. match original sequences to zotus by 97% identity
   if [ -s "${relabeled_merged}" ]; then 
     vsearch --threads 0 --derep_fulllength ${relabeled_merged} --sizeout --output "${id}_unique.fasta"
-    vsearch --threads 0 --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance}	   
+    vsearch --threads 0 --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
     vsearch --threads 0 --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" --relabel Zotu 
     vsearch --threads 0 --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tsv
   else
@@ -432,7 +432,7 @@ process derep_usearch {
     # 3. generate zotu table
     if [ -s "${relabeled_merged}" ]; then
       usearch -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${id}_unique.fasta"
-      usearch -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance}
+      usearch -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} -unoise_alpha ${params.alpha}
       usearch -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zmap.txt
     else
       >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
@@ -445,7 +445,7 @@ process derep_usearch {
     echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
     if [ -s "${relabeled_merged}" ]; then
       ${params.denoiser} -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${id}_unique.fasta"
-      ${params.denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance}
+      ${params.denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} -unoise_alpha ${params.alpha}
       ${params.denoiser} -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zmap.txt
     else
       >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  

@@ -1192,11 +1192,13 @@ workflow {
         set { curated_zotu_table }
     }
 
-    zotu_table |
-      combine(curated_zotu_table) | 
-      combine(lca_taxonomy) | 
-      combine(insect_taxonomy) |
-      finalize
+    if (params.collapseTaxonomy || params.insect) {
+      zotu_table |
+        combine(curated_zotu_table) | 
+        combine(lca_taxonomy) | 
+        combine(insect_taxonomy) |
+        finalize
+    }
 
     /* put all the phyloseq stuff down here */
     if (params.phyloseq && helper.file_exists(params.metadata)) {

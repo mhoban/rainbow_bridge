@@ -71,11 +71,6 @@ option_list = list(
   make_option(c("-C", "--curated"), action="store", default="", type="character", help="LULU-curated zOTU table")
 )
 
-debug_args <- c("--remap","/drives/storage/users/mykle/test/finalize/remap.tsv",#"--filter","/drives/storage/users/mykle/test/finalize/filter.tsv",
-                "--insect","/drives/storage/users/mykle/test/finalize/insect2.tsv", "--lca","/drives/storage/users/mykle/test/finalize/lca2.tsv",
-                "--controls","/drives/storage/users/mykle/test/finalize/negs.txt","--concentration","~/working/test/finalize/concentration.tsv",
-                "--control-action","decontam","--filter-min","--rarefy","/drives/storage/users/mykle/test/finalize/zotu_table2.tsv")
-
 # parse command-line options
 opt = parse_args(
   OptionParser(

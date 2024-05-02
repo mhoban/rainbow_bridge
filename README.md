@@ -490,11 +490,11 @@ It is possible to query your sequences agains multiple BLAST databases. As menti
 
 <a name="bdb-first"></a><small>**Note: Whether or not `$BLASTDB` is set on the system when the pipeline is run, its value will be set internally (within the virtual environment of the pipeline) to point to the location of whichever database comes *first* in the list of `--blast-db` arguments. This detail is important, because `blastn` uses `$BLASTDB` to [find taxonomy information](#getting-taxonomy-to-work-properly-with-your-custom-database) (i.e., scientific names).**</small>  
 
-<small>**Another note: If you are using multiple blast databases, each one must reside in *separate* directories with different names, otherwise you'll get a nextflow error. For instance, using one database at /drive1/blast/custom_db and another and /drive2/blast/custom_db2 will fail due to both databases sitting in a directory called 'blast'.**</small>  
+<small>**Another note: If you are using multiple blast databases, each one must reside in *separate* directories with different names, otherwise you'll get a nextflow error. For instance, using one database at /drive1/blast/custom_db and another at /drive2/blast/custom_db2 will fail due to both databases sitting in a directory called 'blast'.**</small>  
 
 More BLAST options:  
-<small>**`--ignore-blast-env`**</small>: Ignore the value of the `$BLASTDB` environment variable set on the host system when running the pipeline (variable is still set internally when the pipeline is run).   
-<small>**`--skip-blast`**</small>: Pass this if you don't want to run a BLAST query at all.   
+<small>**`--ignore-blast-env`**</small>: Ignore the value of the `$BLASTDB` environment variable set on the host system when running the pipeline (variable is still set internally when the pipeline is run). Use this if you want to use a custom database but *don't* want to also use the database in `$BLASTDB`.  
+<small>**`--skip-blast`**</small>: Do not perform any BLAST search.   
 <small>**`--blast-task [task]`**</small>:  Set blast+ task (default: "blastn")  
 <small>**`--max-query-results [num]`**</small>:  Maximum number of BLAST results to return per zOTU (default: 10). See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter, but mayble also see [here](https://academic.oup.com/bioinformatics/article/35/15/2699/5259186) for a follow-up discussion.  
 <small>**`--percent-identity [num]`**</small>:  Minimum percent identity of matches (default: 95)  

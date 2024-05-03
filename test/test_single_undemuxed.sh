@@ -8,5 +8,5 @@ cd single_test_undemux
   --ignore-blast-env \
   --reads '../fastq/single_undemux/test_30000reads.fastq' \
   --barcode '../se_bc_*' \
-  --blast-db ../blast/single_undemuxed \
+  --blast-db ../blastdb/single_undemuxed \
   --collapse-taxonomy

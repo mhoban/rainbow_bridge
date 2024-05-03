@@ -50,7 +50,6 @@
 - [Useful examples and tips](#useful-examples-and-tips)
    * [Downloading the NCBI BLAST nucleotide database](#downloading-the-ncbi-blast-nucleotide-database)
    * [Making a custom BLAST database](#making-a-custom-blast-database)
-      + [Getting taxonomy to work properly with your custom database](#getting-taxonomy-to-work-properly-with-your-custom-database)
    * [Specifying parameters in a parameter file](#specifying-parameters-in-a-parameter-file)
       + [Setting multiple values for the same option](#setting-multiple-values-for-the-same-option)
    * [Notification](#notification)
@@ -117,31 +116,26 @@ Here is a worked example including the sort of output you should expect to see:
 
 ```bash
 $ cd eDNAFlow/test
-$ ls -l *.sh
--rwxr-xr-x 1 justaguy justaguy 342 Mar 20 11:23 test_paired_demuxed.sh*
--rwxr-xr-x 1 justaguy justaguy 256 Mar 20 11:23 test_paired_undemuxed.sh*
--rwxr-xr-x 1 justaguy justaguy 306 Mar 20 11:23 test_single_demuxed.sh*
--rwxr-xr-x 1 justaguy justaguy 265 Mar 20 11:23 test_single_undemuxed.sh*
-
-
 $ ./test_paired_demuxed.sh
 N E X T F L O W  ~  version 24.01.0-edge
 WARN: It appears you have never run this project before -- Option `-resume` is ignored
-Launching `../../eDNAFlow.nf` [drunk_dalembert] DSL2 - revision: 9f46202f2d
-executor >  local (55)
-[48/b5f639] process > unzip (1)             [100%] 8 of 8 ✔
-[c6/8408f9] process > remap_samples (8)     [100%] 8 of 8 ✔
-[06/90d159] process > filter_merge (8)      [100%] 8 of 8 ✔
-[cc/d77416] process > ngsfilter (8)         [100%] 8 of 8 ✔
-[2a/222990] process > filter_length (1)     [100%] 8 of 8 ✔
-[ec/1f97b5] process > relabel_vsearch (8)   [100%] 8 of 8 ✔
-[47/11cbff] process > derep_vsearch (1)     [100%] 1 of 1 ✔
-[04/8700dc] process > blast (1)             [100%] 1 of 1 ✔
-[7a/de8f6b] process > lulu_blast (1)        [100%] 1 of 1 ✔
-[fe/cebca4] process > lulu (1)              [100%] 1 of 1 ✔
-[8b/71f6ad] process > get_lineage           [100%] 1 of 1 ✔
-[7f/5f1111] process > collapse_taxonomy (1) [100%] 1 of 1 ✔
-[6e/5cdf01] process > finalize (1)          [100%] 1 of 1 ✔
+Launching `../../eDNAFlow.nf` [friendly_euler] DSL2 - revision: 8464fa0b9e
+executor >  local (56)
+[85/6dd3f2] process > unzip (2)             [100%] 8 of 8 ✔
+[99/aae470] process > remap_samples (8)     [100%] 8 of 8 ✔
+[3e/082a18] process > filter_merge (8)      [100%] 8 of 8 ✔
+[43/06f139] process > ngsfilter (8)         [100%] 8 of 8 ✔
+[01/c9eb63] process > filter_length (5)     [100%] 8 of 8 ✔
+[46/cd5b03] process > relabel_vsearch (8)   [100%] 8 of 8 ✔
+[80/12aa45] process > derep_vsearch (1)     [100%] 1 of 1 ✔
+[2d/0c1659] process > get_taxdb             [100%] 1 of 1 ✔
+[c4/6d1f7c] process > blast (1)             [100%] 1 of 1 ✔
+[ee/8f5493] process > lulu_blast (1)        [100%] 1 of 1 ✔
+[3d/e256fb] process > lulu (1)              [100%] 1 of 1 ✔
+[96/5225b5] process > get_lineage           [100%] 1 of 1 ✔
+[4c/52b0f2] process > collapse_taxonomy (1) [100%] 1 of 1 ✔
+[de/6a9ce7] process > finalize (1)          [100%] 1 of 1 ✔
+
 
 $ ls -l paired_test_demux/
 total 8
@@ -276,10 +270,10 @@ When the pipeline finishes, output from each step can be found in directories co
 |             | merged/                              | Merged relabeled FASTA file for denoising                    |                                                          |
 | output/     | fastqc_initial/<br />fastqc_filtered/ | FastQC/MultiQC reports                                       | --fastqc                                                 |
 |             | zotus/                               | Dereplicated/denoised sequence results<br />(unique sequences, zOTU sequences, zOTU table) |                                                          |
-|             | blast*/                              | BLAST results. Directory name will reflect the options passed to the blast process. |                                                          |
+|             | blast/\*                              | BLAST results. Directory names will reflect the options passed to the blast process as well as the names of the individual databases queried against. |                                                          |
 |             | lulu/                                | LULU curation results                                        |                                                          |
-|             | taxonomy/lca*/                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --collapse-taxonomy                                      |
-|             | taxonomy/insect*/                    | Insect classification results. Directory name will reflect the options passed to the insect process. | --insect                                                 |
+|             | taxonomy/lca\*/                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --collapse-taxonomy                                      |
+|             | taxonomy/insect\*/                    | Insect classification results. Directory name will reflect the options passed to the insect process. | --insect                                                 |
 |             | phyloseq/                            | Phyloseq object                                              | --phyloseq and associated options                        |
 | work/       | A bunch of nonsense                 | All internal and intermediate files processed by nextflow    |                                                          |
 | .nextflow/  | various                             | Hidden nextflow-generated internal folder                    |                                                          |
@@ -399,7 +393,7 @@ There are a few ways you can tell eDNAFlow where your reads are:
 
 #### BLAST settings 
 
-For runs in which BLAST queries are performed, you must identify the database(s) being used. This can be done using the `--blast-db` option or the `$BLASTDB` environment variable. See [below](#blast-settings-1) for more details on how to do this. 
+For pipeline runs in which BLAST queries are performed, you must identify the database(s) being used. This can be done using the `--blast-db` option or the `$FLOW_BLAST` environment variable. See [below](#blast-settings-1) for more details on how to do this. 
 
 ## Sample IDs
 For non-demultiplexed sequencing runs, samples will be named based on the sample IDs specified in the `sample` column of the barcode file. For demultiplexed runs, samples will by default be named based on the first part of the filename before the fwd/rev (R1/R2) pattern. For example, the following read files:
@@ -476,27 +470,33 @@ BLAST is an alignment-based approach that uses the NCBI [GenBank](https://www.nc
 
 #### BLAST settings
 
-These settings allow you to control how BLAST searches are performed and specify the location of search databases. The only required option (unless BLAST queries are being skipped) is the location of a local BLAST database, which can be set using the command line option `--blast-db` and/or through the `$BLASTDB` environment variable. Other options in this category allow you to control BLAST search criteria directly (e.g., e-value, percent match, etc.). For further explanation of these options beyond what is described here, see the [blast+ documentation](https://www.ncbi.nlm.nih.gov/books/NBK279690/).
+These settings allow you to control how BLAST searches are performed and specify the location of search databases. The only required option (unless BLAST queries are being skipped) is the location of a local BLAST database, which can be set using the command line option `--blast-db` and/or through the `$FLOW_BLAST` environment variable. Other options in this category allow you to control BLAST search criteria directly (e.g., e-value, percent match, etc.). For further explanation of these options beyond what is described here, see the [blast+ documentation](https://www.ncbi.nlm.nih.gov/books/NBK279690/).
 
 The following options are available:  
 
 Specifying your database:  
 <small>**`--blast-db [blast dir]`**</small>: Location of a BLAST database (path *and* name). For example, if the NCBI `nt` database resides at `/usr/local/blast`, use `--blast-db /usr/local/blast/nt`. If you have a custom database called `custom_blast` in `/home/user/customblast`, pass `--blast-db /home/user/customblast/custom_blast`. The "name" of the database is the same as the value passed to the `-out` parameter of `makeblastdb`. If you are unsure of the name of a particular blast database, a good way to identify it is that it's the base name of the .ndb file. For example, if you have a directory with a `fishes.ndb` file, the name of the BLAST database will just be `fishes`.  
 
-By default, `eDNAFlow` will use the value of the `$BLASTDB` environment variable as the primary BLAST database. According to NCBI documentation, `$BLASTDB` must point to the *directory* where the blast database can be found. Thus, if `$BLASTDB` is set, the pipeline will assume you are using the `nt` (NCBI nucleotide) database and the equivalent value passed to `--blast-db` will be `$BLASTDB/nt`.  
+By default, `eDNAFlow` will use the value of the `$FLOW_BLAST` environment variable as the primary BLAST database. If `$FLOW_BLAST` is set, the database it points to will be added in addition to any database(s) passed to `--blast-db`.  
+
+Taxonomic name resolution:  
+BLAST databases use numerical NCBI taxonomy IDs (taxids) to assign taxonomy to sequences. In order for your results to contain the actual scientific names associated with those taxids, the NCBI BLAST taxonomy database (taxdb) must be available to the pipeline. This can be achieved in several ways:   
+
+  - If the taxdb files (`taxdb.btd` and `taxdb.bti`) are present in any of the databases passed through `--blast-db` or `$FLOW_BLAST`, they will be used for all of the supplied databases. 
+    * If you are using the NCBI `nt` database, you most likely already have these files present and won't have to worry about any of this.
+  - Taxonomy files can be explicitly specified using the `--blast-taxdb` option. The option value must point to the *directory* containaining the two taxdb files.
+  - If the taxdb files are missing, they will be automatically downloaded from the NCBI website.
 
 Multiple BLAST databases:  
-It is possible to query your sequences agains multiple BLAST databases. As mentioned, the pipeline will, by default, use the value of the `$BLASTDB` environment variable to locate the NCBI `nt` database. If that variable is set, any value(s) passed to `--blast-db` will be added as additional databases. Nextflow does not support multiple values for the same option on the command line (e.g., `workflow.nf --opt val1 --opt val2`), but it *does* support them when using [parameter files](#specifying-parameters-in-a-parameter-file). Thus, if you're not using the `$BLASTDB` variable and/or you want to use multiple custom databases, you'll need to pass them as a list in your parameter file ([see here](#setting-multiple-values-for-the-same-option) for an example).  
+It is possible to query your sequences agains multiple BLAST databases. As mentioned, the pipeline will, by default, use the value of the `$FLOW_BLAST` environment variable as its first BLAST database. If that variable is set, any value(s) passed to `--blast-db` will be added as additional databases. Nextflow does not support multiple values for the same option on the command line (e.g., `workflow.nf --opt val1 --opt val2`), but it *does* support them when using [parameter files](#specifying-parameters-in-a-parameter-file). Thus, if you're not using the `$FLOW_BLAST` variable and/or you want to use multiple custom databases, you'll need to pass them as a list in your parameter file ([see here](#setting-multiple-values-for-the-same-option) for an example). The pipeline will run BLAST queries agains each database separately and merge the results into a common output file.    
 
-<a name="bdb-first"></a><small>**Note: Whether or not `$BLASTDB` is set on the system when the pipeline is run, its value will be set internally (within the virtual environment of the pipeline) to point to the location of whichever database comes *first* in the list of `--blast-db` arguments. This detail is important, because `blastn` uses `$BLASTDB` to [find taxonomy information](#getting-taxonomy-to-work-properly-with-your-custom-database) (i.e., scientific names).**</small>  
-
-<small>**Another note: If you are using multiple blast databases, each one must reside in *separate* directories with different names, otherwise you'll get a nextflow error. For instance, using one database at /drive1/blast/custom_db and another and /drive2/blast/custom_db2 will fail due to both databases sitting in a directory called 'blast'.**</small>  
-
-More BLAST options:  
-<small>**`--ignore-blast-env`**</small>: Ignore the value of the `$BLASTDB` environment variable set on the host system when running the pipeline (variable is still set internally when the pipeline is run).   
+All BLAST options:  
 <small>**`--skip-blast`**</small>: Pass this if you don't want to run a BLAST query at all.   
+<small>**`--blast-db [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db. If the environment variable `$FLOW_BLAST` is set, its value will be added to the list of databases being searched.   
+<small>**`--blast-taxdb [dir]`**</small>: Specify the location of the NCBI BLAST taxonomy database files (`taxdb.btd` and `taxdb.bti`). The value of this option must be the directory where these two files can be found. If these files already occur alongside any of the databases passed to `--blast-db`, they will be reused for all databases. If they are missing entirely, they will be downloaded from the NCBI servers.  
+<small>**`--ignore-blast-env`**</small>: Ignore the value of the `$FLOW_BLAST` environment variable set on the host system when running the pipeline.   
 <small>**`--blast-task [task]`**</small>:  Set blast+ task (default: "blastn")  
-<small>**`--max-query-results [num]`**</small>:  Maximum number of BLAST results to return per zOTU (default: 10). See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter, but mayble also see [here](https://academic.oup.com/bioinformatics/article/35/15/2699/5259186) for a follow-up discussion.  
+<small>**`--max-query-results [num]`**</small>:  Maximum number of BLAST results to return per query sequence (default: 10). See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter, but mayble also see [here](https://academic.oup.com/bioinformatics/article/35/15/2699/5259186) for a follow-up discussion.  
 <small>**`--percent-identity [num]`**</small>:  Minimum percent identity of matches (default: 95)  
 <small>**`--evalue [num]`**</small>:  BLAST e-value threshold (default: 0.001)  
 <small>**`--qcov [num]`**</small>:  Minimum percent query coverage (default: 100)  
@@ -659,7 +659,7 @@ Unless you pass the `--skip-blast` option, you'll need to provide a path to a lo
 
 1. Download the official [BLAST+ container](https://github.com/ncbi/blast_plus_docs#show-blast-databases-available-for-download-from-ncbi) with Singularity:
    ```bash
-   $ singularity pull --dir $HOME/tmp docker://ncbi/blast:latest
+   $ singularity pull blast_latest.sif --dir $HOME/tmp docker://ncbi/blast:latest
    ```
    --dir can be any directory you want it to. It's just the place where the image (.sif file) is saved.
 
@@ -746,29 +746,7 @@ $ ls -l
 -rw-rw-r-- 1 justaguy justaguy    42 Mar 12 14:27 taxid_map
 ```
 
-### Getting taxonomy to work properly with your custom database
-
-When you run a query against this custom database, you'll probably want the taxonomy to show up correctly in the results. This is pretty easy to do, although it's frustratingly under-documented. In order for the taxonomy to show up properly in your blast results, the `$BLASTDB` environment variable must be set and the directory it points to must contain the BLAST taxonomy files. Those files are `taxdb.btd` and `taxdb.bti` and they can be found in the [taxdb archive on the NCBI servers](https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz).  
-
-As mentioned [above](#bdb-first), `eDNAFlow` will internally set `$BLASTDB` to the location of the *first* blast database it's passed. Thus, your properly-taxonomized BLAST results can be acquired in two ways:
-
-- Set `$BLASTDB` to point to the location of the complete NCBI `nt` database (built using the [above](#downloading-the-ncbi-blast-nucleotide-database) method, which includes the taxonomy database files) and pass your custom database as an additional value to `--blast-db`. Something like this:
-```bash
-$ export BLASTDB=/opt/blast
-$ eDNAFlow.nf \
-  ... various options ... \
-  --blast-db /home/justaguy/test/custom_database
-```
-- Copy or extract the NCBI taxdb files into the same directory as your custom BLAST database and pass your custom database with `--blast-db` while telling the pipeline to ignore any existing value of `$BLASTDB` with `--ignore-blast-env`. This will result in the directory containing your custom database being used as the value of `$BLASTDB` internally, and taxonomy should show up correctly:
-```bash
-$ curl -LO https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz
-$ tar -zxvf taxdb.tar.gz -C /home/justaguy/test/custom_database
-...
-$ eDNAFlow.nf \
-  ... various options ... \
-  --blast-db /home/justaguy/test/custom_database \
-  --ignore-blast-env
-```
+In order to use this custom database with the pipeline, if these files reside in a directory called `/users/justaguy/blast`, the value you would pass to `--blast-db` would be `/users/justaguy/blast/custom_database`
 
 ## Specifying parameters in a parameter file
 

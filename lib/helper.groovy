@@ -121,17 +121,19 @@ class helper {
                                     (default: ${params.minAlignLen})
       --min-len [num]               Minimum overall sequence length (default: ${params.minLen})
 
-    BLAST settings (one or more of --blast-db or --custom-db is required):
+    BLAST settings (one or more database is required, unless skipping):
       --skip-blast                  Skip BLAST searches
-      --blast-db [dir]              Location of local BLAST nucleotide (nt) database *directory*
-                                    (do NOT include the final "/nt")
-                                    May be specified using the \$BLASTDB environment variable
-                                    (current value: ${get_env("BLASTDB")})
-      --custom-db [dir]             (optional) Path to custom BLAST database *directory*
-                                    Passing --custom-db and --blast-db values that point to directories
-                                    with the same name (e.g., /dir1/blast and /dir2/blast) will result 
-                                    in an error!
-      --custom-db-name [name]       Name of custom BLAST database (i.e., basename of .ndb, etc. files)
+      --blast-db [blastdb]          Location of BLAST database (path AND name).
+                                    e.g., '/drive1/blast/custom_db', where the database files are named
+                                    things like custom_db.ndb, custom_db.nhr, custom_db.nin, etc.
+                                    If the \$FLOW_BLAST environment variable points to a BLAST database, 
+                                    the pipeline will include it in the list of databases to search.
+                                    To specify multiple BLAST databases, pass them as a list in the
+                                    parameters file (see README for more information).
+      --blast-taxdb [dir]           Specify the location of the taxdb.* files, for BLAST taxon name assignment.
+                                    If unspecified or missing from the --blast-db directory, the pipeline 
+                                    will download these files from the NCBI server.
+      --ignore-blast-env            Ignore the value of the \$FLOW_BLAST environment variable
       --blast-task [task]           Set blast+ task (default: "blastn")
       --max-query-results [num]     Maxmimum number of BLAST results to return per zOTU (default: 10)
       --percent-identity [num]      Minimum percent identity of matches to report (default: 95)

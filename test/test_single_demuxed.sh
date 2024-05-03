@@ -9,5 +9,5 @@ cd single_test_demux
   --illumina-demultiplexed \
   --reads '../fastq/single_demuxed/*.fastq' \
   --barcode ../single_demuxed_barcode.tab \
-  --blast-db ../blast/single_demuxed \
+  --blast-db ../blastdb/single_demuxed \
   --collapse-taxonomy

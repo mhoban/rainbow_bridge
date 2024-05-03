@@ -8,5 +8,5 @@ cd paired_test_undemux
   --ignore-blast-env \
   --reads ../fastq/paired_undemux \
   --barcode '../pe_bc_*' \
-  --blast-db ../blast/paired_undemuxed \
+  --blast-db ../blastdb/paired_undemuxed \
   --collapse-taxonomy

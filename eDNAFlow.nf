@@ -126,33 +126,49 @@ def check_params() {
   // sanity check, blast database
   if (!params.skipBlast) {
 
-    // get BLASTDB environment variable
-    bdb = helper.get_env("BLASTDB")
+    // if --blast-taxdb is passed, check that it's a directory and that files exist
+    if (params.blastTaxdb != "+++__+++") {
+      ok = false
+      // check for directory
+      if (helper.is_dir(params.blastTaxdb)) {
+        // make sure we have two files matching our search pattern
+        if( file(params.blastTaxdb).list().findAll{it =~ /taxdb\.bt[id]/}.size() == 2) {
+          ok = true
+        }
+      } 
+      // otherwise give an error message and bail
+      if (!ok) {
+        println(colors.bred("--blast-taxdb") + colors.red(" must be a directory containing the NCBI BLAST taxonomy files (taxdb.btd, taxdb.bti)"))
+        exit(1)
+      }
+    }
+
+    // get blast environment variable
+    bdb = helper.get_env("FLOW_BLAST")
 
     // make --blast-db param into a list, if it isn't
     blasts = params.blastDb
     if (!helper.is_list(blasts)) 
       blasts = [blasts]
 
-    // add BLASTDB first, unless we're ignoring it
-    if (bdb != "" && !params.ignoreBlastEnv)
-      blasts = blasts.plus(0,"${bdb}/nt")
-
+    // if $FLOW_BLAST was set and we're not ignoring it, add it to the front of the list
+    if (bdb != "" && !params.ignoreBlastEnv) 
+      blasts = blasts.plus(0,bdb)
+    
     // get unique vals
     blasts = blasts.unique(false)
 
     // make sure we've got at least one db
     if (!blasts.size()) {
       println(colors.red("Unless you want to skip the BLAST query with --skip-blast, you must pass at least one value to --blast-db"))
-      println(colors.red("OR the environment variable BLASTDB must be defined and point to a instance of the `nt` (nucleotide) database."))
       exit(1)
     } else {
       // make sure all dbs exist
       blasts.each {
         if (!file("${it}.ndb").exists()) {
-          println(colors.red("Could not find ${it}. Please provide a path to an existing blast database."))
+          println(colors.red("Could not find BLAST database '${it}'. Please provide the path to an existing blast database."))
           if (it =~ /~/) {
-            println(colors.yellow("The path you entered contains a '~' that was not expanded by the shell. Try entering an absolute path."))
+            println(colors.yellow("The BLAST database '${it}' contains a '~' that was not expanded by the shell. Try entering an absolute path."))
           }
           exit(1)
         }  
@@ -468,21 +484,17 @@ process blast {
     pid = String.format("%d",(Integer)num(params.percentIdentity ))
     evalue = String.format("%.3f",num(params.evalue))
     qcov = String.format("%d",(Integer)num(params.qcov))
-    return "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}" 
+    return "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}/${db_name}" 
   }, mode: params.publishMode 
 
   input:
-    tuple path(zotus_fasta), path(blast_dirs), val(blast_dbs)
+    tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb)
 
   output:
     path("blast_result.tsv"), emit: result
     path 'blast_settings.txt'
 
   script:
-  // create array of blast db arguments
-  dbs = blast_dirs.withIndex().collect { path,i ->
-    "${path}/${blast_dbs[i]}"
-  }.join(" ")
 
   // format settings values
   pid = String.format("%d",(Integer)num(params.percentIdentity))
@@ -495,12 +507,12 @@ process blast {
   echo "Query qoverage: ${qcov}" >> blast_settings.txt
   echo "Max. target sequences: ${params.maxQueryResults}" >> blast_settings.txt
 
-  # set BLASTDB to whatever the first-supplied database is
-  export BLASTDB="${blast_dirs[0]}"
+  # set BLASTDB to local working directory
+  export BLASTDB=.
 
   # blast our zotus
   blastn -task ${params.blastTask} \
-    -db "${dbs}" \
+    -db "${db_name}" \
     -outfmt "6 qseqid sseqid staxid ssciname scomname sskingdom pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \
     -perc_identity ${params.percentIdentity} -evalue ${params.evalue} \
     -best_hit_score_edge 0.05 -best_hit_overhang 0.25 \
@@ -619,6 +631,21 @@ process insect {
      --lineage ${lineage} \
      --merged ${merged} \
      ${zotus} insect_model.rds "insect_taxonomy.tsv"
+  """
+}
+
+// retrieve the NCBI blast taxonomy database
+// this is used in blast queries to assign taxids to names
+process get_taxdb {
+  label 'python3'
+
+  output:
+    tuple path('taxdb.btd'), path('taxdb.bti')
+
+  script:
+  """
+  curl -LO https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz
+  tar --wildcards -zxvf taxdb.tar.gz 'taxdb.bt*'
   """
 }
 
@@ -1055,39 +1082,84 @@ workflow {
 
     // run blast query, unless skipped
     if (!params.skipBlast) {
-      // get BLASTDB environment variable
-      bdb = helper.get_env("BLASTDB")
+      // get $FLOW_BLAST environment variable
+      bdb = helper.get_env("FLOW_BLAST")
+
       // make --blast-db value a list, if it's not already
       blasts = params.blastDb
       if (!helper.is_list(blasts)) 
         blasts = [blasts]
 
-      // unless asked to ignore, add BLASTDB first
-      if (!params.ignoreBlastEnv && bdb != "")
-        blasts = blasts.plus(0,"${bdb}/nt")
+      // if $FLOW_BLAST was set and we're not ignoring it, add it to the front of the list
+      if (bdb != "" && !params.ignoreBlastEnv) 
+        blasts = blasts.plus(0,bdb)
 
       // get unique vals
       blasts = blasts.unique(false)
 
-      // get directories for blast databases
-      blast_dirs = blasts.collect {
-        file(it).Parent
-      }
-
-      // get blast database names
-      blast_dbs = blasts.collect {
-        file(it).BaseName
+      // make wildcards for blast database files
+      blast_db_files = blasts.collect {
+        "${it}*.n*"
       }
 
       // construct input channels
-      Channel.of(blast_dirs) | toList |             // flatten channel to list
-        combine(Channel.of(blast_dbs) | toList) |   // flatten other channel to list
+      
+      // collect list of files within blast databases
+      Channel.fromPath(blast_db_files, checkIfExists: true) | 
+        map { [file(it).BaseName.toString(),it]} | 
+        groupTuple |
         set { blastdb }
 
+      // try to find taxdb files in any of the supplied blast databases
+      db = blasts.collect {
+        blastr -> 
+          file(blastr).Parent.list().findAll {
+            it =~ /taxdb\.bt[id]/
+          }.collect {
+            "${file(blastr).Parent}/${it}"
+          }
+      }.getAt(0)
+
+
+      // get taxdb files (either download or from command line)
+      if (params.blastTaxdb == "+++__+++") {
+        if (db.size() > 0) {
+          // if we found something and we don't want something else, use what we found
+          Channel.fromPath(db) | 
+            collect | 
+            toList | 
+            set { taxdb }
+        } else {
+          // download taxdb from ncbi website
+          get_taxdb | 
+            toList | 
+            set { taxdb }
+        }
+      } else {
+        Channel.fromPath("${params.blastTaxdb}/taxdb.bt*", checkIfExists: true) | 
+          collect | 
+          toList | 
+          set { taxdb }
+      }
+
+      // run the blast query
       dereplicated | 
         map { sid, uniques, zotus, zotutable -> zotus } | 
         combine(blastdb) |
+        combine(taxdb) | 
         blast 
+
+      // format output directory name for merged blast results
+      pid = String.format("%d",(Integer)num(params.percentIdentity ))
+      evalue = String.format("%.3f",num(params.evalue))
+      qcov = String.format("%d",(Integer)num(params.qcov))
+      blast_dir = "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}" 
+
+      // since we're now doing blasts separately for each database, combine the results
+      // and store it below each indiviudal database result
+      blast.out.result | 
+        collectFile(name: 'blast_result_merged.tsv', storeDir: blast_dir) | 
+        set { blast_result }
     }
 
     // grab the zotu table from our dereplication step
@@ -1148,11 +1220,6 @@ workflow {
 
     // run taxonomy assignment/collapse script if so requested
     if (lca && !params.skipBlast) {
-      // here we grab the blast result
-      blast.out.result | 
-        /* map { sid, blast_result -> blast_result } |  */
-        set { blast_result }
-
       // then we smash it together with the blast results 
       // and run the taxonomy assignment/collapser script
       blast_result |
@@ -1160,8 +1227,6 @@ workflow {
         combine(Channel.of(false)) | 
         collapse_taxonomy |
         set { taxonomized }
-      
-
     }
 
     // prepare for final output

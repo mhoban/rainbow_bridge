@@ -34,7 +34,7 @@
       + [Demultiplexing and sequence matching](#demultiplexing-and-sequence-matching)
       + [Assigning taxonomy](#assigning-taxonomy)
          - [BLAST settings](#blast-settings-1)
-         - [Insect classification](#insect-classification)
+         - [Classification using insect](#classification-using-insect)
          - [LCA collapse](#lca-collapse)
       + [Denoising/dereplication and zOTU inference](#denoisingdereplication-and-zotu-inference)
       + [zOTU curation using LULU](#zotu-curation-using-lulu)
@@ -501,7 +501,7 @@ All BLAST options:
 <small>**`--evalue [num]`**</small>:  BLAST e-value threshold (default: 0.001)  
 <small>**`--qcov [num]`**</small>:  Minimum percent query coverage (default: 100)  
 
-#### Insect classification
+#### Classification using insect
 
 These options control taxonomy assignment using the [insect](https://github.com/shaunpwilkinson/insect) algorithm. To run insect on your sequences, you must specify either one of the [pre-trained](https://github.com/shaunpwilkinson/insect#classifying-sequences) classifier models OR one that you've trained yourself. Insect also takes various parameters to tweak how it does its assignments.
 
@@ -644,7 +644,7 @@ These options provide the ability to filter output by absolute and relative sequ
 
 ##### Generating phyloseq objects
 
-eDNAFlow supports generation of [phyloseq](https://joey711.github.io/phyloseq/) objects from pipeline output or user-supplied data. This will produce an RDS file that you can load directly into R and use for downstream analyses. There are a few options that can be specified for this process. Pipeline-generated (i.e., [insect](#insect-classification) or [LCA](#lca-collapse)) or user-supplied taxonomic classifications can be used along with the required user-supplied sample metadata.
+eDNAFlow supports generation of [phyloseq](https://joey711.github.io/phyloseq/) objects from pipeline output or user-supplied data. This will produce an RDS file that you can load directly into R and use for downstream analyses. There are a few options that can be specified for this process. Pipeline-generated (i.e., [insect](#classification-using-insect) or [LCA](#lca-collapse)) or user-supplied taxonomic classifications can be used along with the required user-supplied sample metadata.
 
 <small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--collapse-taxonomy` option).  
 <small>**`--metadata [file]`**</small>: A comma- or tab-separated sample metadata table (required). This can contain any arbitrary sample information, but it must have a header and the first column (preferably called 'sample') must contain sample IDs.  

@@ -84,7 +84,7 @@ option_list = list(
               help="OTU sequences file in fasta format (sequence IDs must match OTU names)"),
   make_option(c("-m", "--metadata"), action="store", default=NA, type='character',
               help="Metadata table (first column must contain sample IDs, which must match OTU table column names)"),          
-  make_option(c("-c", "--cores"), action="store", default=NA, type='integer',
+  make_option(c("-c", "--cores"), action="store", default=parallel::detectCores(), type='integer',
               help="Number of CPU cores"),
   make_option(c("-p", "--phyloseq"), action="store", default=NA, type='character',
               help="Output filename (.rds)"),

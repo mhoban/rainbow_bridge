@@ -596,7 +596,7 @@ process insect {
     thresh = String.format("%.2f",num(params.insectThreshold))
     minc = String.format("%d",(Integer)num(params.insectMinCount))
     ping = String.format("%.2f",num(params.insectPing))
-    return "${params.outDir}/taxonomy/insect_thresh${thresh}_offset${offs}_mincount${minc}_ping${ping}"
+    return "${params.outDir}/taxonomy/insect/thresh${thresh}_offset${offs}_mincount${minc}_ping${ping}"
   }, mode: params.publishMode 
 
   input:
@@ -1106,8 +1106,8 @@ workflow {
       
       // collect list of files within blast databases
       Channel.fromPath(blast_db_files, checkIfExists: true) | 
-        map { [file(it).BaseName.toString(),it]} | 
-        groupTuple |
+        map { [ it.Name.toString().replaceAll(/(\.[0-9]+)?\.n..$/,''), it  ]  } | 
+        groupTuple | 
         set { blastdb }
 
       // try to find taxdb files in any of the supplied blast databases

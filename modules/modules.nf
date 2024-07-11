@@ -61,7 +61,7 @@ process py_lca {
 process fastqc {
   label 'fastqc'
 
-  publishDir "${params.outDir}/fastqc/fastqc_${step}", mode: params.publishMode
+  publishDir "${params.outDir}/fastqc/${step}", mode: params.publishMode
 
   input:
     tuple val(step), val(sample_id), path(read) 
@@ -88,7 +88,7 @@ process fastqc {
 process multiqc {
   label 'multiqc'
 
-  publishDir "${params.outDir}/fastqc/fastqc_${step}", mode: params.publishMode
+  publishDir "${params.outDir}/fastqc/${step}", mode: params.publishMode
 
   input:
     tuple path(fastqc_files), val(step)

@@ -458,6 +458,7 @@ These settings control demultiplexing and sequence matching (e.g., allowable PCR
 <small>**`--illumina-demultiplexed`**</small>:  Required if sequencing run is already demultiplexed  
 <small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed sequencing runs, remove reads that have ambiguous indices (i.e. they have bases other than AGCT). This assumes Illumina indices are included in fastq headers:  
     <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAAWGTGG+TTCNAAGA</strong></code></pre>
+<small>**`--skip-primer-match`**<\small>: Skip primer match and removal (ngsfilter step) if metabarcoding primers were already removed from fastq files (barcode file not used in this case)
 <small>**`--demuxed-fasta [file]`**</small>:  Skip demultiplexing step and use supplied FASTA (must be in usearch/vsearch format). See [above](#demux-fasta).  \
 <small>**`--demuxed-example`**</small>:  Spit out example usearch/vsearch demultiplexed FASTA format  
 <small>**`--demux-only`**</small>:  Stop after demultiplexing and splitting raw reads  

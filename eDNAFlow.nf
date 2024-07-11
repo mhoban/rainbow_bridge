@@ -256,7 +256,7 @@ process ngsfilter {
 
 
   output:
-    tuple val(sample_id), val("${barcode.baseName}"), path("*_annotated.fastq") 
+    tuple val(sample_id), path("*_annotated.fastq"), val("${barcode.baseName}") 
 
   script:
   """
@@ -271,7 +271,7 @@ process filter_length {
   publishDir "${params.preDir}/length_filtered", mode: params.publishMode
 
   input: 
-    tuple val(sample_id), val(barcode_file), path(fastq_file) 
+    tuple val(sample_id), path(fastq_file), val(barcode_file) 
   
   output:
     tuple val(sample_id), path('*_length_filtered.fastq') 
@@ -963,14 +963,25 @@ workflow {
         // get relabeling process
         relabel = usearch ? relabel_usearch : relabel_vsearch
 
-        // run the rest of the pipeline, including the primer mismatch check,
-        // length filtering, and smashing together into one file
-        reads_filtered_merged | 
-          combine(barcodes) | 
-          ngsfilter | 
-          groupTuple | 
-          filter_length | 
-          relabel | 
+	// including or without the primer mismatch check, do the
+	// length filtering and smash results together into one file
+        reads_filtered_merged |
+          combine(barcodes) |
+	  set { rfm_barcodes }
+
+	if(!params.skipPrimerMatch) {
+	  rfm_barcodes |
+	  ngsfilter |
+	  set { rfm_barcodes }
+	}
+
+	// doing it this way means barcodes are not actually needed
+	// (passed a file with no primers to confirm) so could alter
+	// this step and need for barcode file in future update
+	  rfm_barcodes |
+	  groupTuple | 
+          filter_length |
+          relabel |
           set { relabeled }
 
           relabeled.result | 

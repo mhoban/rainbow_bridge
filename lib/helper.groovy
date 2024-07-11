@@ -210,6 +210,8 @@ class helper {
       --demux-only                  Stop after demultiplexing and splitting raw reads
       --primer-mismatch             Allowed number of mismatched primer bases 
                                     (default: ${params.primerMismatch})
+      --skip-primer-match           Skip primer matching (ngsfilter) altogether. 
+                                    Use with demultiplexed runs lacking primer sequences.
 
     Denoising and zOTU inference:  
       --denoiser [tool/path]        Sets the tool used for denoising & chimera removal

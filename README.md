@@ -110,7 +110,7 @@ The `eDNFlow` github repository contains representative example data for the var
   * Demultiplexed
   * Undemultiplexed
 
-The pipeline assumes that for undemultiplexed datasets you have used [barcoded primers](#non-demuxed) and for demultiplexed datasets you  used [Illumina indices](#demuxed) to designate samples. You will find the test scripts inside of the `test` directory in the code tree. The script names should be self-explanatory. To run them, change into the `test` directory and run the appropriate script. You can see how the pipeline is invoked (i.e., which options are used) by viewing the contents of the test scripts. Each example uses a custom BLAST database to save processing time, and taxonomy has been arbitrarily assigned. If you try to query test zOTU sequences against the NCBI database, you'll get different results. 
+The pipeline assumes that for undemultiplexed datasets you have used [barcoded primers](#non-demuxed) and for demultiplexed datasets you used [Illumina indices](#demuxed) to designate samples. You will find the test scripts inside of the `test` directory in the code tree. The script names should be self-explanatory. To run them, change into the `test` directory and run the appropriate script. You can see how the pipeline is invoked (i.e., which options are used) by viewing the contents of the test scripts. Each example uses a custom BLAST database to save processing time, and taxonomy has been arbitrarily assigned. If you try to query test zOTU sequences against the NCBI database, you'll get different results. 
 
 Here is a worked example including the sort of output you should expect to see:
 
@@ -148,47 +148,48 @@ drwxrwxr-x 1 mykle mykle 8192 Mar 20 11:53 work/
 
 ## Input requirements
 
-The most basic requirements for an eDNAFlow run are fastq-formatted sequence file(s) and a file defining PCR primers (and where applicable, sample barcodes). Sequences can be either single or paired-end and may be raw (i.e., one fastq file per sequencing direction), already demultiplexed by the sequencer (i.e., one fastq file per sample per sequencing direction), or demultiplexed by a previous run of the pipeline (in FASTA format).  
+The most basic requirements for an eDNAFlow run are fastq-formatted sequence file(s) and a file defining PCR primers (and where applicable, sample barcodes)<sup>\*</sup>. Sequences can be either single or paired-end and may be raw (i.e., one fastq file per sequencing direction), already demultiplexed by the sequencer (i.e., one fastq file per sample per sequencing direction), or demultiplexed by a previous run of the pipeline (in FASTA format).  
+
+<sup>\*</sup>The barcode file can be omitted if your fastq files have already had their primers stripped and you pass the `--skip-primer-match` option.
 
 Details about the three input formats the pipeline expects:
 
-<a name="non-demuxed"></a>
-1. Raw data from the sequencer (i.e. non-demultiplexed). This typically consists of forward/reverse reads each in single large (optionally gzipped) fastq files. You will have one fastq file per sequencing direction, identified by some unique portion of the filename (typically R1/R2). For this type of data, the demultiplexer used in eDNAFlow assumes that you have barcoded primers, such that sequence reads look like this:  
-  ```
-  <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSER_BARCODE>
-  ```
+1. <a name="non-demuxed"></a>Raw data from the sequencer (i.e. non-demultiplexed). This typically consists of forward/reverse reads each in single large (optionally gzipped) fastq files. You will have one fastq file per sequencing direction, identified by some unique portion of the filename (typically R1/R2). For this type of data, the demultiplexer used in eDNAFlow assumes that you have barcoded primers, such that sequence reads look like this:  
+    ```
+    <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSER_BARCODE>
+    ```
 
-<a name="demuxed"></a>
-1. Data that has already been demultiplexed by the sequencer. This is typically the case when you have used Illumina indices to delineate samples. You will have fastq files for each individual sample and read direction (delineated by a filename pattern like R1/R2), and sequences should still have primers attached, like this:  
-  ```
-  <FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER>
-  ```
-  
-  In most cases these sequences will have the Illumina indices you used to separate samples included at the end of their fastq header, like this:  
-  <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAATGTGG+TTCGAAGA</strong></pre></code>
+
+1. <a name="demuxed"></a>Data that has already been demultiplexed by the sequencer. This is typically the case when you have used Illumina indices to delineate samples. You will have fastq files for each individual sample and read direction (delineated by a filename pattern like R1/R2), and sequences should still have primers attached, like this:  
+    ```
+    <FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER>
+    ```
+    
+    In most cases these sequences will have the Illumina indices you used to separate samples included at the end of their fastq header, like this:  
+    <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAATGTGG+TTCGAAGA</strong></pre></code>
 
 1. <a name="demux-fasta"></a>Data that has been demultiplexed to individual samples and concatenated into a FASTA file in usearch format, typically by a previous run of the pipeline on non-demultiplexed sequence data (as in case 1 above). Use this option if you want to re-run the pipeline without repeating the lengthy demultiplexing step. The expected input format is a FASTA file with each sequence labled as `<samplename>.N` where `samplename` is the name of the sample and `N` is just a sequential number, for example:
   
-  ```fasta
-  >sample1.1
-  AGCGTCCGATGACTGACTGACTAGCT
-  >sample1.2
-  TACGTACGATCGACGAGTCTACGACTACTGAC
-  >sample1.3
-  TGACTGATCGTACTATCAGAGCTATCATCGACTATCATCGATC
-  >sample2.1
-  ATCGTACTACTAGCGACGAGTCATCACGACGTACTAGTCGA
-  >sample2.2
-  CATGCGACGTACGTACTATCATCATCGAGCAGCTATATATCGATGGTACTAGCTGAC
-  >sample2.3
-  TGACTGATCGTACTATCAGAGCTATCATCGACTATCATCGATC
-  >sample3.1
-  AGCGTCCGATGACTGACTGACTAGCT
-  >sample3.2
-  ATCGTACTACTAGCGACGAGTCATCACGACGTACTAGTCGA
-  >sample3.3
-  CATGCGACGTACGTACTATCATCATCGAGCAGCTATATATCGATGGTACTAGCTGAC
-  ```
+    ```fasta
+    >sample1.1
+    AGCGTCCGATGACTGACTGACTAGCT
+    >sample1.2
+    TACGTACGATCGACGAGTCTACGACTACTGAC
+    >sample1.3
+    TGACTGATCGTACTATCAGAGCTATCATCGACTATCATCGATC
+    >sample2.1
+    ATCGTACTACTAGCGACGAGTCATCACGACGTACTAGTCGA
+    >sample2.2
+    CATGCGACGTACGTACTATCATCATCGAGCAGCTATATATCGATGGTACTAGCTGAC
+    >sample2.3
+    TGACTGATCGTACTATCAGAGCTATCATCGACTATCATCGATC
+    >sample3.1
+    AGCGTCCGATGACTGACTGACTAGCT
+    >sample3.2
+    ATCGTACTACTAGCGACGAGTCATCACGACGTACTAGTCGA
+    >sample3.3
+    CATGCGACGTACGTACTATCATCATCGAGCAGCTATATATCGATGGTACTAGCTGAC
+    ```
 
 ## Usage examples
 Following are some examples of the basic command to run the pipeline on your local machine on single-end/paired-end data with multiple possible barcode files. For each of these examples, I assume `eDNAFlow.nf` is in the system path, you're working on a project called `example_project`, and your directory structure looks something like this:
@@ -458,7 +459,7 @@ These settings control demultiplexing and sequence matching (e.g., allowable PCR
 <small>**`--illumina-demultiplexed`**</small>:  Required if sequencing run is already demultiplexed  
 <small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed sequencing runs, remove reads that have ambiguous indices (i.e. they have bases other than AGCT). This assumes Illumina indices are included in fastq headers:  
     <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAAWGTGG+TTCNAAGA</strong></code></pre>
-<small>**`--skip-primer-match`**<\small>: Skip primer match and removal (ngsfilter step) if metabarcoding primers were already removed from fastq files (barcode file not used in this case)
+<small>**`--skip-primer-match`**<\small>: Skip primer/barcode match and removal (ngsfilter step) for sequencing runs where metabarcoding primers are already removerd. 
 <small>**`--demuxed-fasta [file]`**</small>:  Skip demultiplexing step and use supplied FASTA (must be in usearch/vsearch format). See [above](#demux-fasta).  \
 <small>**`--demuxed-example`**</small>:  Spit out example usearch/vsearch demultiplexed FASTA format  
 <small>**`--demux-only`**</small>:  Stop after demultiplexing and splitting raw reads  

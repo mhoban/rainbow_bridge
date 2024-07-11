@@ -176,6 +176,7 @@ def check_params() {
     }
   }
 
+
   // make sure insect parameter is valid: either a file or one of the pretrained models
   if (params.insect) {
     if (!helper.insect_classifiers.containsKey(params.insect.toLowerCase())) {
@@ -918,7 +919,10 @@ workflow {
       }
 
       // load barcodes
-      barcodes = Channel.fromPath(params.barcode, checkIfExists: true)
+      // throw an error if the file(s) are bad, but only if we're not skipping the step that needs them.
+      // we don't check in check_params because params.barcode could be a wildcard, which is trickier to check cleanly
+      // and is handled automatically by fromPath
+      barcodes = Channel.fromPath(params.barcode, checkIfExists: !params.skipPrimerMatch)
 
       // if the sequences are already demultiplexed by illumina, we'll
       // process them separately, including optionally attempting to remove ambiguous indices
@@ -965,8 +969,8 @@ workflow {
 
 	// including or without the primer mismatch check, do the
 	// length filtering and smash results together into one file
-        reads_filtered_merged |
-          combine(barcodes) |
+  reads_filtered_merged |
+    combine(barcodes) |
 	  set { rfm_barcodes }
 
 	if(!params.skipPrimerMatch) {

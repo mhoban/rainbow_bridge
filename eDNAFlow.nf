@@ -798,6 +798,7 @@ include { multiqc as second_multiqc } from './modules/modules.nf'
 include { lca as collapse_taxonomy  } from './modules/modules.nf'
 include { lca as collapse_taxonomy_lulu  } from './modules/modules.nf'
 
+
 workflow {
   // make sure our arguments are all in order
   check_params()
@@ -845,8 +846,8 @@ workflow {
         Channel.fromPath(params.reads, checkIfExists: true) |
           map { [it.baseName.tokenize('_')[0],it] } |
           branch { 
-           gz: it[1] =~ /\.gz$/
-           regular: true
+            gz: it[1] =~ /\.gz$/
+            regular: true
           } |
           set { reads }
       } else if (params.paired) { 
@@ -859,8 +860,8 @@ workflow {
             combine(Channel.fromPath(params.rev,checkIfExists: true)) | 
             map { a,b,c -> [a,[b,c]] } |
             branch { 
-             gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
-             regular: true
+              gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
+              regular: true
             } |
             set { reads }
         } else {
@@ -892,8 +893,8 @@ workflow {
             map { key,f -> [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
             map { key,f -> key == "" ? [params.project,f] : [key,f] } | 
             branch { 
-             gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
-             regular: true
+              gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
+              regular: true
             } |
             set { reads }
         }
@@ -967,30 +968,29 @@ workflow {
         // get relabeling process
         relabel = usearch ? relabel_usearch : relabel_vsearch
 
-	// including or without the primer mismatch check, do the
-	// length filtering and smash results together into one file
-  reads_filtered_merged |
-    combine(barcodes) |
-	  set { rfm_barcodes }
+        // with or without the primer mismatch check, do the
+        // length filtering and smash results together into one file
+        reads_filtered_merged |
+          combine(barcodes) |
+          set { rfm_barcodes }
 
-	if(!params.skipPrimerMatch) {
-	  rfm_barcodes |
-	  ngsfilter |
-	  set { rfm_barcodes }
-	}
+        // only run ngsfilter if we have primers
+        if(!params.skipPrimerMatch) {
+          rfm_barcodes |
+            ngsfilter |
+            set { rfm_barcodes }
+        }
 
-	// doing it this way means barcodes are not actually needed
-	// (passed a file with no primers to confirm) so could alter
-	// this step and need for barcode file in future update
-	  rfm_barcodes |
-	  groupTuple | 
+        // continue length filtering and whatnot
+        rfm_barcodes |
+          groupTuple | 
           filter_length |
           relabel |
           set { relabeled }
 
-          relabeled.result | 
-            collectFile(name: "${params.project}_relabeled.fasta", storeDir: "${params.preDir}/merged") |
-            set { to_dereplicate } 
+        relabeled.result | 
+          collectFile(name: "${params.project}_relabeled.fasta", storeDir: "${params.preDir}/merged") |
+          set { to_dereplicate } 
 
       } else {
         // this is where reads are all in one fwd or fwd/rev file and have NOT been demultiplexed
@@ -1073,10 +1073,10 @@ workflow {
           // relabel to fasta
           relabel | 
           set { relabeled }
-          // collect to single relabeled fasta
-          relabeled.result | 
-            collectFile(name: "${params.project}_relabeled.fasta", storeDir: "${params.preDir}/merged") |
-            set { to_dereplicate }
+        // collect to single relabeled fasta
+        relabeled.result | 
+          collectFile(name: "${params.project}_relabeled.fasta", storeDir: "${params.preDir}/merged") |
+          set { to_dereplicate }
       }
     } else {
       // here we've already demultiplexed and relabeled sequences 
@@ -1092,8 +1092,8 @@ workflow {
       combine(to_dereplicate) | 
       (usearch ? derep_usearch : derep_vsearch) | set { dereplicated }
 
-      dereplicated.result | 
-        set { dereplicated }
+    dereplicated.result | 
+      set { dereplicated }
 
     // run blast query, unless skipped
     if (!params.skipBlast) {
@@ -1118,7 +1118,7 @@ workflow {
       }
 
       // construct input channels
-      
+
       // collect list of files within blast databases
       Channel.fromPath(blast_db_files, checkIfExists: true) | 
         map { [ it.Name.toString().replaceAll(/(\.[0-9]+)?\.n..$/,''), it  ]  } | 
@@ -1214,7 +1214,7 @@ workflow {
       dereplicated | 
         map { sid, uniques, zotus, zotutable -> [zotus] } | 
         set { zotus }
-      
+
       // load the classifier model
       if (helper.file_exists(params.insect)) {
         classifier = Channel.fromPath(params.insect)
@@ -1319,3 +1319,4 @@ workflow {
     }
   }
 }
+

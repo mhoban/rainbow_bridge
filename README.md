@@ -1,8 +1,16 @@
-# rainbow_bridge
-
 <img align="left" src="images/heimdall_top.png"><img align="right" src="images/heimdall_top_right.png">
 
-<br><br><br><br><br><br><br><br>
+```
+    `-:-.   ,-;"`-:-.   ,-;"`-:-.   ,-;"`-   
+       `=`,'=/     `=`,'=/     `=`,'=/       
+         y==/        y==/        y==/        
+       ,=,-<=`.    ,=,-<=`.    ,=,-<=`.      
+    ,-'-'   `-=_,-'-'   `-=_,-'-'   `-=_,-   
+```
+
+<br><br>
+
+# rainbow_bridge
 
 rainbow_bridge is a fully automated pipeline that employs a number of state-of-the-art applications to process eDNA and other metabarcoding data from raw sequences (single- or paired-end) to the generation of (optionally curated) zero-radius operational taxonomic units (zOTUs) and their abundance tables. The pipeline will also collapse assigned taxonomy (via BLAST and/or insect) to least common ancestor (LCA) based on user-supplied threshold values as well as perform other finalization steps (e.g., taxon filtering/remapping, decontamination, rarefaction, etc.). 
 

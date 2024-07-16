@@ -1,11 +1,11 @@
 <img align="left" src="images/heimdall_top.png"><img align="right" src="images/heimdall_top_right.png">
 
-```
+<pre>
 -. .-.   .-. .-
   \   \ /   \  
  / \   \   / \ 
 ~   `-~ `-`   `-
-```
+</pre>
 <!-- ```
     `-:-.   ,-;"`-:-.   ,-;"`-:-.   ,-;"`-   
        `=`,'=/     `=`,'=/     `=`,'=/       

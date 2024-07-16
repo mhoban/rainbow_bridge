@@ -1,16 +1,9 @@
-<!-- <p float="left"> -->
-<!-- ![heimdall](images/heimdall.png) -->
 <img align="left" src="images/heimdall_top.png">
 
 # rainbow_bridge
-rainbow_bridge is a fully automated pipeline that employs a number of state-of-the-art applications to process eDNA and other metabarcoding data from raw sequences (single- or paired-end) to the generation of (optionally curated) zero-radius operational taxonomic units (zOTUs) and their abundance tables. The pipeline will also collapse assigned taxonomy (via BLAST and/or insect) to least common ancestor (LCA) based on user-supplied threshold values as well as perform other finalization steps (e.g., taxon filtering/remapping, decontamination, rarefaction, etc.). This pipeline uses [nextflow](https://www.nextflow.io/) and a containerized subsystem (e.g., [singularity](https://docs.sylabs.io/guides/3.5/user-guide/introduction.html), [podman](https://podman.io/), etc.) to enable a scalable, portable and reproducible workflow on a local computer, cloud (eventually) or high-performance computing (HPC) clusters.
-<!-- </p> -->
+rainbow_bridge is a fully automated pipeline that employs a number of state-of-the-art applications to process eDNA and other metabarcoding data from raw sequences (single- or paired-end) to the generation of (optionally curated) zero-radius operational taxonomic units (zOTUs) and their abundance tables. The pipeline will also collapse assigned taxonomy (via BLAST and/or insect) to least common ancestor (LCA) based on user-supplied threshold values as well as perform other finalization steps (e.g., taxon filtering/remapping, decontamination, rarefaction, etc.). 
 
-<br><br> <img align="left" src="images/heimdall_bottom.png">
-
-<!-- # Overall workflow
-![eDNAFlow flowchart](images/eDNAFlow.jpg)
-<small>**Note: This flowchart applies to the original (published) version of the eDNAFLow pipeline. rainbow_bridge, pipeline described here, varies somewhat from that.**</small> -->
+This pipeline uses [nextflow](https://www.nextflow.io/) and a containerized subsystem (e.g., [singularity](https://docs.sylabs.io/guides/3.5/user-guide/introduction.html), [podman](https://podman.io/), etc.) to enable a scalable, portable and reproducible workflow on a local computer, cloud (eventually) or high-performance computing (HPC) clusters.
 
 ## About this version
 

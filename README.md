@@ -1,12 +1,129 @@
+# rainbow_bridge
+rainbow_bridge is a fully automated pipeline that employs a number of state-of-the-art applications to process eDNA and other metabarcoding data from raw sequences (single- or paired-end) to the generation of (optionally curated) zero-radius operational taxonomic units (zOTUs) and their abundance tables. The pipeline will also collapse assigned taxonomy (via BLAST and/or insect) to least common ancestor (LCA) based on user-supplied threshold values as well as perform other finalization steps (e.g., taxon filtering/remapping, decontamination, rarefaction, etc.). This pipeline uses [nextflow](https://www.nextflow.io/) and a containerized subsystem (e.g., [singularity](https://docs.sylabs.io/guides/3.5/user-guide/introduction.html), [podman](https://podman.io/), etc.) to enable a scalable, portable and reproducible workflow on a local computer, cloud (eventually) or high-performance computing (HPC) clusters.
+
+
+<!-- # Overall workflow
+![eDNAFlow flowchart](images/eDNAFlow.jpg)
+<small>**Note: This flowchart applies to the original (published) version of the eDNAFLow pipeline. rainbow_bridge, pipeline described here, varies somewhat from that.**</small> -->
+
+## About this version
+
+This project is a fork of [`eDNAFlow`](https://github.com/mahsa-mousavi/eDNAFlow), rewritten to support the newest version of nextflow and DSL2. It also better supports parallel processing, both through splitting and simultaneously processing large files and the ability to process already-demultiplexed sequence files. In addition, it adds several processing options, such as the ability to classify taxonomy using [insect](https://github.com/shaunpwilkinson/insect) and to produce a [phyloseq](https://joey711.github.io/phyloseq/) object as output, among others.
+
+For more information on the original eDNAFlow pipeline and other software used as part of the workflow, please read "eDNAFlow, an automated, reproducible and scalable workflow for analysis of environmental DNA (eDNA) sequences exploiting Nextflow and Singularity" in Molecular Ecology Resources (DOI: <https://doi.org/10.1111/1755-0998.13356>). If you use rainbow_bridge, we appreciate if you could cite the eDNAFlow paper, the DOI for this project, and the papers describing the underlying software.
+
+# Workflow
+This flowchart illustrates the general workflow of the rainbow_bridge pipeline (if your browser doesn't support javascript or [mermaid](https://mermaid.js.org/) or some other necessary thing, you'll just see the code describing the flowchart rather than the flowchart itself).
+```mermaid
+flowchart TB
+  raw[/"Raw fastq reads<br>(single/paired-end)"/]
+  %% samplemap[/"Filename --> sample ID map"/]
+  demuxed{Sequences demultiplexed?}
+  fastqc("QA/QC report<br>(FastQC/MultiQC)")
+  fasta[/"Demultiplexed FASTA file in `usearch` format<br>(from previous pipeline run)"/]
+
+  subgraph filtering["Quality filtering/merging (AdapterRemoval)"]
+    qa[Quality filtering]
+    pe["Paired-end merging (if applicable)"]
+  end
+
+  subgraph demuxing["Demultiplexing (OBITools)"]
+    dm1["Assign sequences to samples (ngsfilter)"]
+    dm2["Primer mismatch filtering (ngsfilter)"]
+    dm3["Filter by minimum length (obigrep)<br>Retain only sequences with both tags"]
+  end
+
+  subgraph primer["Primer match/length filter (OBITools)"]
+    pm1["Primer mismatch filtering (ngsfilter)"]
+    pm2["Filter by minimum length (obigrep)"]
+  end
+
+  subgraph prepare["Prepare for denoising"]
+    p1["Relabel to USEARCH/vsearch format (u/vsearch)"]
+    p2["Convert fastq to FASTA"]
+  end
+
+  subgraph denoising["Denoising via UNOISE3 (u/vsearch)"]
+    dn1["Dereplicate & 'cluster'"]
+    dn2["Filter minimum abundance"]
+    dn3["Filter chimeras"]
+    dn4["Generate zOTU tables"]
+  end
+
+  %% blast("Taxonomy assignment via BLAST (blastn)")
+  nt[/"NCBI `nt` BLAST database"/]
+  customblast[/"Custom BLAST database(s)"/]
+  subgraph blast["Taxonomy assignment via BLAST"]
+    b1["Assign taxonomy to zOTU sequences (blastn)"]
+  end
+
+  insect("Taxonomy assignment via `insect`<br>(R/insect)")
+
+  taxdb[/"NCBI taxonomy database"/]
+
+  subgraph taxonomy["Collapse taxonomy (python)"]
+    tax1["Collapse taxonomy to<br>least-common ancestor (LCA)"]
+  end
+
+  subgraph lulu["Table curation (R/lulu)"]
+    l1["Generate match list (blastn)"]
+    l2["LULU curation (lulu)"]
+    l3["Curated zOTU table"]
+  end
+
+  subgraph finalization["Finalization (R)"]
+    f1["Taxonomy filtering"]
+    f2["Taxonomic re-mapping"]
+    f3["Decontamination"]
+    f4["Relative abundance filtering"]
+    f5["Rarefaction (vegan/EcolUtils)"]
+  end
+
+  subgraph phyloseq["Prepare phyloseq object (R/phyloseq)"]
+  end
+
+  raw -. "Initial QA/QC<br>(if specified)" .-> fastqc
+  raw -->|"(un-gzip if necessary)"| filtering:::sg
+  filtering -. "Filtered/merged QA/QC<br>(if specified)" .-> fastqc
+  filtering --> demuxed
+  demuxed --->|No| demuxing:::sg
+  demuxed --->|Yes| primer:::sg
+  %% demuxed -->|"Yes<br>(via previous pipeline run)"| x((".")) ---> denoising
+  fasta --------> denoising
+  demuxing --> split("Split sequences by sample (obisplit)")
+  split --> prepare:::sg
+  primer ---> prepare
+  prepare --> denoising:::sg
+  denoising -. "(if specified)" .-> blast:::sg & insect & lulu:::sg
+  taxdb --> taxonomy:::sg
+  blast -. "(if specified)" .-> taxonomy
+  denoising & lulu & insect & blast & taxonomy --> finalization
+  metadata[/"Sample metadata"/] --> phyloseq
+  finalization -.-> phyloseq
+  nt --> blast
+  customblast -. "(if specified)" .-> blast
+  model[/"insect classifier model"/] --> insect
+
+
+  classDef hidden display: none, height: 0px, width: 0px, margi?worn: 0px;
+  classDef sg rx:10,ry:10,margin:10px
+
+```
+
+
+# Table of contents
+
 <!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
 
-- [About eDNAFlow](#about-ednaflow)
-   * [About this version](#about-this-version)
 - [Setup and testing](#setup-and-testing)
    * [Installation](#installation)
       + [Manual dependency installation](#manual-dependency-installation)
+         - [Nextflow](#nextflow)
+         - [Singularity](#singularity)
+         - [Podman](#podman)
       + [Testing installation](#testing-installation)
 - [Basic usage](#basic-usage)
+   * [Running the pipeline](#running-the-pipeline)
    * [Input requirements](#input-requirements)
    * [Usage examples](#usage-examples)
       + [For single-end runs (not previously demultiplexed)](#for-single-end-runs-not-previously-demultiplexed)
@@ -23,7 +140,7 @@
       + [Processing fastq input (demultiplexed or not)](#processing-fastq-input-demultiplexed-or-not)
          - [Specifying fastq files](#specifying-fastq-files)
       + [Other required options](#other-required-options)
-         - [Barcode file](#barcode-file)
+         - [Barcode file (not required for demultiplexed runs with stripped primers)](#barcode-file-not-required-for-demultiplexed-runs-with-stripped-primers)
          - [BLAST settings ](#blast-settings)
    * [Sample IDs](#sample-ids)
       + [Mapping of custom sample IDs](#mapping-of-custom-sample-ids)
@@ -56,52 +173,62 @@
 
 <!-- TOC end -->
 
-# About eDNAFlow
-eDNAFlow is a fully automated pipeline that employs a number of state-of-the-art applications to process eDNA data from raw sequences (single-end or paired-end) to generation of curated and non-curated zero-radius operational taxonomic units (zOTUs) and their abundance tables. The pipeline will also collapse assigned taxonomy (via BLAST and/or insect) to least common ancestor (LCA) based on user-supplied threshold values. This pipeline is based on Nextflow and Singularity which enables a scalable, portable and reproducible workflow using software containers on a local computer, clouds and high-performance computing (HPC) clusters.
-
-For more information on eDNAFlow and other software used as part of the workflow, please read "eDNAFlow, an automated, reproducible and scalable workflow for analysis of environmental DNA (eDNA) sequences exploiting Nextflow and Singularity" in Molecular Ecology Resources with DOI: https://doi.org/10.1111/1755-0998.13356. If you use eDNAFlow, we appreciate if you could cite the eDNAFlow paper and the other papers describing the underlying software.
-
-![eDNAFlow flowchart](images/eDNAFlow.jpg)
-<small>**Note: This flowchart applies to the original (published) version of the pipeline. The pipeline described here is a little bit different.**</small>
-
-## About this version
-
-This is a fork of the original `eDNAFlow` pipeline, rewritten to support the newest version of nextflow and DSL2. It also better supports parallel processing, both through splitting and simultaneously processing large files and the ability to process already-demultiplexed sequence files. In addition, it adds a several processing options, such as the ability to classify taxonomy using [insect](https://github.com/shaunpwilkinson/insect) and to produce a [phyloseq](https://joey711.github.io/phyloseq/) object as output.
-
 # Setup and testing
 
-The pipeline has only two external dependencies: [nextflow](https://www.nextflow.io/) and [singularity](https://sylabs.io/singularity/). To run the pipeline, nextflow and singularity have to be installed or made available for loading as modules (e.g. in the case of running it on an HPC cluster) on your system. 
+The pipeline has only two (although technically three, if you include the java runtime) external dependencies: [nextflow](https://www.nextflow.io/) and a container system that supports Docker containers. Nextflow additionally requires a java runtime. One place to find that is [here](https://www.java.com/en/download/manual.jsp), although the [openjdk](https://openjdk.org/) package (available on multiple operating systems) can often be simpler to install. The default container system is [singularity](https://sylabs.io/singularity/), although support for [podman](https://podman.io/) is also included (and in theory any other system [supported by nextflow](https://nextflow.io/docs/latest/container.html) that can run Docker containers will also work). To run the pipeline, nextflow and singularity (or podman, etc.) have to be installed or made available for loading as modules (e.g. in the case of running it on an HPC cluster) on your system. 
 
-In the install directory is a script to install the necessary dependencies. It should support Ubuntu 20.04 and 22.04. For other versions you can install the components [manually following the authors' instructions](#manual-dependency-installation). You will need superuser permissions to install the dependencies systemwide (and probably for singularity at all).
+In the `install` directory of this repository is a script that will install nextflow and singularity. It should support Ubuntu 20.04 and 22.04. For other versions and systems, you can install the components [manually following the authors' instructions](#manual-dependency-installation). You will likely need superuser permissions to install most dependencies, although nextflow can be run from within a user account.
 
 ## Installation
 
-These instructions are more or less generic, excluding dependency installation. If you are having trouble with that step, you may need to [install them manually](#manual-dependency-installation).
+These instructions are more or less generic, excluding dependency installation. If you are having trouble with that step, you may need to [install them manually](#manual-dependency-installation). There are essentially two ways that rainbow_bridge can be run: by cloning the [github repository](https://github.com/mhoban/rainbow_bridge/) and running the `rainbow_bridge.nf` script directly or by using nextflow's built-in [github support](https://www.nextflow.io/docs/latest/sharing.html#running-a-pipeline).
 
-1. Clone the git repository so that all the scripts and test data are downloaded and in one folder. To clone the repository to your directory, run this command: 
-   ```bash
-   $ git clone https://github.com/mhoban/eDNAFlow.git
+To clone the repository and and install dependencies (for running the .nf script):
+
+1. Clone the git repository so that all the scripts and test data are downloaded and in one folder. To clone the repository to your directory, run this command in your terminal (remove the '$' if you copy and paste): 
+   ```console
+   $ git clone https://github.com/mhoban/rainbow_bridge.git
    ```
   
-1. Add the directory where you cloned the respository to your system PATH. Assuming you downloaded it into `$HOME/eDNAFlow`, one way you could do that is like this:
-  ```bash
-  $ echo 'export PATH="$HOME/eDNAFlow:$PATH"' >> $HOME/.bashrc
-  ```
+1. Add the directory where you cloned the respository to your system PATH. Assuming you downloaded it into `$HOME/rainbow_bridge` and you're using bash as your shell, one way you could do that is like this:
+    ```console
+    $ echo 'export PATH="$HOME/rainbow_bridge:$PATH"' >> $HOME/.bashrc
+    ```
 
-1. Next, for Ubuntu and Debian-based systems, go to the "install" directory which is located inside the "eDNAFlow" directory and run the script `install_dependencies.sh`:
-   ```bash
-   $ cd eDNAFlow/install
-   $ sudo ./install_dependencies.sh
-   ```
-   This will install nextflow and singularity to the system. If this fails, try the instructions given [below](#manual-dependency-installation).
+1. Next, for Ubuntu and Debian-based systems using singularity, go to the "install" directory which is located inside the "rainbow_bridge" directory and run the script `install_dependencies.sh`:
+     ```console
+     $ cd rainbow_bridge/install
+
+     $ sudo ./install_dependencies.sh
+     ```
+     This will install nextflow and singularity to the system. If this fails, try the instructions given [below](#manual-dependency-installation).
+
+
+To run the pipeline directly from github (note: this method assumes you already have the necessary dependencies installed on the system):
+
+```console
+$ nextflow run -<nextflow-options> mhoban/rainbow_bridge -r main --<rainbow_bridge-options>
+```
    
 ### Manual dependency installation
 
-</a>For manual installation of Nextflow, follow the instructions at [nextflow installation](https://www.nextflow.io/docs/latest/getstarted.html). To install Singularity manually, follow the instructions at [singularity installation](https://sylabs.io/guides/3.5/admin-guide/installation.html). If working on HPC, you may need to contact your HPC helpdesk. The Singularity installation how-to is long and complicated, but if you're on a Debian-adjacent distro, there are .deb packages that can be found at [https://github.com/sylabs/singularity/releases/latest](https://github.com/sylabs/singularity/releases/latest). 
+#### Nextflow
+For manual installation of Nextflow, follow the instructions at [on the nextflow website](https://www.nextflow.io/docs/latest/getstarted.html). The simplest way to do it is to go to the [releases](https://github.com/nextflow-io/nextflow/releases/latest) page, download the latest version with the `-all` suffix (e.g., `nextflow-24.04.3-all`), and make that file executable (you'll need a functioning java runtime for this to work).
+
+#### Singularity
+To install Singularity manually, follow the instructions at [singularity installation](https://sylabs.io/guides/3.5/admin-guide/installation.html). If working on HPC, you may need to contact your HPC helpdesk. The Singularity installation how-to is long and complicated, but if you're on a RedHat or Debian-adjacent distro, there are .deb and .rpm packages that can be found at [https://github.com/sylabs/singularity/releases/latest](https://github.com/sylabs/singularity/releases/latest). 
+
+#### Podman
+Manual podman installation instructions can be found [here](https://podman.io/docs/installation). rainbow_bridge should work with podman out of the box, but you will have to specify a podman profile for it to function properly. There are two profiles built in: `podman_arm`, and `podman_intel`. These both tell nextflow to use podman for its container system, and the second half just specifies your CPU architecture. Most systems will probably use the `_intel` variant, but if you are on a newer Mac with Apple silicon, you'll want to use the `_arm` variant. To run the pipeline using podman as its container system, specify a profile with the following option (note the single dash in the '-profile' option):
+
+```bash
+# in this example, we're running on a Mac with the M3 processor
+$ rainbow_bridge.nf -profile podman_arm <further options>
+```
 
 ### Testing installation
 
-The `eDNFlow` github repository contains representative example data for the various possible input scenarios:  
+The [rainbow_bridge-test](https://github.com/mhoban/rainbow_bridge-test) github repository contains example data to test the various possible input scenarios:  
 
 * Single-end sequencing runs
   * Demultiplexed
@@ -110,51 +237,41 @@ The `eDNFlow` github repository contains representative example data for the var
   * Demultiplexed
   * Undemultiplexed
 
-The pipeline assumes that for undemultiplexed datasets you have used [barcoded primers](#non-demuxed) and for demultiplexed datasets you used [Illumina indices](#demuxed) to designate samples. You will find the test scripts inside of the `test` directory in the code tree. The script names should be self-explanatory. To run them, change into the `test` directory and run the appropriate script. You can see how the pipeline is invoked (i.e., which options are used) by viewing the contents of the test scripts. Each example uses a custom BLAST database to save processing time, and taxonomy has been arbitrarily assigned. If you try to query test zOTU sequences against the NCBI database, you'll get different results. 
-
-Here is a worked example including the sort of output you should expect to see:
-
-```bash
-$ cd eDNAFlow/test
-$ ./test_paired_demuxed.sh
-N E X T F L O W  ~  version 24.01.0-edge
-WARN: It appears you have never run this project before -- Option `-resume` is ignored
-Launching `../../eDNAFlow.nf` [friendly_euler] DSL2 - revision: 8464fa0b9e
-executor >  local (56)
-[85/6dd3f2] process > unzip (2)             [100%] 8 of 8 ✔
-[99/aae470] process > remap_samples (8)     [100%] 8 of 8 ✔
-[3e/082a18] process > filter_merge (8)      [100%] 8 of 8 ✔
-[43/06f139] process > ngsfilter (8)         [100%] 8 of 8 ✔
-[01/c9eb63] process > filter_length (5)     [100%] 8 of 8 ✔
-[46/cd5b03] process > relabel_vsearch (8)   [100%] 8 of 8 ✔
-[80/12aa45] process > derep_vsearch (1)     [100%] 1 of 1 ✔
-[2d/0c1659] process > get_taxdb             [100%] 1 of 1 ✔
-[c4/6d1f7c] process > blast (1)             [100%] 1 of 1 ✔
-[ee/8f5493] process > lulu_blast (1)        [100%] 1 of 1 ✔
-[3d/e256fb] process > lulu (1)              [100%] 1 of 1 ✔
-[96/5225b5] process > get_lineage           [100%] 1 of 1 ✔
-[4c/52b0f2] process > collapse_taxonomy (1) [100%] 1 of 1 ✔
-[de/6a9ce7] process > finalize (1)          [100%] 1 of 1 ✔
-
-
-$ ls -l paired_test_demux/
-total 8
-drwxrwxr-x 1 mykle mykle    0 Mar 20 11:54 output/
-drwxrwxr-x 1 mykle mykle    0 Mar 20 11:53 preprocess/
-drwxrwxr-x 1 mykle mykle 8192 Mar 20 11:53 work/
-```
+To test the pipeline, clone the repository from <https://github.com/mhoban/rainbow_bridge-test.git> and see the README file for more information.
 
 # Basic usage
 
+## Running the pipeline
+
+As mentioned briefly above, there are two main ways the pipeline can be run: by cloning the repository and calling the main script `rainbow_bridge.nf` or by using [nextflow's github support](https://www.nextflow.io/docs/latest/sharing.html#running-a-pipeline) and running directly from this github repository. 
+
+If you have cloned the repository and added its directory to your system PATH, just run the pipline like this (note that nextflow-specific options have a single dash while rainbow_bridge options have double dashes):
+
+```console
+$ rainbow_bridge.nf -<nextflow-options> --<rainbow_bridge-options>
+```
+
+You can also call it using a fully-qualified path (be careful if there are symlinks, because this can break the containerization in unexpected ways):
+
+```console
+$ /path/to/rainbow_bridge.nf -<nextflow-options> --<rainbow_bridge-options>
+```
+
+To run the pipeline without cloning the repository, you can call it like this (note that the option conventions are the same, but nextflow options typically come before the name of the pipeline repository AND that the `main` revision is specified with `-r`):
+
+```console
+$ nextflow run -<nextflow-options> mhoban/rainbow_bridge -r main --<rainbow_bridge-options>
+```
+
 ## Input requirements
 
-The most basic requirements for an eDNAFlow run are fastq-formatted sequence file(s) and a file defining PCR primers (and where applicable, sample barcodes)<sup>\*</sup>. Sequences can be either single or paired-end and may be raw (i.e., one fastq file per sequencing direction), already demultiplexed by the sequencer (i.e., one fastq file per sample per sequencing direction), or demultiplexed by a previous run of the pipeline (in FASTA format).  
+The most basic requirements for a rainbow_bridge run are fastq-formatted sequence file(s) and a file defining PCR primers (and where applicable, sample barcodes)<sup>\*</sup>. Sequences can be either single or paired-end and may be raw (i.e., one fastq file per sequencing direction), already demultiplexed by the sequencer (i.e., one fastq file per sample per sequencing direction), or demultiplexed by a previous run of the pipeline (in FASTA format).  
 
 <sup>\*</sup>The barcode file can be omitted if your fastq files have already had their primers stripped and you pass the `--skip-primer-match` option.
 
 Details about the three input formats the pipeline expects:
 
-1. <a name="non-demuxed"></a>Raw data from the sequencer (i.e. non-demultiplexed). This typically consists of forward/reverse reads each in single large (optionally gzipped) fastq files. You will have one fastq file per sequencing direction, identified by some unique portion of the filename (typically R1/R2). For this type of data, the demultiplexer used in eDNAFlow assumes that you have barcoded primers, such that sequence reads look like this:  
+1. <a name="non-demuxed"></a>Raw data from the sequencer (i.e. non-demultiplexed). This typically consists of forward/reverse reads each in single large (optionally gzipped) fastq files. You will have one fastq file per sequencing direction, identified by some unique portion of the filename (typically R1/R2). For this type of data, the demultiplexer used in rainbow_bridge requires that you have barcoded primers, such that sequence reads look like this:  
     ```
     <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSER_BARCODE>
     ```
@@ -168,7 +285,7 @@ Details about the three input formats the pipeline expects:
     In most cases these sequences will have the Illumina indices you used to separate samples included at the end of their fastq header, like this:  
     <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAATGTGG+TTCGAAGA</strong></pre></code>
 
-1. <a name="demux-fasta"></a>Data that has been demultiplexed to individual samples and concatenated into a FASTA file in usearch format, typically by a previous run of the pipeline on non-demultiplexed sequence data (as in case 1 above). Use this option if you want to re-run the pipeline without repeating the lengthy demultiplexing step. The expected input format is a FASTA file with each sequence labled as `<samplename>.N` where `samplename` is the name of the sample and `N` is just a sequential number, for example:
+1. <a name="demux-fasta"></a>Data that has been demultiplexed to individual samples and concatenated into a FASTA file in usearch format, typically by a previous run of the pipeline on non-demultiplexed sequence data (as in case 1 above, although output from case 2 will work as well). Use this option if you want to re-run the pipeline without repeating the lengthy demultiplexing/merging/quality filtering step(s). The expected input format is a FASTA file with each sequence labled as `<samplename>.N` where `samplename` is the name of the sample and `N` is just a sequential number, for example:
   
     ```fasta
     >sample1.1
@@ -192,13 +309,13 @@ Details about the three input formats the pipeline expects:
     ```
 
 ## Usage examples
-Following are some examples of the basic command to run the pipeline on your local machine on single-end/paired-end data with multiple possible barcode files. For each of these examples, I assume `eDNAFlow.nf` is in the system path, you're working on a project called `example_project`, and your directory structure looks something like this:
+Following are some examples of the basic command to run the pipeline on your local machine on single-end/paired-end data with multiple possible barcode files. For each of these examples, I assume `rainbow_bridge.nf` is in the system path, you're working on a project called `example_project`, and your directory structure looks something like this:
 
 ```bash
 example_project/            # base directory containing project files
 example_project/fastq/      # directory to hold raw sequence reads
 example_project/data/       # directory to hold other data (e.g., barcode and/or sample map file(s))
-example_project/analysis/   # directory to hold eDNAFlow analysis output
+example_project/analysis/   # directory to hold rainbow_bridge analysis output
 ```
 
 The pipeline run is started from within the `analysis` directory. The options used to specify the location of your fastq files make exensive use of globs. For a discussion on how these are treated in the pipeline, see [here](#a-note-on-globswildcards).
@@ -208,7 +325,7 @@ The pipeline run is started from within the `analysis` directory. The options us
 In this case you will have one fastq file and one or more barcode files containing sample barcodes (forward/reverse) and PCR primers (forward/reverse).
 
 ```bash
-user@srv:~/example_project/analysis$ eDNAFlow.nf \
+$ rainbow_bridge.nf \
   --single \
   --reads ../fastq/sequence_reads.fastq \   # <-- reads denotes a single .fastq file
   --barcode '../data/*.tab'                 # <-- note the glob enclosed in single-quotes
@@ -220,7 +337,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
 In this case, you will have multiple fastq files, each representing one sample and one or more barcode files denoting PCR primers only (i.e., no sample barcodes).
 
 ```bash
-user@srv:~/example_project/analysis$ eDNAFlow.nf \
+$ rainbow_bridge.nf \
   --single \
   --reads '../fastq/*.fastq' \    # <-- reads is a glob denoting multiple .fastq files
   --barcode '../data/*.tab'
@@ -233,10 +350,10 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
 In non-demultiplexed runs, the pipeline assumes you have exactly one forward fastq file and one reverse fastq file. There are a few ways you can specify where these are found. One is presented here and you can find a more detailed discussion [below](#description-of-run-options).
 
 #### Specifying reads by directory
-With this method, the `--reads` option points to the directory where .fastq reads can be found. By default, the eDNAFlow assumes forward reads are designated with "R1" (\*R1\*.fastq\*) in the filename and reverse reads are named with "R2" (\*R2\*.fastq\*). For customization options, see [below](#specifying-fastq-files).
+With this method, the `--reads` option points to the directory where .fastq reads can be found. By default, rainbow_bridge assumes forward reads are designated with "R1" (\*R1\*.fastq\*) in the filename and reverse reads are named with "R2" (\*R2\*.fastq\*). For customization options, see [below](#specifying-fastq-files).
 
 ```bash
-user@srv:~/example_project/analysis$ eDNAFlow.nf \
+$ rainbow_bridge.nf \
   --paired \
   --reads ../fastq/  
   --barcode '../data/*.tab'
@@ -248,7 +365,7 @@ user@srv:~/example_project/analysis$ eDNAFlow.nf \
 For demultiplexed paired-end runs, you will have two fastq files per sample, each designated by a pattern indicating read direction (typically R1/R2). The pipeline combines the values of the `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2` options to make a [glob](#a-note-on-globswildcards) that is used to find sequence reads. A simple example is given here which relies on the default values of `--fwd`, `--rev`, `--r1`, and `--r2`, but for a detailed discussion of how these things can go together, see [below](#specifying-fastq-files).
 
 ```bash
-user@srv:~/example_project/analysis$ eDNAFlow.nf \
+$ rainbow_bridge.nf \
   --paired \
   --reads ../fastq \   # Here, we're just specifying the directory where reads are found. 
   --barcode '../data/*.tab'  # Default options will look for <reads>/*R1*.fastq* and <reads>/*R2*.fastq*
@@ -269,12 +386,12 @@ When the pipeline finishes, output from each step can be found in directories co
 |             | split_samples/                       | Annotated samples split into individual files                | Sequencing run not previously demultiplexed              |
 |             | relabeled/                           | Relabeled combined FASTA files for denoiser (usearch/vsearch) input |                                                          |
 |             | merged/                              | Merged relabeled FASTA file for denoising                    |                                                          |
-| output/     | fastqc_initial/<br />fastqc_filtered/ | FastQC/MultiQC reports                                       | --fastqc                                                 |
+| output/     | fastqc/initial/<br />fastqc/filtered/ | FastQC/MultiQC reports                                       | --fastqc                                                 |
 |             | zotus/                               | Dereplicated/denoised sequence results<br />(unique sequences, zOTU sequences, zOTU table) |                                                          |
-|             | blast/\*                              | BLAST results. Directory names will reflect the options passed to the blast process as well as the names of the individual databases queried against. |                                                          |
-|             | lulu/                                | LULU curation results                                        |                                                          |
-|             | taxonomy/lca\*/                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --collapse-taxonomy                                      |
-|             | taxonomy/insect\*/                    | Insect classification results. Directory name will reflect the options passed to the insect process. | --insect                                                 |
+|             | blast/\*                              | BLAST results. Directory names will reflect the options passed to the blast process as well as the names of the individual databases queried against. | --skip-blast not passed |
+|             | lulu/                                | LULU curation results                                        | --skip-lulu not passed |
+|             | taxonomy/lca/\*                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --collapse-taxonomy                                      |
+|             | taxonomy/insect/\*                    | Insect classification results. Directory name will reflect the options passed to the insect process. | --insect                                                 |
 |             | phyloseq/                            | Phyloseq object                                              | --phyloseq and associated options                        |
 | work/       | A bunch of nonsense                 | All internal and intermediate files processed by nextflow    |                                                          |
 | .nextflow/  | various                             | Hidden nextflow-generated internal folder                    |                                                          |
@@ -287,11 +404,11 @@ In some limited cases, the pipeline can fail silently. In this case it will appe
 
 In most cases when something goes wrong the pipeline will fail loudly and you will see something like this:
 
-![eDNAFlow error output](images/err.png)
+![rainbow_bridge error output](images/err.png)
 
 This can be a bit intimidating at first, but there are a few ways to use this information to figure out what went wrong. First, toward the bottom of the readout, you'll see the "Command error" section (highlighted). This contains any error message that the failed process may have produced (technically, anything the script output to stderr). If that's empty, there may still be some output you can look at. To see any output the process may have produced (just note that sometimes it's empty), take a look at the "Work dir" and do the following (here we're using the work dir from the above example):
 
-```bash
+```console
 $ cat work/2a/7da7dd31811a49b03af88632257520/.command.out
 $ cat work/2a/7da7dd31811a49b03af88632257520/.command.err # (though this will be empty if "Command error" was empty)
 ```
@@ -300,9 +417,9 @@ In the example above, there was error output but nothing in the `.command.out` f
 
 ## A note on globs/wildcards
 
-A number of eDNAFlow command-line options accept file globs (wildcards). This is used when you want to indicate more than one file. For an in-depth treatment of globs in the bash shell environment, have a look [here](https://www.baeldung.com/linux/bash-globbing). For the purposes of this pipeline though, you'll mostly use the following things:
+A number of rainbow_bridge command-line options accept file globs (wildcards). These are used when you want to indicate more than one file using a matching pattern. For an in-depth treatment of globs in the bash shell environment, have a look [here](https://www.baeldung.com/linux/bash-globbing). For the purposes of this pipeline though, you'll mostly use the following things:
 
-(<small>**Note: when passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--barcode 'bc*.tab'`), If you don't, the glob will be interpreted by the shell rather than eDNAFlow and parameter values will be incorrect.**</small>)
+(<small>**Note: when passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--barcode 'bc*.tab'`), If you don't, the glob will be interpreted by the shell rather than rainbow_bridge and parameter values will be incorrect.**</small>)
 
 **\***: a star means 'match any string of characters of any length'  
 For example, the glob 'bc\*.tab' will match any filename that begins with 'bc', followed by a sequence of any characters, and finally ending with '.tab'  
@@ -315,11 +432,11 @@ This pattern will match 'seq\_R1.fastq', 'seq\_001\_002\_R2.fastq', and 'seq\_12
 
 # Description of run options
 
-eDNAFlow allows for a good deal of customization with regard to which and how various elements of the pipeline are run. All command-line options can be either be passed as-is or saved in a parameters file. For details on saving options in a parameters file, see [below](#specifying-parameters-in-a-parameter-file).
+rainbow_bridge allows for a good deal of customization with regard to which and how various elements of the pipeline are run. All command-line options can be either be passed as-is or saved in a parameters file. For details on saving options in a parameters file, see [below](#specifying-parameters-in-a-parameter-file).
 
 To see a detailed list of available command-line options run:
-```bash
-$ eDNAFlow.nf --help
+```console
+$ rainbow_bridge.nf --help
 ```
 
 ## Required options
@@ -339,7 +456,7 @@ In all cases, if you're processing fastq runs, you must specify the location of 
 
 **Note: unless you are specifying forward/reverse reads directly (i.e. passing individual filenames), it is best practice to keep reads (fastq files) from different sequencing runs in separate directories. If you do not, because of the way the pipeline uses [globs](#a-note-on-globswildcards) to find files, you could end up with unexpected behavior (e.g., accidentally combining sequences from different sequencing runs in one analysis).**
 
-There are a few ways you can tell eDNAFlow where your reads are:
+There are a few ways you can tell rainbow_bridge where your reads are:
 
 - For single-ended runs  
   - Non-demultiplexed  
@@ -350,7 +467,7 @@ There are a few ways you can tell eDNAFlow where your reads are:
   - Non-demultiplexed  
     <small>**`--fwd`**</small> and <small>**`--rev`**</small>: For non-demultiplexed runs, you may use these parameters to specify the forward (`--fwd`) and reverse (`--rev`) fastq files directly.  
   - Demultiplexed  
-    Demultiplexed sequence reads are found using a [glob](#a-note-on-globswildcards) built internally with the `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2` values.   
+    Demultiplexed sequence reads are found using a [glob](#a-note-on-globswildcards) built internally with the values of  `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2`.   
     
     <small>**`--reads`**</small>: This parameter specifies the base-*directory* where forward and reverse reads may be found. If no other option is specified,  the glob is built using the default values of `--fwd`, `--rev`, `--r1`, and `--r2` (see below)  
     <small>**`--r1`**</small> (default: 'R1'), <small>**`--r2`**</small> (default: 'R2'): these parameters specify the pattern that distinguishes forward from reverse reads. The default values ('R1' and 'R2') are typical of most files you will receive from the sequencer.  
@@ -369,15 +486,17 @@ There are a few ways you can tell eDNAFlow where your reads are:
     
     <small>**Note the star after the final 'fastq'. This is included to allow for matching '.fastq.gz' files**</small>  
     
-    For example, if eDNAFlow is invoked with the following options:   
+    For example, if rainbow_bridge is invoked with the following options:   
     `--reads ../fastq --fwd forward --rev reverse`  
     fastq files will be looked for using the following [glob](#a-note-on-globswildcards):  
     <pre><code>../fastq/{forward,reverse}/*{R1,R2}*.fastq*</code></pre>
 
 ### Other required options
 
-#### Barcode file
-<small>**`--barcode [barcode file(s)]`**</small>: Aside from specifying how to find your sequence reads, you must specify a barcode file using the `--barcode` option. The barcode file should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to specify sample barcodes and amplicon primers. It will vary slightly based on whether your runs have been demultiplexed by the sequencer or not. Note that the pipeline can perform a few standalone tasks that do not require barcode files (e.g. collapsing taxonomy to LCA). <small>**The barcode file does not require a header line (i.e., column names), but if one is included it must be prefaced with a '#' (i.e., commented out).**</small>
+#### Barcode file (not required for demultiplexed runs with stripped primers)
+<small>**`--barcode [barcode file(s)]`**</small>: Aside from specifying how to find your sequence reads, you must specify barcode file(s) using the `--barcode` option. Barcode files should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to specify sample barcodes and amplicon primers. It will vary slightly based on whether your runs have been demultiplexed by the sequencer or not. Note that the pipeline can perform a few standalone tasks that do not require barcode files (e.g. collapsing taxonomy to LCA). Additionally, you won't need one if you are processing a previous-demultiplexed sequencing run where primers have been stripped.  
+
+<small>**The barcode file does not require a header line (i.e., column names), but if one is included it must be prefaced with a '#' (i.e., commented out).**</small>
 
 - **Non-demultiplexed runs**: This format includes forward/reverse sample barcodes and forward/reverse PCR primers to separate sequences into the appropriate samples. Barcodes are separated with a colon and combined in a single column while primers are given in separate columns. For example:
   #assay|sample|barcodes|forward_primer|reverse_primer|extra_information
@@ -394,7 +513,7 @@ There are a few ways you can tell eDNAFlow where your reads are:
 
 #### BLAST settings 
 
-For pipeline runs in which BLAST queries are performed, you must identify the database(s) being used. This can be done using the `--blast-db` option or the `$FLOW_BLAST` environment variable. See [below](#blast-settings-1) for more details on how to do this. 
+For pipeline runs in which BLAST queries are performed, you must identify the database(s) being used. This can be done using the `--blast-db` option and/or the `$FLOW_BLAST` environment variable. See [below](#blast-settings-1) for more details on how to do this. 
 
 ## Sample IDs
 For non-demultiplexed sequencing runs, samples will be named based on the sample IDs specified in the `sample` column of the barcode file. For demultiplexed runs, samples will by default be named based on the first part of the filename before the fwd/rev (R1/R2) pattern. For example, the following read files:
@@ -416,7 +535,7 @@ CL2_S3_L001
 ```
 
 ### Mapping of custom sample IDs
-By default for previously-demultiplexed runs, eDNAFlow will interpret sample IDs from filenames. However, since this sometimes results in screwy sample IDs, it is possible to specify a mapping file that will translate filenames into custom IDs.
+By default for previously-demultiplexed runs, rainbow_bridge will interpret sample IDs from filenames. However, since this sometimes results in screwy sample IDs, it's possible to specify a mapping file that will translate filenames into custom IDs.
 
 <small>**`--sample-map [mapfile]`**</small>: A headerless tab-delimited file that maps sample names to sequence-read filenames.  
 
@@ -434,13 +553,13 @@ sample_CL2  CL2_S3_L001_R1_001.fastq  CL2_S3_L001_R2_001.fastq
 ## Other options
 
 ### General 
-<small>**`--project [project]`**</small>:    Project name, applied to various output filenames. (default: project directory name)  
+<small>**`--project [project]`**</small>:    Project name, applied as a prefix to various output filenames. (default: project directory name)  
 <small>**`--publish-mode [mode]`**</small>:  Specify how nextflow places files in output directories. See [nextflow documentation](https://www.nextflow.io/docs/latest/process.html#publishdir) for supported values (default: symlink)  
 <small>**`--fastqc`**</small>:               Output FastQC reports for pre and post filter/merge steps. MultiQC is used for demultiplexed or split runs.  
 
 
 ### Splitting input
-To improve performance, large input files can be split into multiple smaller files and processed in parallel. This option is only available for runs that have *not* previously been demultiplexed. With the `--split` option, eDNAFlow will break up the input reads into smaller files (with the number of reads per file customizable as explained below) and process them in parallel the same way that demultiplexed runs are processed. 
+To improve performance, large input files can be split into multiple smaller files and processed in parallel. This option is only available for runs that have *not* previously been demultiplexed. With the `--split` option, rainbow_bridge will break up the input reads into smaller files (with the number of reads per file customizable as explained below) and process them in parallel the same way that demultiplexed runs are processed. 
 
 <small>**`--split`**</small>:    Split input fastq files and process in parallel   
 <small>**`--split-by [num]`**</small>: Number of sequences per split fastq chunk (default: 100000)  
@@ -459,7 +578,7 @@ These settings control demultiplexing and sequence matching (e.g., allowable PCR
 <small>**`--illumina-demultiplexed`**</small>:  Required if sequencing run is already demultiplexed  
 <small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed sequencing runs, remove reads that have ambiguous indices (i.e. they have bases other than AGCT). This assumes Illumina indices are included in fastq headers:  
     <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAAWGTGG+TTCNAAGA</strong></code></pre>
-<small>**`--skip-primer-match`**<\small>: Skip primer/barcode match and removal (ngsfilter step) for sequencing runs where metabarcoding primers are already removerd. 
+<small>**`--skip-primer-match`**</small>: Skip primer/barcode match and removal (ngsfilter step) for sequencing runs where metabarcoding primers are already removerd.   
 <small>**`--demuxed-fasta [file]`**</small>:  Skip demultiplexing step and use supplied FASTA (must be in usearch/vsearch format). See [above](#demux-fasta).  \
 <small>**`--demuxed-example`**</small>:  Spit out example usearch/vsearch demultiplexed FASTA format  
 <small>**`--demux-only`**</small>:  Stop after demultiplexing and splitting raw reads  
@@ -477,9 +596,9 @@ These settings allow you to control how BLAST searches are performed and specify
 The following options are available:  
 
 Specifying your database:  
-<small>**`--blast-db [blast dir]`**</small>: Location of a BLAST database (path *and* name). For example, if the NCBI `nt` database resides at `/usr/local/blast`, use `--blast-db /usr/local/blast/nt`. If you have a custom database called `custom_blast` in `/home/user/customblast`, pass `--blast-db /home/user/customblast/custom_blast`. The "name" of the database is the same as the value passed to the `-out` parameter of `makeblastdb`. If you are unsure of the name of a particular blast database, a good way to identify it is that it's the base name of the .ndb file. For example, if you have a directory with a `fishes.ndb` file, the name of the BLAST database will just be `fishes`.  
+<small>**`--blast-db [blast db name]`**</small>: Location of a BLAST database (path *and* name). For example, if the NCBI `nt` database resides at `/usr/local/blast`, use `--blast-db /usr/local/blast/nt`. If you have a custom database called `custom_blast` in `/home/user/customblast`, pass `--blast-db /home/user/customblast/custom_blast`. The "name" of the database is the same as the value passed to the `-out` parameter of `makeblastdb`. If you are unsure of the name of a particular blast database, a good way to identify it is that it's the base name of the .ndb file. For example, if you have a directory with a `fishes.ndb` file, the name of the BLAST database will just be `fishes`.  
 
-By default, `eDNAFlow` will use the value of the `$FLOW_BLAST` environment variable as the primary BLAST database. If `$FLOW_BLAST` is set, the database it points to will be added in addition to any database(s) passed to `--blast-db`.  
+By default, `rainbow_bridge` will use the value of the `$FLOW_BLAST` environment variable as the primary BLAST database. If `$FLOW_BLAST` is set, the database it points to will be added in addition to any database(s) passed to `--blast-db`.  
 
 Taxonomic name resolution:  
 BLAST databases use numerical NCBI taxonomy IDs (taxids) to assign taxonomy to sequences. In order for your results to contain the actual scientific names associated with those taxids, the NCBI BLAST taxonomy database (taxdb) must be available to the pipeline. This can be achieved in several ways:   
@@ -548,7 +667,7 @@ Options for the LCA method of taxonomy refinement. This method will selectively 
 <small>**`--keep-uncultured`**</small>:  Keep sequences that are listed as 'uncultured', 'environmental sample', 'clone', or 'synthetic' (these are filtered by default).  
 
 ### Denoising/dereplication and zOTU inference
-These options control how (and by what tool) sequences are denoised and zOTUs are inferred By default, eDNAFlow uses [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch), which does not suffer from the 4GB memory limit of the free version of [usearch](https://www.drive5.com/usearch/). You still retain the option of using either the free (32 bit) or commercial (64 bit) versions of usearch, if you really want. 
+These options control how (and by what tool) sequences are denoised and zOTUs are inferred By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch), which does not suffer from the 4GB memory limit of the free version of [usearch](https://www.drive5.com/usearch/). You still retain the option of using either the free (32 bit) or commercial (64 bit) versions of usearch, if you really want to. 
 
 <small>**`--denoiser [tool/path]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'usearch32', 'vsearch', path to 64-bit usearch executable (default: vsearch)    
 <small>**`--min-abundance [num]`**</small>:  Minimum sequence abundance for zOTU determination; sequences with abundances below the specified threshold will be discarded during the denoising process (default: 8)   
@@ -557,7 +676,7 @@ These options control how (and by what tool) sequences are denoised and zOTUs ar
 
 ### zOTU curation using LULU
 
-eDNAFlow includes the option to curate zOTUs using [lulu](https://github.com/tobiasgf/lulu). For a more detailed explantion of these parameters please see the LULU documentation.
+rainbow_bridge includes the option to curate zOTUs using [lulu](https://github.com/tobiasgf/lulu). For a more detailed explantion of these parameters please see the LULU documentation.
 
 <small>**`--skip-lulu`**</small>:  Skip LULU curation  
 <small>**`--lulu-min-ratio-type [num]`**</small>: LULU minimum ratio type (accepted values: 'min', 'avg', default: 'min')  
@@ -566,7 +685,7 @@ eDNAFlow includes the option to curate zOTUs using [lulu](https://github.com/tob
 <small>**`--lulu-min-rc [num]`**</small>: LULU minimum relative co-occurence rate (default: 0.95)  
 
 ### Resource allocation
-These options allow you to allocate resources (CPUs and memory) to eDNAFlow processes.
+These options allow you to allocate resources (CPUs and memory) to rainbow_bridge processes.
 
 <small>**`--max-memory [mem]`**</small>:  Maximum memory available to nextflow processes, e.g., '8.GB' (default: maximum available system memory)  
 <small>**`--max-cpus [num]`**</small>:  Maximum cores available to nextflow processes (default: maximum available system CPUs)  
@@ -597,7 +716,7 @@ These options control the final output of the pipeline and include things like c
 |   class           |   Phaeophyceae    |   phylum     |   Brown algae  |
 |   class           |   Ulvophyceae     |   phylum     |   Green algae  |
 
-Using this map file, any sequences assigned to phylum 'Rhodophyta' or classes 'Phaeophyceae' or 'Ulvophyceae' would have their kingdoms assigned to 'Plantae'. Afterward, sequences assigned to class 'Phaeophyceae' would be placed in phylum 'Brown algae' and class 'Ulvophyceae' would be placed in phylum 'Green algae'.  
+Using this map file, any sequences assigned to phylum 'Rhodophyta' or classes 'Phaeophyceae' or 'Ulvophyceae' will have their kingdoms assigned to 'Plantae'. Afterward, sequences assigned to class 'Phaeophyceae' will be placed in phylum 'Brown algae' and class 'Ulvophyceae' would be placed in phylum 'Green algae'.  
 
 <small>**`--taxon-filter [file]`**</small>: Manually filter out or retain specified taxonomic groups or levels. Argument is a tabular data file with three columns: `level`, `value`, and `action`. The `level` and `value` column match taxonomic levels to a certain value (e.g., kingtom = 'Metazoa') and the `action` column determines whether that group is retained (column value = 'retain') or filtered (column value = 'filter'). For example:  
 
@@ -626,9 +745,9 @@ The following command line options are available:
 
 <small>**`--controls [file]`**</small>: Specify sample names of negative field/extraction/filtration controls. Argument is a text file containing one sample ID per line.  
 <small>**`--control-action [action]`**</small>: Action to perform on negative controls. Available options are 'remove' (remove all zOTUs found in negative controls), 'subtract' (subtract read counts of zOTUs found in negative controls), and 'decontam' (use the R package [decontam](https://github.com/benjjneb/decontam) to control for possible contamination) (default: 'remove')  
-<small>**`--control-threshold [num]`**</small>: For the `remove` action, the minimum read count at which to retain potential contaminates (i.e., for zOTUs found in negative controls, retain if fewer than x reads). For the `decontam` action, this value is passed to the the `isContaminant` function in decontam. See package documentation for more information. (default: 0/0.1)  
+<small>**`--control-threshold [num]`**</small>: For the `remove` action, the minimum read count at which to retain potential contaminates (i.e., for zOTUs found in negative controls, retain if fewer than specified number of reads). For the `decontam` action, this value is passed to the the `isContaminant` function in decontam. See package documentation for more information. (default: 0/0.1)  
 <small>**`--decontam-method [method]`**</small>: (for action = 'decontam' only') Method used for determining contaminates. Value is passed to the `method` argument of the `isContaminant` function in decontam. See package documentation for more information. (default: 'auto')  
-<small>**`--dna-concentration [file]`**</small>: (for action = 'decontam' only') Tabluar file containing DNA concentrations of each sample in ng/ul. A file in .csv or .tsv format with two columns: `sample` and `concentration`. The first column contains sample IDs and the second column contains DNA concentrations. Passed to the `conc` argument of the `isContaminant` function in decontam. See package documentation for more information.  
+<small>**`--dna-concentration [file]`**</small>: (for action = 'decontam' only') Tabular file containing DNA concentrations of each sample in ng/ul. A file in .csv or .tsv format with two columns: `sample` and `concentration`. The first column contains sample IDs and the second column contains DNA concentrations. Passed to the `conc` argument of the `isContaminant` function in decontam. See package documentation for more information.  
 
 ##### Abundance filtration and rarefaction
 
@@ -646,7 +765,7 @@ These options provide the ability to filter output by absolute and relative sequ
 
 ##### Generating phyloseq objects
 
-eDNAFlow supports generation of [phyloseq](https://joey711.github.io/phyloseq/) objects from pipeline output or user-supplied data. This will produce an RDS file that you can load directly into R and use for downstream analyses. There are a few options that can be specified for this process. Pipeline-generated (i.e., [insect](#classification-using-insect) or [LCA](#lca-collapse)) or user-supplied taxonomic classifications can be used along with the required user-supplied sample metadata.
+rainbow_bridge supports generation of [phyloseq](https://joey711.github.io/phyloseq/) objects from pipeline output or user-supplied data. This will produce an RDS file that you can load directly into R and use for downstream analyses. There are a few options that can be specified for this process. Pipeline-generated (i.e., [insect](#classification-using-insect) or [LCA](#lca-collapse)) or user-supplied taxonomic classifications can be used along with the required user-supplied sample metadata.
 
 <small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--collapse-taxonomy` option).  
 <small>**`--metadata [file]`**</small>: A comma- or tab-separated sample metadata table (required). This can contain any arbitrary sample information, but it must have a header and the first column (preferably called 'sample') must contain sample IDs.  
@@ -657,16 +776,16 @@ eDNAFlow supports generation of [phyloseq](https://joey711.github.io/phyloseq/) 
 # Useful examples and tips
 
 ## Downloading the NCBI BLAST nucleotide database
-Unless you pass the `--skip-blast` option, you'll need to provide a path to a local GenBank nucleotide (nt) and/or your custom BLAST database. To download the NCBI nucleotide database locally, follow the steps below:
+Unless you pass the `--skip-blast` option, you'll need to provide a path to a local GenBank nucleotide (nt) and/or your custom BLAST database. To download the NCBI nucleotide database locally, follow the steps below (these examples all use singularity, but the commands following 'singularity run' are universal):
 
 1. Download the official [BLAST+ container](https://github.com/ncbi/blast_plus_docs#show-blast-databases-available-for-download-from-ncbi) with Singularity:
-   ```bash
+   ```console
    $ singularity pull blast_latest.sif --dir $HOME/tmp docker://ncbi/blast:latest
    ```
    --dir can be any directory you want it to. It's just the place where the image (.sif file) is saved.
 
-2. Create a directory where you want to keep the database (here, for example, /opt/storage/blast). From there use the `update_blastdb.pl` command to download the appropriate database (this is going to take a very long time so it's good to run it inside a screen session or on a computer you can walk away from):
-   ```bash
+1. Create a directory where you want to keep the database (here, for example, /opt/storage/blast). From there use the `update_blastdb.pl` command to download the appropriate database (this is going to take a very long time so it's good to run it inside a screen session or on a computer you can walk away from):
+   ```console
    $ mkdir /opt/storage/blast
    $ cd /opt/storage/blast
    $ singularity run $HOME/tmp/blast_latest.sif update_blastdb.pl --decompress nt
@@ -714,7 +833,7 @@ seq4	352265
 
 Now, to create the custom blast database, we run the following command and you should see something like the given output:
 
-```bash
+```console
 $ singularity run -B $(readlink -m .) $HOME/tmp/blast_latest.sif makeblastdb \
   -in seqs.fasta \
   -parse_seqids \
@@ -732,7 +851,7 @@ Maximum file size: 3000000000B
 
 If you list the files just created, you'll see something like this:
 
-```bash
+```console
 $ ls -l
 -rw-rw-r-- 1 justaguy justaguy 32768 Mar 15 12:44 custom_database.ndb
 -rw-rw-r-- 1 justaguy justaguy   178 Mar 15 12:44 custom_database.nhr
@@ -752,7 +871,7 @@ In order to use this custom database with the pipeline, if these files reside in
 
 ## Specifying parameters in a parameter file
 
-All the command-line options outlined in this document can either be passed as shown or, for convenience and repeatability, they may be defined in a parameter file in either YAML or json format. Then, launch the pipeline using the option `-params-file [file]` (**note the single dash before the option, this denotes a nextflow option rather than an eDNAFlow option**). Option names can be entered as-is (they must be quoted if using json format), but **leading dashes need to be removed**. For example, the option `--illumina-demultiplexed` should be entered as `illumina-demultipexed`. Boolean options (i.e., options with no parameter that are just on/off switches such as `--single` or `--paired`) should be assigned a value of 'true' or 'false'. Here is an example parameter file in YAML format:
+All the command-line options outlined in this document can either be passed as shown or, for convenience and repeatability, they may be defined in a parameter file in either YAML or json format. Then, launch the pipeline using the option `-params-file [file]` (**note the single dash before the option, this denotes a nextflow option rather than a rainbow_bridge option**). Option names can be entered as-is (they must be quoted if using json format), but **leading dashes need to be removed**. For example, the option `--illumina-demultiplexed` should be entered as `illumina-demultipexed`. Boolean options (i.e., options with no parameter that are just on/off switches such as `--single` or `--paired`) should be assigned a value of 'true' or 'false'. Here is an example parameter file in YAML format:
 
 ```yaml
 paired: true
@@ -780,17 +899,17 @@ and in json format:
 }
 ```
 
-If the first example above is saved as options.yml, eDNAFlow can be then executed like this:
+If the first example above is saved as options.yml, rainbow_bridge can be then executed like this:
 
-```bash
-$ eDNAFlow.nf -params-file options.yml
+```console
+$ rainbow_bridge.nf -params-file options.yml
 ```
 <small>**(again, note the single dash)**</small>
 
 Which is equivalent to running it like this:
 
-```bash
-$ eDNAFlow.nf \
+```console
+$ rainbow_bridge.nf \
   --paired \
   --reads ../fastq/ \
   --fwd forward \
@@ -808,9 +927,9 @@ This is what that looks like in YAML (using `--blast-db` as the example option):
 
 ```yaml
 blast-db:
-  - /home/user/blast/fish_blast/fishes
-  - /home/user/blast/crab_blast/crabs
-  - /home/user/blast/snail_blast/snail
+  - /opt/blast/fish_blast/fishes
+  - /opt/blast/crab_blast/crabs
+  - /opt/blast/snail_blast/snails
 ```
 
 And in json:
@@ -818,17 +937,17 @@ And in json:
 ```json
 {
   "blast-db": [
-    "/home/user/blast/fish_blast/fishes",
-    "/home/user/blast/crab_blast/crabs",
-    "/home/user/blast/snail_blast/snail"
+    "/opt/blast/fish_blast/fishes",
+    "/opt/blast/crab_blast/crabs",
+    "/opt/blast/snail_blast/snails"
   ]
 }
 ```
 
 
 ## Notification
-Nextflow allows the user to be notified upon completion or failure of the pipeline run. To do this, simply pass your email address with the `-N` option when running eDNAFlow.nf (again, note the single dash). For example, if you want to launch the pipeline using an options file and receive an email when the run completes:
+Nextflow allows the user to be notified upon completion or failure of the pipeline run. To do this, simply pass your email address with the `-N` option when running rainbow_bridge.nf (again, note the single dash). For example, if you want to launch the pipeline using an options file and receive an email when the run completes:
 
-```bash
-$ eDNAFlow.nf -params-file options.yml -N someguy@nobody.com
+```console
+$ rainbow_bridge.nf -params-file options.yml -N someguy@nobody.com
 ```

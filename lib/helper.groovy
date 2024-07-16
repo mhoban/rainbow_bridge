@@ -63,7 +63,7 @@ class helper {
 
   static public void usage(params) {
 		System.out.println("""
-    Usage: eDNAFlow.nf [options]
+    Usage: rainbow_bridge.nf [options]
 
     General options:
       --project [project]          Project name, applied to various output filenames (default: ${params.project}) 

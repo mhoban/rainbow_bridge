@@ -210,6 +210,7 @@ process filter_merge {
     AdapterRemoval --threads ${task.cpus} --file1 ${reads} \
       --trimns --trimqualities \
       --minquality ${params.minQuality} \
+      --qualitymax ${params.maxQuality} \
       --basename ${sample_id}
 
     mv ${sample_id}.truncated ${sample_id}_trimmed_merged.fastq
@@ -220,6 +221,7 @@ process filter_merge {
     AdapterRemoval --threads ${task.cpus} --file1 ${reads[0]} --file2 ${reads[1]} \
       --collapse --trimns --trimqualities \
       --minquality $params.minQuality \
+      --qualitymax ${params.maxQuality} \
       --minalignmentlength ${params.minAlignLen} \
       --basename ${sample_id}
 

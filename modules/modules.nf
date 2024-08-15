@@ -34,29 +34,6 @@ process lca {
   """
 }  
 
-// assign/collapse taxonomy using the original python script
-process py_lca {
-  label 'python3'
-
-  publishDir "${params.outDir}/taxonomy/lca", mode: params.publishMode 
-
-  input:
-    tuple path(zotu_table), path(blast_result), path(lineage), path(merged), val(curated)
-
-  output:
-    tuple path("lca_intermediate*.tsv"), path("lca_taxonomy*.tsv")
-
-
-  script:
-  c = curated ? "lulu_" : ""
-  """
-  runAssign_collapsedTaxonomy.py ${zotu_table} ${blast_result} \
-    ${params.lcaQcov} ${params.lcaPid} ${params.lcaDiff} ${lineage} \
-    "lca_taxonomy_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tsv" 
-  mv interMediate_res.tab "lca_intermediate_q${params.lcaQcov}_p${params.lcaPid}_d${params.lcaDiff}_${c}py.tsv"
-  """
-}  
-
 // run fastqc process
 process fastqc {
   label 'fastqc'

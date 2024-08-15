@@ -1,11 +1,23 @@
 #!/usr/bin/env Rscript
 
+# TODO: add option to ignore singletons when collapsing
+
 suppressPackageStartupMessages(library(tidyr))
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(readr))
 suppressPackageStartupMessages(library(optparse))
 suppressPackageStartupMessages(library(fs))
 suppressPackageStartupMessages(library(stringr))
+
+eq <- function(a,b) {
+  an <- map_lgl(a,is.null)
+  bn <- map_lgl(b,is.null)
+  if (is.null(a) && is.null(b)) return(TRUE)
+  if (is.null(a) && !is.null(b) || !is.null(a) && is.null(b)) return(FALSE)
+  if (is.na(a) && is.na(b)) return(TRUE)
+  if(is.na(a) && !is.na(b) || !is.na(a) && is.na(b)) return(FALSE)
+  return(a==b)
+}
 
 nice_formatter <- function(object) {
   cat(object@usage, fill = TRUE)
@@ -61,6 +73,7 @@ opt = parse_args(
   ), 
   convert_hyphens_to_underscores = TRUE,
   positional_arguments = 3
+  # args = debug_args
 )
 
 # check that passed files all exist and bail on failure
@@ -98,19 +111,37 @@ blast <- read_tsv(
   col_types="ccccccnnnnnnnnnnncnnnn"
 )
 
+# for multiple seqid matches, keep just the best one
+best_score <- function(x,...) {
+  x %>%
+    group_by(...) %>%
+    filter(
+      pident == max(pident), 
+      evalue == min(evalue),
+      bitscore == max(bitscore),
+      mismatch == min(mismatch)
+    ) %>%
+    arrange(desc(pident),evalue,desc(bitscore),mismatch) %>%
+    slice(1) %>%
+    ungroup()
+}
+
 # perform initial filtering
 filtered <- blast %>%
   # sort by descending pid
   arrange(desc(qcov),desc(pident)) %>%
-  # keep only unique sequence matches since you can get a ton of matches to the same sequence
+  # keep only the best sequence matches since you can get a ton of matches to the same sequence
   # if it's something like a whole mito/genome 
-  distinct(seqid,.keep_all = TRUE) %>%
+  # distinct(seqid,zotu,.keep_all = TRUE) %>%
+  best_score(zotu,seqid) %>%
   # add in count of unique blast hits
   add_count(zotu,name="unique_hits") %>%
   # keep only unique zotu/taxid combinations
-  distinct(zotu,taxid,.keep_all = TRUE) %>%
+  best_score(zotu,taxid) %>%
+  # distinct(zotu,taxid,.keep_all = TRUE) %>%
   # filter by percentid and query coverage thresholds
-  filter(pident >= pid_thresh & qcov >= qcov_thresh) 
+  filter(pident >= pid_thresh & qcov >= qcov_thresh) %>%
+  mutate(taxid = as.numeric(taxid))
 
 if (semicolon) {
   # depending on how blast was run, we could potentially have multiple taxids,
@@ -122,46 +153,14 @@ if (semicolon) {
   filtered <- filtered %>%
     filter(!str_detect(taxid,';'))
 }
-filtered <- filtered %>%
-  mutate(taxid=as.numeric(taxid)) %>%
-  # now we create a sequential diff in percent id
-  group_by(zotu) %>%
-  # retain only results with the highest qcov (often this is just all 100%)
-  filter(qcov == max(qcov)) %>%
-  arrange(desc(qcov),desc(pident)) %>%
-  mutate(diff=abs(c(0,diff(pident)))) %>%
-  ungroup()
 
-# successively reduce dataset by removing entries
-# whose percent ID differs by the threshold
-while (any(filtered$diff > diff_thresh)) {
-  filtered <- filtered %>% 
-    slice(-which(diff > diff_thresh)) %>%
-    group_by(zotu) %>%
-    arrange(desc(qcov),desc(pident)) %>%
-    mutate(diff=abs(c(0,diff(pident)))) %>%
-    ungroup()
-}
-
-if (!is.na(intermediate)) {
-  write_tsv(filtered,intermediate,na="")
-}
-
-# NOTE: i don't know if there's any reason we can't just do it this way:
-#       it avoids the loop and looks a lot cleaner
-# filtered <- filtered %>%
-  # group_by(zotu) %>%
-  # filter(qcov == max(qcov)) %>%
-  # arrange(desc(qcov),desc(pident)) %>%
-  # mutate(diff=pident-pident[1]) %>%
-  # filter(diff < diff_thresh)
-
-  
 # load the lineage dump, the underscores in col_types lets us skip columns
-# because NCBI uses '\t|\t' as their delimiter, we'll have a bunch of columns
-# that just contain a pipe
-lineage <- read_tsv(lineage_dump,col_types = "i_c_c_c_c_c_c_c_c_c_",
-                    col_names = c("taxid","taxon","species","genus","family","order","class","phylum","kingdom","domain")) %>%
+# because NCBI uses '\t|\t' as their delimiter, we'd have a bunch of columns that just contain a pipe
+lineage <- read_tsv(
+  lineage_dump,
+  col_types = "i_c_c_c_c_c_c_c_c_c_",
+  col_names = c("taxid","taxon","species","genus","family","order","class","phylum","kingdom","domain")
+) %>%
   select(taxid,domain,kingdom,phylum,class,order,family,genus,species,taxon)
 
 # get new taxids for any merged taxa, if relevant
@@ -180,8 +179,24 @@ filtered <- filtered %>%
   left_join(lineage,by="taxid") %>%
   # this next line works because blast results always contain
   # species-level taxids
-  mutate(species = coalesce(species,taxon)) #%>%
-  # mutate(across(domain:species,~replace_na(.x,"incertae sedis")))
+  mutate(species = coalesce(species,taxon)) 
+
+# save intermediate file, if requested
+if (!is.na(intermediate)) {
+  write_tsv(filtered,intermediate,na="")
+}
+
+# now retain only assignments within the specified percent ID difference threshold
+filtered <- filtered %>%
+  # group by zotu
+  group_by(zotu) %>%
+  # retain only the highest query coverage (often 100%) within each zotu
+  filter(qcov == max(qcov)) %>%
+  # now calculate difference between each and the max pident within each zotu
+  mutate(diff = abs(pident - max(pident))) %>%
+  # discard anything with a difference over the threshold within each zotu
+  filter(diff < diff_thresh) %>%
+  ungroup() 
 
 # filter out any uncultured, environmental, etc.
 if (filter_uncultured) {
@@ -195,32 +210,32 @@ if (drop_blank) {
     filter(!if_all(domain:species,is.na))
 }
 
-
 # here we collapse taxonomic levels that differ across remaining blast results
 filtered <- filtered %>%
   group_by(zotu) %>%
   summarise(across(domain:species,~if_else(n_distinct(.x) == 1,.x[1],dropped)),unique_hits=unique_hits[1]) %>%
   arrange(parse_number(zotu))
 
-# join the zOTU table, using its first column as the zotu column
-# use inner join because some zOTUs don't end up in the table
+# get taxid for last non-"dropped" taxonomic level
+# skip this for now, because the join relationship goes wacky
 # collapsed <- filtered %>%
-	# inner_join(zotus,by=setNames(colnames(zotus)[1],"zotu")) %>%
-	# select(domain:species,OTU=zotu,unique_hits,everything()) %>%
-	# # arrange(domain,kingdom,phylum,class,order,family,genus,species,parse_number(OTU))
-	# arrange(parse_number(OTU))
-collapsed <- filtered %>%
-  mutate(
-    across(domain:species,~replace(.x,which(is.na(.x)),"...")),
-    across(domain:species,~replace(.x,which(.x == dropped),NA))
-  ) %>%
-  mutate(last_level = coalesce(species,genus,family,order,class,phylum,kingdom,domain)) %>%
-  left_join(lineage %>% select(taxon,taxid),by=c("last_level" = "taxon")) %>%
-  mutate(
-    across(domain:species,~replace(.x,which(.x == "..."),"")),
-    across(domain:species,~replace_na(.x,dropped))
-  ) %>%
-	select(zotu,unique_hits,domain:species,taxid)
+#   mutate(
+#     # first replace NAs with ... and dropped with NA (so coalesce works)
+#     across(domain:species,~replace(.x,which(is.na(.x)),"...")),
+#     across(domain:species,~replace(.x,which(.x == dropped),NA))
+#   ) %>%
+#   # now get the lowest non-NA taxonomic level
+#   mutate(last_level = coalesce(species,genus,family,order,class,phylum,kingdom,domain)) %>%
+#   # there is a problem when multiple names exist for something
+#   # maybe use the actual level name in the join, if we can somehow
+#   left_join(lineage,by=c("last_level" = "taxon"),relationship = "many-to-many",suffix=c("","_other")) %>%
+#   mutate(
+#     across(ends_with('_other'),~replace_na(.x,"")),
+#     across(domain:species,~replace(.x,which(.x == "..."),"")),
+#     across(domain:species,~replace_na(.x,dropped))
+#   ) %>% add_count(zotu) %>% arrange(desc(n),zotu)
+
+collapsed <- filtered
 
 # merge zotu table, if desired
 if (file_exists(zotu_table_file)) {

@@ -211,10 +211,22 @@ if (drop_blank) {
 }
 
 # here we collapse taxonomic levels that differ across remaining blast results
+# keep taxids for species-level IDs, otherwise assign NA
 filtered <- filtered %>%
   group_by(zotu) %>%
-  summarise(across(domain:species,~if_else(n_distinct(.x) == 1,.x[1],dropped)),unique_hits=unique_hits[1]) %>%
+  summarise(
+    across(domain:species,~if_else(n_distinct(.x) == 1,.x[1],dropped)),
+    unique_hits=unique_hits[1],
+    taxid = (\(tids) {
+      if (n_distinct(tids) == 1) {
+        return(unique(tids))
+      } else {
+        return(NA)
+      }
+    })(taxid)
+  ) %>%
   arrange(parse_number(zotu))
+
 
 # get taxid for last non-"dropped" taxonomic level
 # skip this for now, because the join relationship goes wacky

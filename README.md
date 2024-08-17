@@ -246,7 +246,7 @@ The [rainbow_bridge-test](https://github.com/mhoban/rainbow_bridge-test) github 
   * Demultiplexed
   * Undemultiplexed
 
-To test the pipeline, clone the repository from <https://github.com/mhoban/rainbow_bridge-test.git> and see the README file for more information.
+To test the pipeline, clone the repository from <https://github.com/mhoban/rainbow_bridge-test.git> and see the README there file for more information.
 
 # Basic usage
 

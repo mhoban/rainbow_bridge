@@ -72,7 +72,7 @@ opt = parse_args(
     usage="%prog [options] <blast_result> <lineage_dump> <output_table>"
   ), 
   convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 3
+  positional_arguments = 4
   # args = debug_args
 )
 
@@ -87,7 +87,8 @@ if (any(!fe)) {
 # store filenames
 blast_file <- opt$args[1]
 lineage_dump <- opt$args[2]
-output_table <- opt$args[3]
+nodes_dump <- opt$args[3]
+output_table <- opt$args[4]
 qcov_thresh <- opt$options$qcov
 pid_thresh <- opt$options$pid
 diff_thresh <- opt$options$diff

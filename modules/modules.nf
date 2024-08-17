@@ -5,7 +5,7 @@ process lca {
   publishDir "${params.outDir}/taxonomy/lca/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}", mode: params.publishMode 
 
   input:
-    tuple path(blast_result), path(lineage), path(merged), val(curated)
+    tuple path(blast_result), path('*')
 
   output:
     tuple path("lca_intermediate*.tsv"), path("lca_taxonomy*.tsv"), emit: result
@@ -14,7 +14,6 @@ process lca {
 
   script:
   pf = params.keepUncultured ? "-u" : ""
-  c = curated ? "_lulu" : ""
   """
   # save settings
   echo "Minimum query coverage %: ${params.lcaQcov}" > lca_settings.txt
@@ -26,11 +25,11 @@ process lca {
     --qcov ${params.lcaQcov} \
     --pid ${params.lcaPid} \
     --diff ${params.lcaDiff} \
-    --merged ${merged} \
+    --merged merged.dmp \
     --dropped ${params.dropped} \
     ${pf} \
-    --intermediate "lca_intermediate${c}.tsv" \
-    ${blast_result} ${lineage} "lca_taxonomy${c}.tsv"
+    --intermediate "lca_intermediate.tsv" \
+    ${blast_result} rankedlineage.dmp nodes.dmp "lca_taxonomy.tsv"
   """
 }  
 
@@ -76,4 +75,17 @@ process multiqc {
   """
   multiqc .
   """
+}
+
+// get a file from a URL
+process get_web {
+  input:
+    tuple val(location), path(localfile)
+  output:
+    path(localfile)
+
+  exec:
+    classifier = task.workDir / localfile 
+    url = new URL(location)
+    url.withInputStream { stream -> classifier << stream }
 }

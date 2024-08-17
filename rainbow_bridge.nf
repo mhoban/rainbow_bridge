@@ -625,7 +625,7 @@ process insect {
 
 // extract the NCBI blast taxonomy database
 process extract_taxdb {
-  label 'python3'
+  label 'shell'
 
   input:
     tuple path(taxdb), val(to_extract)
@@ -641,7 +641,7 @@ process extract_taxdb {
 
 // extract arbitrary files from a zip archive
 process extract_taxonomy {
-  label 'python3'
+  label 'shell'
 
   input:
     tuple path(zipfile), val(f)
@@ -656,6 +656,8 @@ process extract_taxonomy {
 
 // dummy process to generate published file
 process save_taxdump {
+  label 'shell'
+
   publishDir 'output/taxonomy/ncbi_taxdump'
 
   input:
@@ -697,7 +699,7 @@ process remap_samples {
 
 // un-gzip gzipped files
 process unzip {
-  label 'unzip'
+  label 'shell'
 
   input:
     tuple val(id), path(reads)

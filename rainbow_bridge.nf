@@ -328,18 +328,18 @@ process relabel {
     fi
     """
   } else {
-      denoiser = params.execDenoiser ? params.denoiser : 'usearch'
-      """
-      echo "denoiser: ${params.denoiser}" > settings.txt
-      if [ -s "${fastq}" ]; then 
-        # we have to convert everything to uppercase because obisplit --uppercase is broken
-        ${denoiser} -fastx_relabel ${fastq} -prefix "${sample_id}." -fastaout /dev/stdout | \
-          tail -n+7 | \
-          awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}"_relabeled.fasta 
-      else
-        touch "${sample_id}_relabeled.fasta"
-      fi
-      """
+    denoiser = params.execDenoiser ? params.denoiser : 'usearch'
+    """
+    echo "denoiser: ${params.denoiser}" > settings.txt
+    if [ -s "${fastq}" ]; then 
+      # we have to convert everything to uppercase because obisplit --uppercase is broken
+      ${denoiser} -fastx_relabel ${fastq} -prefix "${sample_id}." -fastaout /dev/stdout | \
+        tail -n+7 | \
+        awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}"_relabeled.fasta 
+    else
+      touch "${sample_id}_relabeled.fasta"
+    fi
+    """
   }
 }
 

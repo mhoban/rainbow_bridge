@@ -554,7 +554,7 @@ process extract_taxdb {
 
   script:
   """
-  tar -zxvf taxdb.tar.gz ${to_extract}
+  gunzip -c taxdb.tar.gz | tar x ${to_extract}
   """
 }
 

@@ -667,8 +667,7 @@ Options for the LCA method of taxonomy refinement. This method will selectively 
 <small>**`--standalone-taxonomy`**</small>: Run LCA script standalone (i.e., separate from the pipeline) against user-supplied data  
 <small>**`--blast-file [file]`**</small>: (Only with --standalone-taxonomy) BLAST result table (e.g., output from the blast process)  
 <small>**`--zotu-table [file]`**</small>: (Only with --standalone-taxonomy) zOTU table file (e.g., output from the denoising process)  
-<small>**`--lineage [file]`**</small>: Previously-download NCBI [rankedlineage.dmp](https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/taxdump_readme.txt) file (leave blank to download latest)  
-<small>**`--merged [file]`**</small>: Previously-download NCBI [merged.dmp](https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/taxdump_readme.txt) file (leave blank to download latest)  
+<small>**`--taxdump [file]`**</small>: Previously-downloaded NCBI taxonomy dump zip archive ([new_taxdump.zip](https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/taxdump_readme.txt))  
 <small>**`--dropped [str]`**</small>: Placeholder string for dropped taxonomic levels (default: 'dropped'). Pass "NA" for blank/NA  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy refinement (default: 100)  
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy refinement (default: 97)  

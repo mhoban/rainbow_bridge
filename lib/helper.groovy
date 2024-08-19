@@ -145,8 +145,7 @@ class helper {
       --standalone-taxonomy         Run LCA script as standalone
       --blast-file [file]           Blast result table (only for standalone LCA assignment)
       --zotu-table [file]           zOTU table file (only for standalone LCA assignment)
-      --lineage [file]              Previously downloaded NCBI rankedlineage.dmp file (leave blank to download)
-      --merged [file]               Previously downloaded NCBI merged.dmp file (leave blank to dowload)
+      --taxdump [file]              Previously downloaded NCBI taxonomy dump zip archive (new_taxdump) (leave blank to download)
       --lca-qcov [num]              Minimum query coverage for LCA taxonomy assignment (default: 100)
       --lca-pid [num]               Minimum percent identity for LCA taxonomy assignment (default: 97)
       --lca-diff [num]              The difference between percent identities (when query coverage is

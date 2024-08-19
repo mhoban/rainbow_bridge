@@ -6,10 +6,6 @@ nextflow.enable.dsl=2
 import helper
 import colors
 
-/* some global variables */
-exec_denoiser = false
-
-
 // quick check if variable is numeric
 def is_num(x) {
   return x instanceof Number
@@ -109,14 +105,12 @@ def check_params() {
 
   // the --vsearch param is no longer supported, but try to catch if someone still uses it
   if (params.containsKey('vsearch')) {
-    println(colors.yellow("FYI: vsearch is now used as the default denoiser and the ") + colors.byellow("--vsearch") + colors.yellow(" option is ignored.\nIf you want to use usearch, pass the --usearch option."))
+    println(colors.yellow("FYI: vsearch is now used as the default denoiser and the ") + colors.byellow("--vsearch") + colors.yellow(" option is ignored.\nIf you want to use usearch, pass --denoiser usearch."))
   }
 
   // if denoiser is an executable, treat it as such
   // otherwise check to make sure it's a valid input
-  if (helper.executable(params.denoiser)) {
-    exec_denoiser = true
-  } else {
+  if (!params.execDenoiser) {
     if (!(params.denoiser in ['usearch','usearch32','vsearch'])) {
       println(colors.bred("--denoiser") + colors.red(" must be either 'usearch', 'usearch32', 'vsearch', or a path to an executable (e.g., /opt/sw/bin/usearch64)"))
       exit(1)
@@ -307,9 +301,9 @@ process split_samples {
   """
 }
 
-// relabel files for vsearch
-process relabel_vsearch {
-  label 'vsearch'
+// relabel files for dereplication
+process relabel {
+  label 'denoiser'
 
   publishDir "${params.preDir}/relabeled", mode: params.publishMode
 
@@ -321,77 +315,37 @@ process relabel_vsearch {
 
 
   script:
-  """
-  echo "denoiser: vsearch" > settings.txt
-  # this may or may not be necessary anymore, but it seems like a good sanity check
-  # since this will fail on empty files
-  if [ -s "${fastq}" ]; then 
-    vsearch --threads ${task.cpus} --fastx_filter ${fastq} --relabel "${sample_id}." --fastaout - | \
-      awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}_relabeled.fasta"
-  else
-    touch "${sample_id}_relabeled.fasta"
-  fi
-  """
-}
-
-// relabel files for usearch
-process relabel_usearch {
-  label 'usearch'
-
-  publishDir "${params.preDir}/relabeled", mode: params.publishMode
-
-  input:
-    tuple val(sample_id), path(fastq)
-  output:
-    path('*_relabeled.fasta'), emit: result
-    path 'settings.txt'
-
-
-  script:
-  if (!exec_denoiser) {
+  if (params.denoiser == "vsearch") {
     """
-    echo "denoiser: usearch" > settings.txt
+    echo "denoiser: vsearch" > settings.txt
+    # this may or may not be necessary anymore, but it seems like a good sanity check
+    # since this will fail on empty files
     if [ -s "${fastq}" ]; then 
-      # we have to convert everything to uppercase because obisplit --uppercase is broken
-      usearch -fastx_relabel ${fastq} -prefix "${sample_id}." -fastaout /dev/stdout | tail -n+7 | \
-        awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}"_relabeled.fasta 
+      vsearch --threads ${task.cpus} --fastx_filter ${fastq} --relabel "${sample_id}." --fastaout - | \
+        awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}_relabeled.fasta"
     else
       touch "${sample_id}_relabeled.fasta"
     fi
     """
-  } else if (exec_denoiser) {
-    """
-    echo "denoiser: ${params.denoiser}" > settings.txt
-    for files in ${fastqs}; do
-      label=\$(echo \$files | cut -d '/' -f 3 | cut -d '.' -f 1)
-      ${params.denoiser} -fastx_relabel \$files -prefix \${label}. -fastqout \${label}.relabeled.fastq
-    done
-
-    for files in *.relabeled.fastq; do
-      name=\$(echo \$files | cut -d '/' -f '2' | cut -d '.' -f 1)
-      echo \${name} >> CountOfSeq.txt
-      grep "^@\${name}" \$files | wc -l >> CountOfSeq.txt
-    done
-
-    cat *.relabeled.fastq > "${sample_id}_QF_Dmux_minLF_relabeled4Usearch.fastq"
-
-    ${params.denoiser} -fastx_get_sample_names *_relabeled4Usearch.fastq -output sample.txt
-
-    ${params.denoiser} -fastq_filter *_relabeled4Usearch.fastq -fastaout ${sample_id}_upper.fasta
-
-    # awk '/^>/ {print(\$0)}; /^[^>]/ {print(toupper(\$0))}' *.fasta > ${sample_id}_upper.fasta
-    """
   } else {
-    """
-    echo "we were passed a mode that wasn't usearch, usearch64, or vsearch"
-    exit 1
-    """
+      denoiser = params.execDenoiser ? params.denoiser : 'usearch'
+      """
+      echo "denoiser: ${params.denoiser}" > settings.txt
+      if [ -s "${fastq}" ]; then 
+        # we have to convert everything to uppercase because obisplit --uppercase is broken
+        ${denoiser} -fastx_relabel ${fastq} -prefix "${sample_id}." -fastaout /dev/stdout | \
+          tail -n+7 | \
+          awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}"_relabeled.fasta 
+      else
+        touch "${sample_id}_relabeled.fasta"
+      fi
+      """
   }
 }
 
-// dereplication, zOTUs creation, zOTU table creation (vsearch version)
-process derep_vsearch {
-  label 'vsearch'
+// dereplication, chimera removal, zOTU table generation
+process dereplicate {
+  label 'denoiser'
   label 'all_cpus'
 
   publishDir "${params.outDir}/zotus", mode: params.publishMode
@@ -404,76 +358,42 @@ process derep_vsearch {
     path 'settings.txt'
 
   script:
-  """
-  echo "denoiser: vsearch" > settings.txt
-  echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
-  # steps:
-  # 1. get unique sequence variants
-  # 2. run denoising algorithm
-  # 3. get rid of chimeras
-  # 4. match original sequences to zotus by 97% identity
-  if [ -s "${relabeled_merged}" ]; then 
-    vsearch --threads ${task.cpus} --derep_fulllength ${relabeled_merged} --sizeout --output "${id}_unique.fasta"
-    vsearch --threads ${task.cpus} --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
-    vsearch --threads ${task.cpus} --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" --relabel Zotu 
-    vsearch --threads ${task.cpus} --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tsv
-  else
-    >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
-    exit 1
-  fi
-  """
-}
-
-// dereplication, etc. using usearch
-process derep_usearch {
-  label 'usearch'
-  label 'all_cpus'
-
-  publishDir "${params.outDir}/zotus", mode: params.publishMode
-
-  input:
-    tuple val(id), path(relabeled_merged) 
-
-  output:
-    tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tsv"), emit: result
-    path 'settings.txt'
-
-  script:
-  if (!exec_denoiser)
-  {
+  if (params.denoiser == "vsearch") {
     """
-    echo "denoiser: usearch" > settings.txt
+    echo "denoiser: vsearch" > settings.txt
+    echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
+    # steps:
+    # 1. get unique sequence variants
+    # 2. run denoising algorithm
+    # 3. get rid of chimeras
+    # 4. match original sequences to zotus by 97% identity
+    if [ -s "${relabeled_merged}" ]; then 
+      vsearch --threads ${task.cpus} --derep_fulllength ${relabeled_merged} --sizeout --output "${id}_unique.fasta"
+      vsearch --threads ${task.cpus} --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
+      vsearch --threads ${task.cpus} --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" --relabel Zotu 
+      vsearch --threads ${task.cpus} --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tsv
+    else
+      >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
+      exit 1
+    fi
+    """
+  } else {
+    denoiser = params.execDenoiser ? params.denoiser : 'usearch'
+    """
+    echo "denoiser: ${denoiser}" > settings.txt
     echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
     # steps:
     # 1. get unique sequences
     # 2. run denoising & chimera removal
     # 3. generate zotu table
     if [ -s "${relabeled_merged}" ]; then
-      usearch -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${id}_unique.fasta"
-      usearch -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} -unoise_alpha ${params.alpha}
-      usearch -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zmap.txt
+      ${denoiser} -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${id}_unique.fasta"
+      ${denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} -unoise_alpha ${params.alpha}
+      ${denoiser} -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zmap.txt
     else
       >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
       exit 1
     fi
-    """
-  } else if (exec_denoiser) {
-    """
-    echo "denoiser: ${params.denoiser}" > settings.txt
-    echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
-    if [ -s "${relabeled_merged}" ]; then
-      ${params.denoiser} -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${id}_unique.fasta"
-      ${params.denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} -unoise_alpha ${params.alpha}
-      ${params.denoiser} -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zmap.txt
-    else
-      >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
-      exit 1
-    fi
-    """
-  } else {
-    """
-    echo "we were passed a mode that wasn't usearch, usearch64, or vsearch"
-    exit 1
     """
   }
 }
@@ -806,7 +726,6 @@ workflow {
   check_params()
 
   lca = params.collapseTaxonomy || params.assignTaxonomy
-  usearch = (params.usearch || params.denoiser == 'usearch')
 
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
@@ -974,9 +893,6 @@ workflow {
             set { reads_filtered_merged }
         } 
 
-        // get relabeling process
-        relabel = usearch ? relabel_usearch : relabel_vsearch
-
         // with or without the primer mismatch check, do the
         // length filtering and smash results together into one file
         reads_filtered_merged |
@@ -1060,9 +976,6 @@ workflow {
           }
         }
 
-        // get relabeling process
-        relabel = usearch ? relabel_usearch : relabel_vsearch
-
         // run the rest of the pipeline, including demultiplexing, length filtering,
         // splitting, and recombination for dereplication
         reads_filtered_merged | 
@@ -1099,7 +1012,8 @@ workflow {
     // build the channel, run dereplication, and set to a channel we can use again
     Channel.of(params.project) | 
       combine(to_dereplicate) | 
-      (usearch ? derep_usearch : derep_vsearch) | set { dereplicated }
+      dereplicate | 
+      set { dereplicated }
 
     dereplicated.result | 
       set { dereplicated }

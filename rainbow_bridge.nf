@@ -326,7 +326,7 @@ process relabel_vsearch {
   # this may or may not be necessary anymore, but it seems like a good sanity check
   # since this will fail on empty files
   if [ -s "${fastq}" ]; then 
-    vsearch --threads 0 --fastx_filter ${fastq} --relabel "${sample_id}." --fastaout - | \
+    vsearch --threads ${task.cpus} --fastx_filter ${fastq} --relabel "${sample_id}." --fastaout - | \
       awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}_relabeled.fasta"
   else
     touch "${sample_id}_relabeled.fasta"
@@ -407,17 +407,16 @@ process derep_vsearch {
   """
   echo "denoiser: vsearch" > settings.txt
   echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
-  # pass 0 threads to use all available cores
   # steps:
   # 1. get unique sequence variants
   # 2. run denoising algorithm
   # 3. get rid of chimeras
   # 4. match original sequences to zotus by 97% identity
   if [ -s "${relabeled_merged}" ]; then 
-    vsearch --threads 0 --derep_fulllength ${relabeled_merged} --sizeout --output "${id}_unique.fasta"
-    vsearch --threads 0 --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
-    vsearch --threads 0 --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" --relabel Zotu 
-    vsearch --threads 0 --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tsv
+    vsearch --threads ${task.cpus} --derep_fulllength ${relabeled_merged} --sizeout --output "${id}_unique.fasta"
+    vsearch --threads ${task.cpus} --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
+    vsearch --threads ${task.cpus} --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" --relabel Zotu 
+    vsearch --threads ${task.cpus} --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tsv
   else
     >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
     exit 1

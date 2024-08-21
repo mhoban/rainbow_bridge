@@ -42,8 +42,8 @@ def check_params() {
     exit(0)
   }
 
-  if (params.split && params.illuminaDemultiplexed) {
-    println(colors.red("Parameters") + colors.bred(" --split ") + colors.red("and") + colors.bred(" --illumina-demultiplexed ") + colors.red("are mutually exclusive"))
+  if (params.split && params.demultiplexedBy == "index") {
+    println(colors.red("Parameters") + colors.bred(" --split ") + colors.red("and") + colors.bred(" index-based demultiplexing ") + colors.red("are mutually exclusive"))
     exit(1)
   }
 
@@ -192,10 +192,10 @@ process filter_merge {
   publishDir "${params.preDir}/trim_merge", mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(reads)
+    tuple val(key), path(reads)
 
   output:
-    tuple val(sample_id), path('*_trimmed_merged.fastq')
+    tuple val(key), path('*_trimmed_merged.fastq')
 
   script:
   if( reads instanceof Path ) {   
@@ -205,9 +205,9 @@ process filter_merge {
       --trimns --trimqualities \
       --minquality ${params.minQuality} \
       --qualitymax ${params.maxQuality} \
-      --basename ${sample_id}
+      --basename ${key}
 
-    mv ${sample_id}.truncated ${sample_id}_trimmed_merged.fastq
+    mv ${key}.truncated ${key}_trimmed_merged.fastq
     """
   } else {  
     // if reads are paired-end then merge 
@@ -217,9 +217,9 @@ process filter_merge {
       --minquality $params.minQuality \
       --qualitymax ${params.maxQuality} \
       --minalignmentlength ${params.minAlignLen} \
-      --basename ${sample_id}
+      --basename ${key}
 
-    mv ${sample_id}.collapsed ${sample_id}_trimmed_merged.fastq  
+    mv ${key}.collapsed ${key}_trimmed_merged.fastq  
     """
   }
 }
@@ -230,14 +230,31 @@ process filter_ambiguous_indices {
   publishDir "${params.preDir}/index_filtered", mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(reads)
+    tuple val(key), path(reads)
 
   output:
-    tuple val(sample_id), path("*_valid_index.fastq") 
+    tuple val(key), path("*_valid_index.fastq") 
 
   script:
   """
-  obigrep --uppercase -D ':[ACGT]+\\+[ACGT]+\$' ${reads} > "${sample_id}_valid_index.fastq"
+  obigrep --uppercase -D ':[ACGT]+\\+[ACGT]+\$' ${reads} > "${key}_valid_index.fastq"
+  """
+}
+
+// split and properly modify barcode file if they're pooled
+process split_barcodes {
+  label 'shell'
+
+  input:
+    path(barcodes)
+  
+  output:
+    path('bc/*.tsv')
+
+  script:
+  """
+  mkdir bc
+  split_barcode.awk -v parent="${barcodes.baseName}" ${barcodes}
   """
 }
 
@@ -249,15 +266,15 @@ process ngsfilter {
   publishDir "${params.preDir}/ngsfilter", mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(read), path(barcode) 
+    tuple val(key), path(read), path(barcode) 
 
 
   output:
-    tuple val(sample_id), path("*_annotated.fastq"), val("${barcode.baseName}") 
+    tuple val(key), path("*_annotated.fastq"), val("${barcode.baseName}") 
 
   script:
   """
-  ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "${sample_id}_filter_orphans.fastq" ${read} > "${sample_id}_${barcode.baseName}_annotated.fastq"
+  ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "${key}_filter_orphans.fastq" ${read} > "${key}_${barcode.baseName}_annotated.fastq"
   """
 }
 
@@ -268,18 +285,16 @@ process filter_length {
   publishDir "${params.preDir}/length_filtered", mode: params.publishMode
 
   input: 
-    tuple val(sample_id), path(fastq_file), val(barcode_file) 
+    tuple val(key), path(fastq), val(barcode) 
   
   output:
-    tuple val(sample_id), path('*_length_filtered.fastq') 
+    tuple val(key), path('*_length_filtered.fastq'), val(barcode)
 
   script:
   // if we're already demultiplexed we probably don't have the forward_tag and reverse_tag annotations
-  p = params.illuminaDemultiplexed ? "" : "-p 'forward_tag is not None and reverse_tag is not None'" 
+  p = params.demultiplexedBy in ['barcode','combined'] ? "-p 'forward_tag is not None and reverse_tag is not None'" : ''
   """
-  for fastq in ${fastq_file}; do
-    obigrep --uppercase -l ${params.minLen} ${p} "\$fastq" >> "${sample_id}_length_filtered.fastq"
-  done
+  obigrep --uppercase -l ${params.minLen} ${p} "${fastq}" > "${key}_length_filtered.fastq"
   """
 }
 
@@ -290,14 +305,14 @@ process split_samples {
   publishDir "${params.preDir}/split_samples", mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(fastq) 
+    tuple val(key), path(fastq), val(barcode)
   
   output:
-    path("__split__*.fastq")
+    path("__split__*.fastq"), optional: true
 
   script:
   """
-  obisplit --uppercase -p "__split__" -t sample -u "${sample_id}_split_orphans.fastq" $fastq
+  obisplit --uppercase -p "__split__" -t sample -u "${key}_split_orphans.fastq" ${fastq}
   """
 }
 
@@ -308,39 +323,55 @@ process relabel {
   publishDir "${params.preDir}/relabeled", mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(fastq)
+    tuple val(key), path(fastq, name: 'input-????.fastq')
   output:
-    path('*_relabeled.fasta'), emit: result
+    path('*_relabeled.fasta'), optional: true, emit: result
     path 'settings.txt'
 
 
   script:
+  
   if (params.denoiser == "vsearch") {
+    combined = "<(cat input-*.fastq)"
     """
     echo "denoiser: vsearch" > settings.txt
     # this may or may not be necessary anymore, but it seems like a good sanity check
     # since this will fail on empty files
-    if [ -s "${fastq}" ]; then 
-      vsearch --threads ${task.cpus} --fastx_filter ${fastq} --relabel "${sample_id}." --fastaout - | \
-        awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}_relabeled.fasta"
-    else
-      touch "${sample_id}_relabeled.fasta"
-    fi
+    vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --fastx_filter ${combined} --relabel "${key}." --fastaout - | \
+      awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}_relabeled.fasta"
     """
   } else {
+    // combined = fastq.collect{ it.baseName }.join('_') + "_combined.fastq"
+    combined = "combined.fastq"
     denoiser = params.execDenoiser ? params.denoiser : 'usearch'
     """
     echo "denoiser: ${params.denoiser}" > settings.txt
-    if [ -s "${fastq}" ]; then 
-      # we have to convert everything to uppercase because obisplit --uppercase is broken
-      ${denoiser} -fastx_relabel ${fastq} -prefix "${sample_id}." -fastaout /dev/stdout | \
-        tail -n+7 | \
-        awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${sample_id}"_relabeled.fasta 
-    else
-      touch "${sample_id}_relabeled.fasta"
-    fi
+    cat input-*.fastq > ${combined}
+    # we have to convert everything to uppercase because obisplit --uppercase is broken
+    ${denoiser} -fastx_relabel ${combined} -prefix "${key}." -fastaout /dev/stdout | \
+      tail -n+7 | \
+      awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}"_relabeled.fasta 
     """
   }
+}
+
+// concatenate all relabeled files. we only do this in a process 
+// instead of using collectFile so we can see that it's happening 
+// in the process list. also, the output from collectFile may not be cached and this will be
+process merge_relabeled {
+  label 'shell'
+  publishDir "${params.preDir}/merged"
+
+  input:
+    path('input-fastq?????.fastq')
+  
+  output:
+    path("${params.project}_relabeled_merged.fasta")
+
+  script:
+  """
+  cat input-*.fastq > "${params.project}_relabeled_merged.fasta"
+  """
 }
 
 // dereplication, chimera removal, zOTU table generation
@@ -368,10 +399,10 @@ process dereplicate {
     # 3. get rid of chimeras
     # 4. match original sequences to zotus by 97% identity
     if [ -s "${relabeled_merged}" ]; then 
-      vsearch --threads ${task.cpus} --derep_fulllength ${relabeled_merged} --sizeout --output "${id}_unique.fasta"
-      vsearch --threads ${task.cpus} --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
-      vsearch --threads ${task.cpus} --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" --relabel Zotu 
-      vsearch --threads ${task.cpus} --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tsv
+      vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --derep_fulllength ${relabeled_merged} --sizeout --output "${id}_unique.fasta"
+      vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
+      vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" --relabel Zotu 
+      vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tsv
     else
       >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
       exit 1
@@ -391,7 +422,7 @@ process dereplicate {
       ${denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} -unoise_alpha ${params.alpha}
       ${denoiser} -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zmap.txt
     else
-      >&2 echo "${colors.bred('Merged FASTA is empty. Did your PCR primers match anything?')}"  
+      >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
       exit 1
     fi
     """
@@ -440,7 +471,7 @@ process blast {
     -best_hit_score_edge 0.05 -best_hit_overhang 0.25 \
     -qcov_hsp_perc ${params.qcov} -max_target_seqs ${params.maxQueryResults} \
     -query ${zotus_fasta} -num_threads ${task.cpus} \
-    -out blast_result.tsv
+    > blast_result.tsv
   """
 }
 
@@ -449,16 +480,16 @@ process lulu_blast {
   label 'blast'
 
   input:
-    tuple val(sample_id), path(zotus_fasta), path(zotu_table)
+    tuple val(key), path(zotus_fasta), path(zotu_table)
   
   output:
-    tuple val(sample_id), path('match_list.txt'), path(zotu_table)
+    tuple val(key), path('match_list.txt'), path(zotu_table)
 
   script:
   """
   # blast zotus against themselves to create the match list LULU needs
-  makeblastdb -in ${zotus_fasta} -parse_seqids -dbtype nucl -out ${sample_id}_zotus
-  blastn -db ${sample_id}_zotus \
+  makeblastdb -in ${zotus_fasta} -parse_seqids -dbtype nucl -out ${key}_zotus
+  blastn -db ${key}_zotus \
     -outfmt "6 qseqid sseqid pident" \
     -out match_list.txt -qcov_hsp_perc 80 \
     -perc_identity 84 -query ${zotus_fasta} \
@@ -473,7 +504,7 @@ process lulu {
   publishDir "${params.outDir}/lulu", mode: params.publishMode
 
   input:
-    tuple val(sample_id), path(match_list), path(zotu_table)
+    tuple val(key), path(match_list), path(zotu_table)
 
   output:
     tuple path("lulu_zotu_table.tsv"), path("lulu_zotu_map.tsv"), path("lulu_result_object.rds"), emit: result
@@ -508,7 +539,7 @@ process insect {
   }, mode: params.publishMode 
 
   input:
-    tuple path(classifier), path(lineage), path(merged), path(zotus)
+    tuple path(classifier), path('*'), path(zotus)
 
   output:
     tuple path('insect_taxonomy.tsv'), path('insect_model.rds'), emit: result
@@ -536,8 +567,8 @@ process insect {
      --offset ${params.insectOffset} \
      --min-count ${params.insectMinCount} \
      --ping ${params.insectPing} \
-     --lineage ${lineage} \
-     --merged ${merged} \
+     --lineage rankedlineage.dmp \
+     --merged merged.dmp \
      ${zotus} insect_model.rds "insect_taxonomy.tsv"
   """
 }
@@ -725,8 +756,6 @@ workflow {
   // make sure our arguments are all in order
   check_params()
 
-  lca = params.collapseTaxonomy || params.assignTaxonomy
-
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
     // build input channels and get appropriate process
@@ -856,7 +885,7 @@ workflow {
       // if the sequences are already demultiplexed by illumina, we'll
       // process them separately, including optionally attempting to remove ambiguous indices
       // and ultimately smash them together for vsearch/usearch to do the dereplication
-      if (params.illuminaDemultiplexed) {
+      if (params.demultiplexedBy == "index") {
 
         // do fastqc/multqc before filtering & merging
         if (params.fastqc) {
@@ -908,17 +937,23 @@ workflow {
 
         // continue length filtering and whatnot
         rfm_barcodes |
-          groupTuple | 
           filter_length |
+          map { [it[0], it[1]]} | 
+          // group together different barcodes because they're
+          // concatenated in relabel
+          groupTuple | 
+          // relabel to fasta
           relabel |
           set { relabeled }
 
         relabeled.result | 
-          collectFile(name: "${params.project}_relabeled.fasta", storeDir: "${params.preDir}/merged") |
+          toList | merge_relabeled |
           set { to_dereplicate } 
 
       } else {
-        // this is where reads are all in one fwd or fwd/rev file and have NOT been demultiplexed
+        // here, reads are demultiplexed by barcodes, so they're either
+        // all in one or two fastq files (depending on single vs paired end)
+        // or they're pooled such that barcode pairs are reused across index pairs
 
         // split the input fastqs to increase parallelism, if requested
         if (params.split) {
@@ -947,7 +982,7 @@ workflow {
             combine(reads) | 
             first_fastqc
           // if input files are split we'll run them through multiqc
-          if (params.split) {
+          if (params.split || params.demultiplexedBy == "combined") {
             first_fastqc.out | 
               collect(flat: true) | 
               toList |
@@ -961,13 +996,14 @@ workflow {
           filter_merge | 
           set { reads_filtered_merged }
 
-        // do after-filtering fastqc step
+
+        // post-filtering fastqc step
         if (params.fastqc) {
           Channel.of("filtered") | 
             combine(reads_filtered_merged) |
             second_fastqc
           // again run multiqc if split
-          if (params.split) {
+          if (params.split || params.demultiplexedBy == "combined") {
             second_fastqc.out | 
               collect(flat: true) | 
               toList |
@@ -975,13 +1011,35 @@ workflow {
               second_multiqc
           }
         }
+        
+        if (params.demultiplexedBy == "combined") {
+          barcodes | 
+            // split barcode file into multiples by the first column (key value)
+            split_barcodes | flatten | 
+            // and make it a list of [key, split barcode piece]
+            map { [it.baseName.split(/---/)[0], it] } | 
+            set { barcodes }
+
+          // combines pooled reads with barcode files
+          reads_filtered_merged | 
+            // this gives us a huge mess of combinations and many of them are wrong
+            combine(barcodes) | 
+            // so filter them down to the the ones where the key matches
+            filter { key1, f1, key2, f2 -> key1 == key2 } | 
+            // and make sure they're in a format we expect
+            map { key1, f1, key2, f2 -> [key1, f1, f2] } | 
+            set { reads_barcodes }
+        } else {
+          // combine reads with barcode file(s)
+          reads_filtered_merged | 
+            combine(barcodes) | 
+            set { reads_barcodes }
+        }
 
         // run the rest of the pipeline, including demultiplexing, length filtering,
         // splitting, and recombination for dereplication
-        reads_filtered_merged | 
-          combine(barcodes) |
+        reads_barcodes |
           ngsfilter | 
-          groupTuple | 
           filter_length |
           split_samples | 
           // we have to flatten here because we can get results that look like
@@ -992,12 +1050,16 @@ workflow {
           collectFile | 
           // get rid of the '__split__' business in the filenames
           map { [it.baseName.replaceFirst(/^__split__/,""), it] } | 
+          // group together different barcodes because they're
+          // concatenated in relabel
+          groupTuple | 
           // relabel to fasta
           relabel | 
           set { relabeled }
+
         // collect to single relabeled fasta
         relabeled.result | 
-          collectFile(name: "${params.project}_relabeled.fasta", storeDir: "${params.preDir}/merged") |
+          toList | merge_relabeled |
           set { to_dereplicate }
       }
     } else {
@@ -1032,19 +1094,21 @@ workflow {
       if (bdb != "" && !params.ignoreBlastEnv) 
         blasts = blasts.plus(0,bdb)
 
-      // get unique vals
+      // get unique blast dbs
       blasts = blasts.unique(false)
 
-      // make wildcards for blast database files
-      blast_db_files = blasts.collect {
-        "${it}*.n*"
-      }
-
-      // construct input channels
+      // wildcard to capture blast database files
+      wildcard = "{.n*,.[0-9]*.n*}"
 
       // collect list of files within blast databases
-      Channel.fromPath(blast_db_files, checkIfExists: true) | 
-        map { [ it.Name.toString().replaceAll(/(\.[0-9]+)?\.n..$/,''), it  ]  } | 
+      // and group them by blast db names
+      blasts.inject(null,{ b,d ->
+        !b ? 
+          channel.of(file(d).Name) | combine(channel.fromPath("${d}${wildcard}")) :
+          b | concat(channel.of(file(d).Name) | combine(channel.fromPath("${d}${wildcard}")))
+          // channel.of(d) | combine(channel.fromPath("${d}.*n*")) :
+          // b | concat(channel.of(d) | combine(channel.fromPath("${d}.*n*}")))
+      }) | 
         groupTuple | 
         set { blastdb }
 
@@ -1057,7 +1121,6 @@ workflow {
             "${file(blastr).Parent}/${it}"
           }
       }.getAt(0)
-
 
       // get taxdb files (either download or from command line)
       if (params.blastTaxdb == "+++__+++") {
@@ -1119,6 +1182,7 @@ workflow {
     }
 
     // get NCBI lineage dump if needed
+    lca = params.collapseTaxonomy || params.assignTaxonomy
     if ((lca && !params.skipBlast) || params.insect) {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.taxdump)) {

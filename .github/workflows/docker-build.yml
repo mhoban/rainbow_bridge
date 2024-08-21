@@ -15,14 +15,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Build and push
+      - name: Build and push R container
         uses: mr-smithers-excellent/docker-build-push@v6.4
         with:
           image: fishbotherer/r-tools
           tags: latest
           enableBuildKit: true
           registry: docker.io
-          dockerfile: Dockerfile
+          dockerfile: containers/r/Dockerfile
           directory: containers/r
           username: ${{ secrets.DOCKER_LOGIN }}
           password: ${{ secrets.DOCKER_TOKEN }}

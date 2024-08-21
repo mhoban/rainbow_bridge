@@ -59,10 +59,10 @@ BEGIN {
 
   # print last comment to split file if it hasn't been
   if (!comments[$1]) {
-    print last_comment > "bc/" $1 "_" parent "_barcode.tsv"
+    print last_comment > "bc/" $1 "---" parent "_barcode.tsv"
     comments[$1]++
   }
   
   # print into a file named after the first column and some other optional value
-  print > "bc/" $1 "_" parent "_barcode.tsv";
+  print > "bc/" $1 "---" parent "_barcode.tsv";
 }

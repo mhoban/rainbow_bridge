@@ -40,7 +40,7 @@ process fastqc {
   publishDir "${params.outDir}/fastqc/${step}", mode: params.publishMode
 
   input:
-    tuple val(step), val(sample_id), path(read) 
+    tuple val(step), val(key), path(read) 
 
   output:
     path('*_fastqc.{zip,html}')

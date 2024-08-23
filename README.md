@@ -204,7 +204,7 @@ To clone the repository and and install dependencies (for running the .nf script
     $ echo 'export PATH="$HOME/rainbow_bridge:$PATH"' >> $HOME/.bashrc
     ```
 
-1. Next, for Ubuntu and Debian-based systems using singularity, go to the "install" directory which is located inside the "rainbow_bridge" directory and run the script `install_dependencies.sh`:
+1. Next, for Ubuntu and Debian-based systems using singularity, go to the "install" directory which is located inside the "rainbow_bridge" directory and run the script `install_dependencies.sh`. Note that this script assumes your system uses the AMD64 architecture.
      ```console
      $ cd rainbow_bridge/install
 
@@ -216,7 +216,7 @@ To clone the repository and and install dependencies (for running the .nf script
 To run the pipeline directly from github (note: this method assumes you already have the necessary dependencies installed on the system):
 
 ```console
-$ nextflow run -<nextflow-options> mhoban/rainbow_bridge -r main --<rainbow_bridge-options>
+$ nextflow run -<nextflow-options> mhoban/rainbow_bridge --<rainbow_bridge-options>
 ```
    
 ### Manual dependency installation
@@ -266,10 +266,10 @@ You can also call it using a fully-qualified path (be careful if there are symli
 $ /path/to/rainbow_bridge.nf -<nextflow-options> --<rainbow_bridge-options>
 ```
 
-To run the pipeline without cloning the repository, you can call it like this (note that the option conventions are the same, but nextflow options typically come before the name of the pipeline repository AND that the `main` revision is specified with `-r`):
+To run the pipeline without cloning the repository, you can call it like this (note that the option conventions are the same, but nextflow options typically come before the name of the pipeline repository):
 
 ```console
-$ nextflow run -<nextflow-options> mhoban/rainbow_bridge -r main --<rainbow_bridge-options>
+$ nextflow run -<nextflow-options> mhoban/rainbow_bridge --<rainbow_bridge-options>
 ```
 
 ## Input requirements

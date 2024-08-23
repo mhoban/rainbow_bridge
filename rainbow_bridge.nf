@@ -660,7 +660,10 @@ process unzip {
   """
   zips=( ${reads} )
   for z in "\${zips[@]}"; do
-    gunzip -c \$z > \${z%.gz}
+    # change extension to .fastq regardless of what it currently is
+    fn=\$(basename \$z .gz) # get rid of .gz
+    fn="\${fn%.*}.fastq"    # get rid of next extension and add .fastq
+    gunzip -c \$z > "\$fn"
   done
   """
 }
@@ -795,12 +798,17 @@ workflow {
   } else {
     if (!helper.file_exists(params.demuxedFasta)) {
       if (params.single) {
+        // if params.reads is a directory, make it a glob
+        def reads_files = params.reads
+        if (helper.is_dir(reads_files)) {
+          reads_files = file(reads_files) / '*.f*q*'
+        }
         // here we load whatever was passed as the --reads option
         // if it's a glob, we get a list of files. if it's just one, we get just one
+        // if it's a directory, it's made into a glob to find reads in that directory
         // and we try to pull off something from the beginning to use as a sample ID. 
         // we also check to see if any of the files end with .gz and mark them as such if they are
-        // (that's what branch does)
-        Channel.fromPath(params.reads, checkIfExists: true) |
+        Channel.fromPath(reads_files, checkIfExists: true) |
           map { [it.baseName.tokenize('_')[0],it] } |
           branch { 
             gz: it[1] =~ /\.gz$/
@@ -809,8 +817,6 @@ workflow {
           set { reads }
       } else if (params.paired) { 
         // if fwd and rev point to files that exists, just load them directly
-        // I guess these can probably be globs if you want them to be, but that
-        // might not work properly as currently written
         if ( helper.file_exists(params.fwd) && helper.file_exists(params.rev) ) {
           Channel.of(params.project) |
             combine(Channel.fromPath(params.fwd,checkIfExists: true)) | 
@@ -822,38 +828,176 @@ workflow {
             } |
             set { reads }
         } else {
-          // TODO: if params.reads is *not* a directory, should we just treat it as a glob and pass it directly into
-          // fromFilePairs?
-          reads = params.reads
-          // otherwise make a glob pattern to find where the fwd/rev reads live
-          // this may get a little complex, so there are two possible options:
-          // files must have some way of stating which direction they are (e.e., R1/R2)
-          // fwd/rev reads may optionally be in separate subdirectories but those must both be subdirectories
-          // at the same level. So you can have /dir/R1 and /dir/R2, but you CAN'T have /dir1/R1 and /dir2/R2
-          if (params.fwd != "" && params.rev != "") {
-            pattern = "${reads}/{${params.fwd},${params.rev}}/*{${params.r1},${params.r2}}*.fastq*"
+          // figure out how the reads are to be found and find them
+          def pattern = ""
+          // if --fwd and --rev are both globs
+          if ( params.fwd != "" && params.rev != "" && helper.is_list(file(params.fwd)) && helper.is_list(file(params.rev)) ) {
+            // get directory part of fwd and rev globs. 
+            // file() resolves the glob's fully qualified path
+            // and .Parent gets the directory part
+            // file() will also get all matches to the glob, so we call unique()
+            // to collapse directories, hoping there is only one
+            def fwd_path = file(params.fwd).Parent.unique()
+            def rev_path = file(params.rev).Parent.unique()
+
+            // make sure globs actually matched something
+            if (fwd_path.size() == 0) {
+              exit(1,"No files matched by --fwd glob.")
+            }
+            // make sure globs actually matched something
+            if (rev_path.size() == 0) {
+              exit(1,"No files matched by --rev glob.")
+            }
+
+            // make sure globs only mached a single directory
+            if (fwd_path.size() > 1 || rev_path.size() > 1) {
+              exit(1,"Files matched by --fwd/--rev globs must reside in single directories.")
+            }
+            // reduce to first element and convert to string
+            fwd_path = fwd_path[0].toString()
+            rev_path = rev_path[0].toString()
+
+            // make sure the directory part ends in '/'
+            if (fwd_path[fwd_path.size()-1] != '/') fwd_path += '/'
+            if (rev_path[rev_path.size()-1] != '/') rev_path += '/'
+
+            // CEB: The strategy here is to idenitify identical and non-identical text in the --fwd and --rev globs to generate 
+            // a single glob that is compatible with Channel.fromFilePairs
+
+            // Extract the glob part from the provided paths
+            // new File() is used because it parses but does not resolve globs
+            def fwd_file_pattern = new File(params.fwd).Name
+            def rev_file_pattern = new File(params.rev).Name
+
+            // get common prefix
+            // for some weird reason, nextflow doesn't like having def and the assignment on the same line
+            // when assigning the results of a call to a helper class method, so define it first
+            def common_path_prefix = ""
+            common_path_prefix = helper.common(fwd_path,rev_path)
+
+            // CEB: Adjust common_prefix to remove the last character if it's where they start to differ
+            // MH: I'm not sure why this is needed but it doesn't seem to harm anything so I'm leaving it in
+            if (common_path_prefix.size() > 0 && fwd_path.charAt(common_path_prefix.size() - 1) != rev_path.charAt(common_path_prefix.size() - 1)) {
+              common_path_prefix = common_path_prefix[0..-2]
+            }
+
+            // CEB: Only run the following block if the fwd_path and rev_path are different
+            def fwd_path_diff = ""
+            def rev_path_diff = ""
+            def common_path_suffix = ""
+            if (fwd_path != rev_path) {
+              // Extract the common path suffix by comparing the strings in reverse
+              def fwd_path_reversed = fwd_path.reverse()
+              def rev_path_reversed = rev_path.reverse()
+
+              common_path_suffix = helper.common(fwd_path_reversed,rev_path_reversed).reverse()
+
+              // Extract the differing middle part of the path
+              fwd_path_diff = fwd_path.substring(common_path_prefix.size(), fwd_path.size() - common_path_suffix.size())
+              rev_path_diff = rev_path.substring(common_path_prefix.size(), rev_path.size() - common_path_suffix.size())
+
+            } 
+            // CEB: Extract the common file prefix
+            // for some weird reason, nextflow doesn't like having def and the assignment on the same line
+            // when assigning the results of a call to a helper class method, so define it first
+            def common_file_prefix = "" 
+            common_file_prefix = helper.common(fwd_file_pattern,rev_file_pattern)
+
+            // CEB: Adjust common_file_prefix to remove the last character if it's where they start to differ
+            // MH: (again, not sure why this is necessary?)
+            if (common_file_prefix.size() > 0 && fwd_file_pattern.charAt(common_file_prefix.size() - 1) != rev_file_pattern.charAt(common_file_prefix.size() - 1)) {
+              common_file_prefix = common_file_prefix[0..-2]
+            }
+
+            // CEB: Extract the common file suffix by comparing the strings in reverse
+            def fwd_file_pattern_reversed = fwd_file_pattern.reverse()
+            def rev_file_pattern_reversed = rev_file_pattern.reverse()
+            // for some weird reason, nextflow doesn't like having def and the assignment on the same line
+            // when assigning the results of a call to a helper class method, so define it first
+            def common_file_suffix = ""
+            common_file_suffix = helper.common(fwd_file_pattern_reversed,rev_file_pattern_reversed).reverse()
+
+            // CEB: Extract the differing middle part of the file pattern
+            def fwd_file_diff = ""
+            def rev_file_diff = ""
+            if (common_file_prefix != common_file_suffix) {
+              // MH: check for certain edge cases
+              if (common_file_suffix.size() >= fwd_file_pattern.size()) 
+                fwd_file_diff == ""
+              else 
+                fwd_file_diff = fwd_file_pattern.substring(common_file_prefix.size(), fwd_file_pattern.size() - common_file_suffix.size())
+              if (common_file_suffix.size() >= rev_file_pattern.size()) 
+                rev_file_diff == ""
+              else
+                rev_file_diff = rev_file_pattern.substring(common_file_prefix.size(), rev_file_pattern.size() - common_file_suffix.size())
+            }
+
+            // MH: if these are both blank, we don't need the '{,}' part
+            fd = (fwd_file_diff + rev_file_diff != "") ? "{${fwd_file_diff},${rev_file_diff}}" : ""
+            // MH: a boolean shorthand to check if these are the same
+            suf = common_file_prefix == common_file_suffix
+
+            // CEB: Construct the final pattern
+            pattern = fwd_path == rev_path
+              ? "${common_path_prefix}${common_file_prefix}{${fwd_file_diff},${rev_file_diff}}${common_file_suffix}"
+              : suf ? "${common_path_prefix}{${fwd_path_diff},${rev_path_diff}}${common_path_suffix}${common_file_suffix}"
+                : "${common_path_prefix}{${fwd_path_diff},${rev_path_diff}}${common_path_suffix}${common_file_prefix}${fd}${common_file_suffix}"
+
+          // CEB Add support for --reads glob.  Glob must follow rules for NextFlow Channel.fromFilePairs.  
+          //    Basically, the glob should contain [12] or {R1,R2} or etc... based on my testing
+          //    The only way to get away from this requirement is to tell fromFilePairs how many files to expect, or
+          //    to write a script that generates a compatible glob from the files returned by --reads glob
+          } else if (params.reads != "" && helper.is_list(file(params.reads))) {
+            if (file(params.reads).size() > 0) 
+              pattern = "${params.reads}"
+            else exit(1,"No files matched by --reads glob")
+
+          //CEB dirs are specified by --reads, --fwd, --rev, original functionality
+          } else if (params.fwd != "" && params.rev != "" && params.reads != "" && helper.is_dir(params.reads + '/' + params.fwd) && helper.is_dir(params.reads + "/" + params.rev)) {
+            pattern = "${params.reads}/{${params.fwd},${params.rev}}/*{${params.r1},${params.r2}}*.f*q*"
+
+          //CEB user provides dirs for --fwd and --rev but not --reads, new functionality (borrow code from --fwd --ref globs above)
+          } else if (helper.is_dir(params.fwd) && helper.is_dir(params.rev)) {
+            // MH: there's a weird business where if the things inside of the {} end with '/',
+            // the glob is not matched (even though this works in bash).
+            // so we'll strip off any trailing slash
+            f = params.fwd.replaceAll(/\/$/,'')
+            r = params.rev.replaceAll(/\/$/,'')
+            pattern = "{${f},${r}}/*{${params.r1},${params.r2}}*.f*q*"
+
+          //CEB dir is specified by --reads; original functionality
+          } else if (helper.is_dir(params.reads)) {
+            pattern = "${params.reads}/*{${params.r1},${params.r2}}*.f*q*"
           } else {
-            pattern = "${reads}/*{${params.r1},${params.r2}}*.fastq*"
-          }
+            exit(1,"Arguments passed to --reads, --fwd, and/or --rev point to directories and/or files that do not exist")
+          } 
 
-          // load the reads and make sure they're in the right order because the
-          // files will be sorted alphabetically. this is an extremely niche issue
-          // because file are basically always R1/R2 but what if they're
-          // forwards/backwards or something like that?
+          // Construct reads channel
+          // Replace hyphens with underscores in the sample name, because some tools
+          // (notably vsearch) will cut on hyphens as a delimiter and potentially cause havok as a result.
 
-          // we also replace dashes with underscores in the sample ID because at least
-          // vsearch will cut on that character and not treat it as a complete sample id
-
-          // I'm not even certain the order matters, but I think it does because we 
-          // send them to --file1 and --file2 of AdapterRemoval
-          Channel.fromFilePairs(pattern, checkIfExists: true) | 
-            map { key,f -> [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  } | 
-            map { key,f -> key == "" ? [params.project,f] : [key,f] } | 
+          // Also, try to enforce the order of r1/r2 reads because fromFilePairs (really, the system)
+          // returns the files in alphabetical order, so that if you have a glob like
+          // '/reads/{forwards,backwards}*.fastq', the initial result will look like
+          // '[ backwards1.fastq, forwards1.fastq ], [ backwards2.fastq, forwards2.fastq ]'
+          // Not having a much better option, use the values of the --r1/--r2 arguments
+          // to match forward/reverse reads. read order matters for the AdapterRemoval step.
+          Channel.fromFilePairs("${pattern}", checkIfExists: true) | 
+            map { key,f -> 
+              // enforce read order and make sure we have a key value
+              if (key == "") key = params.project
+              [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  
+            } | 
+            ifEmpty {
+              // bail if we didn't find anything
+              exit(1,"No paired reads matched by pattern '${pattern}'. Check command-line options.")
+            } |
             branch { 
+              // separate gzipped reads for unzipping later
               gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
               regular: true
             } |
-            set { reads }
+            set { reads }   
         }
       } else {
         println(colors.red("Somehow neither ") + colors.bred("--single") + colors.red(" nor ") + colors.bred("--paired") + colors.red(" were passed and we got to this point"))
@@ -861,8 +1005,8 @@ workflow {
         exit(1)
       }
 
-      // here we unzip the zipped files (if any) and merge them back together
-      // with the unzipped files (if any)
+      // here we unzip the zipped files (if any) and concatenate 
+      // them back together with the unzipped files (if any)
       reads.gz | 
         unzip |
         concat ( reads.regular ) |
@@ -1321,4 +1465,3 @@ workflow {
     }
   }
 }
-

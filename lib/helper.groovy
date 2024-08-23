@@ -12,6 +12,16 @@ class helper {
     'scl5.8S': 'https://www.dropbox.com/s/f07cka6308ebk2o/classifier.rds?dl=1'
   ]
 
+  // get common characters from left side of two strings
+  static public String common(one, two) {
+    def comm = ""
+    for (def i=0; i< one.size(); i++) {
+      if (one[i] == two[i]) comm += one[i]
+      else break
+    }
+    return comm
+  }
+
 	static public String basename(f) {
 		return (new File(f)).getBaseName()
 	}
@@ -37,7 +47,6 @@ class helper {
       [Collection, Object[]].any { it.isAssignableFrom(object.getClass())  }
   }
 
-	
 	static public void demuxed_example() {
 		System.out.println("""
 		>sample1.1
@@ -99,11 +108,19 @@ class helper {
     For paired-end sequencing runs:  
       --paired                     Specify paired-end sequencing run (required)
 
-    To specify the location of paired-end sequence files, the following file patterns are followed:
-      <reads>/*<r1>|<r2>*.fastq*
-      <reads>/<fwd>|<rev>/*<r1>|<r2>*.fastq*
+    To specify the location of paired-end sequence files, the following methods are availble
 
-    Options:
+    Resovle paird-end reads locations directly using globs:
+      --reads [glob]               If --reads is a glob, attempt to resolve paired-end reads directly
+                                   e.g., '/data/run1/*{R1,R2}*.fastq.gz'
+      --fwd [glob], --rev [glob]   Resolve forward and reverse reads directly using globs
+                                   e.g., --fwd 'r1/*R1*.fastq' --rev 'r2/*R2*.fastq'
+
+    Specify location of paired-end reads with directories, using the following patterns:
+      <reads>/*<r1>|<r2>*.f*q*
+      <reads>/<fwd>|<rev>/*<r1>|<r2>*.f*q*
+      <fwd>|<rev>/*<r1>|<r2>*.f*q*
+
       --reads [dir]                 Location (directory) where sequence reads can be found (default: .) 
       --fwd [dir]                   (Optional) forward reads directory (default: ${params.fwd})
                                     For runs that have NOT been demultiplexed, --fwd may also point

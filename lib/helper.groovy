@@ -109,15 +109,16 @@ class helper {
 
     For single-end sequencing runs:
       --single                     Specify single-ended sequencing run (required)
-      --reads [file/glob]          Location of sequencing read(s). For runs that have already been 
-                                   demultiplexed by the sequencer, this may be a glob (e.g., '*.fastq')
+      --reads [file/glob/dir]      Location of sequencing read(s). For runs that have already been 
+                                   demultiplexed by the sequencer, this may be a glob (e.g., '*.fastq').
+                                   If a directory, files will be matched using the glob '<dir>/*.f*q*'
 
     For paired-end sequencing runs:  
       --paired                     Specify paired-end sequencing run (required)
 
     To specify the location of paired-end sequence files, the following methods are availble
 
-    Resovle paird-end reads locations directly using globs:
+    Resolve paired-end reads locations directly using globs:
       --reads [glob]               If --reads is a glob, attempt to resolve paired-end reads directly
                                    e.g., '/data/run1/*{R1,R2}*.fastq.gz'
       --fwd [glob], --rev [glob]   Resolve forward and reverse reads directly using globs
@@ -223,8 +224,6 @@ class helper {
       --dna-concentration [file]    File specifying DNA concentrations by sample ID
 
     Demultiplexing and sequence matching:
-      --illumina-demultiplexed      Sequencing run has already been demultiplexed by the sequencer
-
       --remove-ambiguous-indices    Removes reads with ambiguous indices in the header (i.e., not A,G,C,T)
                                     (only applies to previously-demultiplexed runs with indices in header)
       --demuxed-fasta [file]        Skip demultiplexing step and use supplied FASTA 

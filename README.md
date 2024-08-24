@@ -147,11 +147,12 @@ flowchart TB
 - [Basic usage](#basic-usage)
    * [Running the pipeline](#running-the-pipeline)
    * [Input requirements](#input-requirements)
+   * [Processing fastq input](#processing-fastq-input)
+      + [Specifying fastq files](#specifying-fastq-files)
    * [Usage examples](#usage-examples)
-      + [For single-end runs (not previously demultiplexed)](#for-single-end-runs-not-previously-demultiplexed)
-      + [For previously-demultiplexed single-end runs](#for-previously-demultiplexed-single-end-runs)
-      + [For non-demultiplexed paired-end runs](#for-non-demultiplexed-paired-end-runs)
-         - [Specifying reads by directory](#specifying-reads-by-directory)
+      + [Non-demultiplexed single-end runs](#non-demultiplexed-single-end-runs)
+      + [Previously-demultiplexed single-end runs](#previously-demultiplexed-single-end-runs)
+      + [Non-demultiplexed paired-end runs](#non-demultiplexed-paired-end-runs)
       + [For previously-demultiplexed paired-end runs](#for-previously-demultiplexed-paired-end-runs)
    * [Contents of output directories](#contents-of-output-directories)
    * [When things go wrong (interpreting errors)](#when-things-go-wrong-interpreting-errors)
@@ -160,8 +161,6 @@ flowchart TB
    * [Required options](#required-options)
       + [Specifying sequencing run type](#specifying-sequencing-run-type)
       + [Specifying demultiplexing strategy](#specifying-demultiplexing-strategy)
-      + [Processing fastq input](#processing-fastq-input)
-         - [Specifying fastq files](#specifying-fastq-files)
       + [Other required options](#other-required-options)
          - [Barcode file ](#barcode-file)
          - [BLAST settings ](#blast-settings)
@@ -343,6 +342,59 @@ Details about the input formats the pipeline supports:
     >sample3.3
     CATGCGACGTACGTACTATCATCATCGAGCAGCTATATATCGATGGTACTAGCTGAC
     ```
+## Processing fastq input
+
+### Specifying fastq files
+In all cases, if you're processing fastq runs, you must specify the location of your sequence reads. Generally, if you're processing runs that have *not* been demultiplexed by the sequencer, you will have either one (single-end) or two (paired-end) fastq files. If your runs *have* been demultiplexed or are pooled, you will have one fastq file per individual sample/pool per read direction. If fastq files are gzipped (i.e., they have a .gz extension), they will be uncompressed automatically and the .gz extension will be stripped during processing.
+
+**Note: unless you are specifying forward/reverse reads directly (i.e. passing individual filenames), it is best practice to keep reads (fastq files) from different sequencing runs in separate directories. If you do not, because of the way the pipeline uses [globs](#a-note-on-globswildcards) to find files, you could end up with unexpected behavior (e.g., accidentally combining sequences from different sequencing runs in one analysis).**
+
+There are a few ways you can tell rainbow_bridge where your reads are:
+
+- For single-ended runs  
+  - Non-demultiplexed  
+    <small>**`--reads [file]`**</small>: For non-demultiplexed runs, this points directly to your fastq reads, e.g., '../fastq/B1_S7_L001.fastq'.   
+  - Demultiplexed  
+    <small>**`--reads [glob/dir]`**</small>: For demultiplexed/pooled runs, this is either a [glob](#a-note-on-globswildcards) indicating where all the demultiplexed reads can be found, (e.g., '../fastq/\*.fastq') or a directory, which will be searched using the glob '\*.f\*q\*'  
+- For paired-end runs  
+  - Non-demultiplexed  
+    <small>**`--fwd [file]`**</small> and <small>**`--rev [file]`**</small>: For non-demultiplexed runs, you may use these parameters to specify the forward (`--fwd`) and reverse (`--rev`) fastq files directly.  
+  - Demultiplexed/pooled  
+    Demultiplexed/pooled sequence reads can be located directly using [globs](#a-note-on-globswildcards) or by specifying directories and (optionally) search patterns.  
+
+    <a name="globbo"></na>When using globs, the following options are available:  
+    <small>**`--reads [glob]`**</small>: A [glob](#a-note-on-globswildcards) directly indicating where all forward/reverse reads can be found. Typically, this will look something like '/dir/\*{R1,R2}\*.fastq'. This can be as simple or as complicated as you like, but it must be able to find all forward and reverse reads (whose filenames must match apart from their direction). Note that the shell will return these in alphabetical order so that if you have something like '/dir/\*{forward,backward}\*.fastq', the 'backward' reads will be erroneously treated as forward (since backward comes before forward alphabetically). If you encounter this issue, you can use the `--r1` and `--r2` options to specify the patterns delineating sequencing direction.  
+    <small>**`--fwd [glob]`**</small>, <small>**`--rev [glob]`**</small> In lieu of passing a single glob to locate all reads, you may use separate globs for each read direction, e.g., "--fwd '/dir/r1/\*R1\*.fastq' --rev '/dir/r2/\*R2\*.fastq'". The same caveat regarding alphabetical order applies to these options.
+    
+    When using directories, the following options apply:  
+    Demultiplexed sequence reads are found using a [glob](#a-note-on-globswildcards) built internally with the values of  `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2`. This method assumes files with an extension of either .fq or .fastq (with an optional .gz). If your files have other extensions, sue the glob method [above](#globbo).   
+    
+    <small>**`--reads [dir]`**</small>: This parameter optionally specifies the base-directory where forward and reverse reads may be found. If no other option is specified,  the glob is built using the default values of `--fwd`, `--rev`, `--r1`, and `--r2` (see below)  
+    <small>**`--fwd [dir]`**</small> (default: empty), <small>**`--rev [dir]`**</small> (default: empty): these parameters optionally specify subdirectories where forward and reverse reads are stored. If `--reads` is omitted, the search path is constructed using the values of `--fwd` and `--rev` as base directories. If `--reads` is included, these subdirectories must be *within* the directory specified with `--reads`.  
+    <small>**`--r1 [pattern]`**</small> (default: 'R1'), <small>**`--r2 [pattern]`**</small> (default: 'R2'): these parameters specify the pattern that distinguishes forward from reverse reads. The default values ('R1' and 'R2') are typical of most files you will receive from the sequencer.  
+    
+    Using the above parameters, the following [glob](#a-note-on-globswildcards) is constructed:  
+
+    If `reads`, `fwd`, and `rev` are included:  
+    ```
+    <reads>/{<fwd>,<rev>}/*{<r1>,<r2>}*.f*q*  
+    ```
+    If only `fwd` and `rev` are included:  
+    ```
+    {<fwd>,<rev>}/*{<r1>,<r2>}*.f*q*  
+    ```
+    If only `reads` is included:  
+    ```
+    <reads>/*{<r1>,<r2>}*.f*q*  
+    ```
+    
+    <small>**The file exension glob is designed to capture .fastq, .fastq.gz, .fq, and .fq.gz**</small>  
+    
+    For example, if rainbow_bridge is invoked with the following options:   
+    `--reads ../fastq --fwd forward --rev reverse`  
+
+    fastq files will be located using the [glob](#a-note-on-globswildcards) "../fastq/{forward,reverse}/\*{R1,R2}\*.f\*q\*"
+
 
 ## Usage examples
 Following are some examples of the basic command to run the pipeline on your local machine on single-end/paired-end data with multiple possible barcode files. For each of these examples, I assume `rainbow_bridge.nf` is in the system path, you're working on a project called `example_project`, and your directory structure looks something like this:
@@ -354,9 +406,9 @@ example_project/data/       # directory to hold other data (e.g., barcode and/or
 example_project/analysis/   # directory to hold rainbow_bridge analysis output
 ```
 
-The pipeline run is started from within the `analysis` directory. The options used to specify the location of your fastq files make exensive use of globs. For a discussion on how these are treated in the pipeline, see [here](#a-note-on-globswildcards).
+The pipeline run is started from within the `analysis` directory. The options used to specify the location of your fastq files make exensive use of globs. For a discussion on how these are treated in the pipeline, see [here](#a-note-on-globswildcards). There are several ways you can specify where sequence reads are found. The below examples each present one way and a more detailed discussion can be found [above](#specifying-fastq-files).
 
-### For single-end runs (not previously demultiplexed)
+### Non-demultiplexed single-end runs
 
 In this case you will have one fastq file and one or more barcode files containing sample barcodes (forward/reverse) and PCR primers (forward/reverse).
 
@@ -368,7 +420,7 @@ $ rainbow_bridge.nf \
   [further options]
 ```
 
-### For previously-demultiplexed single-end runs
+### Previously-demultiplexed single-end runs
 
 In this case, you will have multiple fastq files, each representing one sample and one or more barcode files denoting PCR primers only (i.e., no sample barcodes).
 
@@ -381,30 +433,27 @@ $ rainbow_bridge.nf \
   [further options]
 ```
 
-### For non-demultiplexed paired-end runs
+### Non-demultiplexed paired-end runs
 
-In non-demultiplexed runs, the pipeline assumes you have exactly one forward fastq file and one reverse fastq file. There are a few ways you can specify where these are found. One is presented here and you can find a more detailed discussion [below](#description-of-run-options).
-
-#### Specifying reads by directory
-With this method, the `--reads` option points to the directory where .fastq reads can be found. By default, rainbow_bridge assumes forward reads are designated with "R1" (\*R1\*.fastq\*) in the filename and reverse reads are named with "R2" (\*R2\*.fastq\*). For customization options, see [below](#specifying-fastq-files).
+In non-demultiplexed runs, the pipeline assumes you have exactly one forward fastq file and one reverse fastq file. 
 
 ```bash
 $ rainbow_bridge.nf \
   --paired \
-  --reads ../fastq/  
+  --reads ../fastq/    # <--- reads points to a directory containing *R1/R2*.fastq files
   --barcode '../data/*.tab'
   [further options]
 ```
 
 ### For previously-demultiplexed paired-end runs
 
-For demultiplexed paired-end runs, you will have two fastq files per sample, each designated by a pattern indicating read direction (typically R1/R2). The pipeline combines the values of the `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2` options to make a [glob](#a-note-on-globswildcards) that is used to find sequence reads. A simple example is given here which relies on the default values of `--fwd`, `--rev`, `--r1`, and `--r2`, but for a detailed discussion of how these things can go together, see [below](#specifying-fastq-files).
+For demultiplexed paired-end runs, you will have two fastq files per sample, each designated by a pattern indicating read direction (typically R1/R2, as in this example). 
 
 ```bash
 $ rainbow_bridge.nf \
   --paired \
-  --reads ../fastq \   # Here, we're just specifying the directory where reads are found. 
-  --barcode '../data/*.tab'  # Default options will look for <reads>/*R1*.fastq* and <reads>/*R2*.fastq*
+  --reads ../fastq \   # Here, reads indicates the directory where reads are found. 
+  --barcode '../data/*.tab' # by default, the pipeline will search <reads>/*R1|R2*.f*q* 
   --demultiplexed-by index
   [further options]
 ```
@@ -490,48 +539,6 @@ For fastq-based analyses, you must specify whether the sequencing run is single 
 You must also specify the [demultiplexing strategy](#input-requirements) used when preparing your sequencing libraries. 
 
 <small>**`--demultiplexed-by [strategy]`**</small>:  Specify sample demultiplexing strategy used when processing sequence reads. Accepted values are `index` (Illumina indices, previously-demultiplexed, the default), `barcode` (barcoded primers, not demultiplexed), or `combined` (pooled barcoded primers across Illumina index pairs).
-
-### Processing fastq input
-
-#### Specifying fastq files
-In all cases, if you're processing fastq runs, you must specify the location of your sequence reads. Generally, if you're processing runs that have *not* been demultiplexed by the sequencer, you will have either one (single-end) or two (paired-end) fastq files. If your runs *have* been demultiplexed or are pooled, you will have one fastq file per individual sample/pool per read direction. If fastq files are gzipped (i.e., they have a .gz extension), they will be uncompressed automatically and the .gz extension will be stripped during processing.
-
-**Note: unless you are specifying forward/reverse reads directly (i.e. passing individual filenames), it is best practice to keep reads (fastq files) from different sequencing runs in separate directories. If you do not, because of the way the pipeline uses [globs](#a-note-on-globswildcards) to find files, you could end up with unexpected behavior (e.g., accidentally combining sequences from different sequencing runs in one analysis).**
-
-There are a few ways you can tell rainbow_bridge where your reads are:
-
-- For single-ended runs  
-  - Non-demultiplexed  
-    <small>**`--reads`**</small>: For non-demultiplexed runs, this points directly to your fastq reads, e.g., '../fastq/B1_S7_L001.fastq'.   
-  - Demultiplexed  
-    <small>**`--reads`**</small>: For demultiplexed runs, this is a [glob](#a-note-on-globswildcards) indicating where all the demultiplexed reads can be found, e.g., '../fastq/\*.fastq'  
-- For paired-end runs  
-  - Non-demultiplexed  
-    <small>**`--fwd`**</small> and <small>**`--rev`**</small>: For non-demultiplexed runs, you may use these parameters to specify the forward (`--fwd`) and reverse (`--rev`) fastq files directly.  
-  - Demultiplexed  
-    Demultiplexed sequence reads are found using a [glob](#a-note-on-globswildcards) built internally with the values of  `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2`.   
-    
-    <small>**`--reads`**</small>: This parameter specifies the base-*directory* where forward and reverse reads may be found. If no other option is specified,  the glob is built using the default values of `--fwd`, `--rev`, `--r1`, and `--r2` (see below)  
-    <small>**`--r1`**</small> (default: 'R1'), <small>**`--r2`**</small> (default: 'R2'): these parameters specify the pattern that distinguishes forward from reverse reads. The default values ('R1' and 'R2') are typical of most files you will receive from the sequencer.  
-    <small>**`--fwd`**</small> (default: empty), <small>**`--rev`**</small> (default: empty): these parameters optionally specify subdirectories where forward and reverse reads are stored. These subdirectories must be *within* the directory specified with `--reads`.  
-    
-    Using the above parameters, the following [glob](#a-note-on-globswildcards) is constructed:  
-    If `fwd` and `rev` are specified:  
-    ```
-    <reads>/{<fwd>,<rev>}/*{<r1>,<r2>}*.fastq*  
-    ```
-    
-    Otherwise:  
-    ```
-    <reads>/*{<r1>,<r2>}*.fastq*  
-    ```
-    
-    <small>**Note the star after the final 'fastq'. This is included to allow for matching '.fastq.gz' files**</small>  
-    
-    For example, if rainbow_bridge is invoked with the following options:   
-    `--reads ../fastq --fwd forward --rev reverse`  
-    fastq files will be looked for using the following [glob](#a-note-on-globswildcards):  
-    <pre><code>../fastq/{forward,reverse}/*{R1,R2}*.fastq*</code></pre>
 
 ### Other required options
 

@@ -30,6 +30,9 @@ flowchart TB
   demuxed{Sequences demultiplexed?}
   fastqc("QA/QC report<br>(FastQC/MultiQC)")
   fasta[/"Demultiplexed FASTA file in `usearch` format<br>(from previous pipeline run)"/]
+  barcode1[/"Barcode file"/]
+  barcode2[/"Barcode file"/]
+  pooledbarcode[/"Split (pooled) barcode file"/]
 
   subgraph filtering["Quality filtering/merging (AdapterRemoval)"]
     qa[Quality filtering]
@@ -45,6 +48,12 @@ flowchart TB
   subgraph primer["Primer match/length filter (OBITools)"]
     pm1["Primer mismatch filtering (ngsfilter)"]
     pm2["Filter by minimum length (obigrep)"]
+  end
+
+  subgraph pooled["Pooled barcode/index demultiplexing"]
+    pp1["Assign sequences to samples (ngsfilter)"]
+    pp2["Primer mismatch filtering (ngsfilter)"]
+    pp3["Filter by minimum length (obigrep)<br>Retain only sequences with both tags"]
   end
 
   subgraph prepare["Prepare for denoising"]
@@ -91,17 +100,22 @@ flowchart TB
   subgraph phyloseq["Prepare phyloseq object (R/phyloseq)"]
   end
 
+  barcode1 --> demuxing:::sg 
+  barcode2 --> primer:::sg   
+  pooledbarcode --> pooled:::sg
   raw -. "Initial QA/QC<br>(if specified)" .-> fastqc
   raw -->|"(un-gzip if necessary)"| filtering:::sg
   filtering -. "Filtered/merged QA/QC<br>(if specified)" .-> fastqc
   filtering --> demuxed
   demuxed --->|No| demuxing:::sg
-  demuxed --->|Yes| primer:::sg
+  demuxed --->|Yes| primer:::sg  
+  demuxed --->|Pooled| pooled:::sg
   %% demuxed -->|"Yes<br>(via previous pipeline run)"| x((".")) ---> denoising
   fasta --------> denoising
   demuxing --> split("Split sequences by sample (obisplit)")
   split --> prepare:::sg
   primer ---> prepare
+  pooled --> split
   prepare --> denoising:::sg
   denoising -. "(if specified)" .-> blast:::sg & insect & lulu:::sg
   taxdb --> taxonomy:::sg
@@ -118,7 +132,6 @@ flowchart TB
   classDef sg rx:10,ry:10,margin:10px
 
 ```
-
 
 # Table of contents
 
@@ -146,10 +159,11 @@ flowchart TB
 - [Description of run options](#description-of-run-options)
    * [Required options](#required-options)
       + [Specifying sequencing run type](#specifying-sequencing-run-type)
-      + [Processing fastq input (demultiplexed or not)](#processing-fastq-input-demultiplexed-or-not)
+      + [Specifying demultiplexing strategy](#specifying-demultiplexing-strategy)
+      + [Processing fastq input](#processing-fastq-input)
          - [Specifying fastq files](#specifying-fastq-files)
       + [Other required options](#other-required-options)
-         - [Barcode file (not required for demultiplexed runs with stripped primers)](#barcode-file-not-required-for-demultiplexed-runs-with-stripped-primers)
+         - [Barcode file ](#barcode-file)
          - [BLAST settings ](#blast-settings)
    * [Sample IDs](#sample-ids)
       + [Mapping of custom sample IDs](#mapping-of-custom-sample-ids)
@@ -157,7 +171,7 @@ flowchart TB
       + [General ](#general)
       + [Splitting input](#splitting-input)
       + [Length, quality, and merge settings](#length-quality-and-merge-settings)
-      + [Demultiplexing and sequence matching](#demultiplexing-and-sequence-matching)
+      + [Sequence filtering (`ngsfilter` options)](#sequence-filtering-ngsfilter-options)
       + [Assigning taxonomy](#assigning-taxonomy)
          - [BLAST settings](#blast-settings-1)
          - [Classification using insect](#classification-using-insect)
@@ -274,27 +288,40 @@ $ nextflow run -<nextflow-options> mhoban/rainbow_bridge --<rainbow_bridge-optio
 
 ## Input requirements
 
-The most basic requirements for a rainbow_bridge run are fastq-formatted sequence file(s) and a file defining PCR primers (and where applicable, sample barcodes)<sup>\*</sup>. Sequences can be either single or paired-end and may be raw (i.e., one fastq file per sequencing direction), already demultiplexed by the sequencer (i.e., one fastq file per sample per sequencing direction), or demultiplexed by a previous run of the pipeline (in FASTA format).  
+The most basic requirements for a rainbow_bridge run are fastq-formatted sequence file(s) and [a file defining PCR primers (and where applicable, sample barcodes)](#barcode-file)<sup>\*</sup>. Sequences can be either single- or paired-end and may be raw (i.e., one fastq file per sequencing direction), already demultiplexed by the sequencer (i.e., one fastq file per sample per sequencing direction), a combination of the two, or demultiplexed by a previous run of the pipeline (in FASTA format). The demultiplexing strategy must be specified to rainbow_bridge using the `--demultiplexed-by` option. See [below](#specifying-demultiplexing-strategy) for more information.  
 
 <sup>\*</sup>The barcode file can be omitted if your fastq files have already had their primers stripped and you pass the `--skip-primer-match` option.
 
-Details about the three input formats the pipeline expects:
+Details about the input formats the pipeline supports:
 
-1. <a name="non-demuxed"></a>Raw data from the sequencer (i.e. non-demultiplexed). This typically consists of forward/reverse reads each in single large (optionally gzipped) fastq files. You will have one fastq file per sequencing direction, identified by some unique portion of the filename (typically R1/R2). For this type of data, the demultiplexer used in rainbow_bridge requires that you have barcoded primers, such that sequence reads look like this:  
+1. <a name="non-demuxed"></a>Raw data from the sequencer (i.e. non-demultiplexed). This typically consists of forward/reverse reads each in single large (optionally gzipped) fastq files. You will have one fastq file per sequencing direction, identified by some unique portion of the filename (typically R1/R2). For this type of data, the demultiplexer used in rainbow_bridge requires that you have used barcoded primers, such that sequence reads look like this:  
     ```
     <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSER_BARCODE>
     ```
+    For datasets using this input format, you will need a [barcode file](#barcode-file) that describes how barcode and primer combinations map to sample names.
 
 
-1. <a name="demuxed"></a>Data that has already been demultiplexed by the sequencer. This is typically the case when you have used Illumina indices to delineate samples. You will have fastq files for each individual sample and read direction (delineated by a filename pattern like R1/R2), and sequences should still have primers attached, like this:  
+1. <a name="demuxed"></a>Data that has already been demultiplexed by the sequencer using Illumina (i5/i7) indices to delineate samples. You will have fastq files for each individual sample and read direction (delineated by a filename pattern like R1/R2), and sequences should still have PCR primers attached, like this:  
     ```
     <FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER>
     ```
     
     In most cases these sequences will have the Illumina indices you used to separate samples included at the end of their fastq header, like this:  
-    <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAATGTGG+TTCGAAGA</strong></pre></code>
+    <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong><em>&lt;i5&gt;+&lt;i7&gt;</em></strong></pre></code>
 
-1. <a name="demux-fasta"></a>Data that has been demultiplexed to individual samples and concatenated into a FASTA file in usearch format, typically by a previous run of the pipeline on non-demultiplexed sequence data (as in case 1 above, although output from case 2 will work as well). Use this option if you want to re-run the pipeline without repeating the lengthy demultiplexing/merging/quality filtering step(s). The expected input format is a FASTA file with each sequence labled as `<samplename>.N` where `samplename` is the name of the sample and `N` is just a sequential number, for example:
+    For this input format, your [barcode file](#barcode-file) only needs to (optionally) specify PCR primers, since samples are already separated.
+
+1. <a name="pooled"></a>"Pooled" sequences, or a combination of barcoded primers and Illumina indices. For this input format, samples are delineated by barcoded primers, but barcode combinations are reused across different Illumina index pairs. This method is supported by rainbow_bridge, but it's not recommended since it's easy for things to go wrong. Sequences will look like they do for non-demultiplexed datasets, but there will be multiple files with different i5/i7 Illumina index pairs, as for demultiplexed data:
+    
+    Sequence reads
+    ```
+    <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSER_BARCODE>
+    ```
+    Sequence headers: 
+    <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>&lt;i5&gt;+&lt;i7&gt;</strong></pre></code>  
+    For this input format, your [barcode file](#barcode-file) must be specially formatted. [See below](#pooled-barcode) for details.
+
+1. <a name="demux-fasta"></a>Data that has been demultiplexed to individual samples and concatenated into a FASTA file in usearch format, typically by a previous run of the pipeline on non-demultiplexed sequence data (as in case 1 above, although output from cases 2 or 3 will work as well). Use this option if you want to re-run the pipeline without repeating the lengthy demultiplexing/merging/quality filtering step(s). The expected input format is a single FASTA file with each sequence labled as `<samplename>.N` where `samplename` is the name of the sample and `N` is just a sequential number, for example:
   
     ```fasta
     >sample1.1
@@ -350,7 +377,7 @@ $ rainbow_bridge.nf \
   --single \
   --reads '../fastq/*.fastq' \    # <-- reads is a glob denoting multiple .fastq files
   --barcode '../data/*.tab'
-  --illumina-demultiplexed        # <-- specify that reads are already demultiplexed
+  --demultiplexed-by index        # <-- specify that reads are already demultiplexed
   [further options]
 ```
 
@@ -378,7 +405,7 @@ $ rainbow_bridge.nf \
   --paired \
   --reads ../fastq \   # Here, we're just specifying the directory where reads are found. 
   --barcode '../data/*.tab'  # Default options will look for <reads>/*R1*.fastq* and <reads>/*R2*.fastq*
-  --illumina-demultiplexed
+  --demultiplexed-by index
   [further options]
 ```
 ## Contents of output directories
@@ -389,7 +416,7 @@ When the pipeline finishes, output from each step can be found in directories co
 | Directory   | Subdirectory                        | Description                                                  | Condition                                                |
 | ----------- | ----------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------- |
 | preprocess/ | trim_merge/                          | Length/quality filtered and (for paired-end runs) merged reads |                                                          |
-|             | index_filtered/                      | Filtered/merged sequences with ambiguous indices filtered out | --remove-ambiguous-indices<br />--illumina-demultiplexed |
+|             | index_filtered/                      | Filtered/merged sequences with ambiguous indices filtered out | --remove-ambiguous-indices<br />--demultiplexed-by index/combined |
 |             | ngsfilter/                           | ngsfilter-processed reads: primer mismatch and sample annotation (if not previously demultiplexed) |                                                          |
 |             | length_filtered/                     | Length filtered                                              |                                                          |
 |             | split_samples/                       | Annotated samples split into individual files                | Sequencing run not previously demultiplexed              |
@@ -428,7 +455,7 @@ In the example above, there was error output but nothing in the `.command.out` f
 
 A number of rainbow_bridge command-line options accept file globs (wildcards). These are used when you want to indicate more than one file using a matching pattern. For an in-depth treatment of globs in the bash shell environment, have a look [here](https://www.baeldung.com/linux/bash-globbing). For the purposes of this pipeline though, you'll mostly use the following things:
 
-(<small>**Note: when passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--barcode 'bc*.tab'`), If you don't, the glob will be interpreted by the shell rather than rainbow_bridge and parameter values will be incorrect.**</small>)
+**Note: when passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--barcode 'bc*.tab'`). If you don't, the glob will be interpreted by the shell rather than rainbow_bridge and parameter values will be incorrect.**
 
 **\***: a star means 'match any string of characters of any length'  
 For example, the glob 'bc\*.tab' will match any filename that begins with 'bc', followed by a sequence of any characters, and finally ending with '.tab'  
@@ -436,7 +463,7 @@ This pattern will match 'bc1.tab', 'bc2.tab', and 'bc_one_two_three.tab', but it
 
 **{}**: curly braces are used for multiple possible matches.  
 The contents can be exact strings or wildcards. Anything that matches any of the given comma-separated strings using an "or" relationship (one OR the other) will be found.  
-For example, the glob 'seq\_\*{R1,R2}\*.fastq' will match 'seq_', followed by any characters, followed by EITHER 'R1' OR 'R2', follwed by any characters, and finally ending with '.fastq'.  
+For example, the glob 'seq\_\*{R1,R2}\*.fastq' will match 'seq_', followed by any characters, followed by EITHER 'R1' OR 'R2', followed by any characters, and finally ending with '.fastq'.  
 This pattern will match 'seq\_R1.fastq', 'seq\_001\_002\_R2.fastq', and 'seq\_123\_456\_R2\_extra_info.fastq', among many others. It will NOT match 'seqR1.fastq' (because it's missing the initial underscore following 'seq').
 
 # Description of run options
@@ -458,10 +485,16 @@ For fastq-based analyses, you must specify whether the sequencing run is single 
 
 <small>**Note: one of the above options is required (specifying both will throw an error)**</small>
 
-### Processing fastq input (demultiplexed or not)
+### Specifying demultiplexing strategy
+
+You must also specify the [demultiplexing strategy](#input-requirements) used when preparing your sequencing libraries. 
+
+<small>**`--demultiplexed-by [strategy]`**</small>:  Specify sample demultiplexing strategy used when processing sequence reads. Accepted values are `index` (Illumina indices, previously-demultiplexed, the default), `barcode` (barcoded primers, not demultiplexed), or `combined` (pooled barcoded primers across Illumina index pairs).
+
+### Processing fastq input
 
 #### Specifying fastq files
-In all cases, if you're processing fastq runs, you must specify the location of your sequence reads. Generally, if you're processing runs that have *not* been demultiplexed by the sequencer, you will have either one (single-end) or two (paired-end) fastq files. If your runs *have* been demultiplexed, you will have one fastq file per individual sample per read direction. If fastq files are gzipped (i.e., they have a .gz extension), they will be uncompressed automatically and the .gz extension will be stripped.
+In all cases, if you're processing fastq runs, you must specify the location of your sequence reads. Generally, if you're processing runs that have *not* been demultiplexed by the sequencer, you will have either one (single-end) or two (paired-end) fastq files. If your runs *have* been demultiplexed or are pooled, you will have one fastq file per individual sample/pool per read direction. If fastq files are gzipped (i.e., they have a .gz extension), they will be uncompressed automatically and the .gz extension will be stripped during processing.
 
 **Note: unless you are specifying forward/reverse reads directly (i.e. passing individual filenames), it is best practice to keep reads (fastq files) from different sequencing runs in separate directories. If you do not, because of the way the pipeline uses [globs](#a-note-on-globswildcards) to find files, you could end up with unexpected behavior (e.g., accidentally combining sequences from different sequencing runs in one analysis).**
 
@@ -502,8 +535,10 @@ There are a few ways you can tell rainbow_bridge where your reads are:
 
 ### Other required options
 
-#### Barcode file (not required for demultiplexed runs with stripped primers)
-<small>**`--barcode [barcode file(s)]`**</small>: Aside from specifying how to find your sequence reads, you must specify barcode file(s) using the `--barcode` option. Barcode files should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to specify sample barcodes and amplicon primers. It will vary slightly based on whether your runs have been demultiplexed by the sequencer or not. Note that the pipeline can perform a few standalone tasks that do not require barcode files (e.g. collapsing taxonomy to LCA). Additionally, you won't need one if you are processing a previous-demultiplexed sequencing run where primers have been stripped.  
+#### Barcode file 
+Note: a barcode file is optional for demultiplexed runs where PCR primers have already been stripped.
+
+<small>**`--barcode [file/glob]`**</small>: Aside from specifying how to find your sequence reads, you must specify barcode file(s) using the `--barcode` option. If the value passed to `--barcode` is a glob (enclosed in quotes!), rainbow_bridge will use all matching barcode files for demultiplexing/primer matching. Barcode files should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to specify sample barcodes and amplicon primers. It will vary slightly based on whether your runs have been demultiplexed by the sequencer or not. Note that the pipeline can perform a few standalone tasks that do not require barcode files (e.g. collapsing taxonomy to LCA).
 
 <small>**The barcode file does not require a header line (i.e., column names), but if one is included it must be prefaced with a '#' (i.e., commented out).**</small>
 
@@ -519,6 +554,32 @@ There are a few ways you can tell rainbow_bridge where your reads are:
   primer|V9_18S|:|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC
   
   In this case, it's not super critical what you call your 'sample' since the files are already separated.
+
+- <a name="pooled-barcode"></a>**Pooled runs**: Because pooled runs reuse barcode/primer combinations across different index pairs (here referred to as "pools"), there must be a way to associate specific pools to those barcode/primer pairs. In order to do this, the value in the first column of your barcode file must match the underscore-delimited prefix of your read files.   
+
+    For example, if your read files look like this:
+    ```
+    P1_R1.fastq       P1_R2.fastq
+    P2_R1.fastq       P2_R2.fastq
+    P3_R1.fastq       P3_R2.fastq
+    ...               ...
+    ```
+    Your barcode file should look something like this (note that the first line is ignored since it begins with '#', so the names in the header don't affect the outcome, they're just included for ease of reading):
+    #pool|sample|barcodes|forward_primer|reverse_primer|extra_information
+    ---|---|---|---|---|---
+    P1|P1_sample1|AGCT:TTGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 1
+    P1|P1_sample2|TTAG:ATTG|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 2
+    P1|P1_sample3|GATA:TAGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 3
+    P2|P2_sample1|AGCT:TTGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 1
+    P2|P2_sample2|TTAG:ATTG|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 2
+    P2|P2_sample3|GATA:TAGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 3
+    P3|P3_sample1|AGCT:TTGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 1
+    P3|P3_sample2|TTAG:ATTG|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 2
+    P3|P3_sample3|GATA:TAGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 3
+    
+    As you can see, each barcode/primer combination occurs three times, once for each sequence pool, and the first column indicates the specific pool where that sample name will be assigned.
+
+    When `ngsfilter` is run, the provided barcode file is split into multiple files and each individual split is applied to a specific read file. *If the names/column values do not match, sample names will be incorrectly assigned* and there won't be any way to figure out the right ones without re-running the whole pipeline. Thus, make sure that the value in the first column of the barcode file matches the prefix (underscore-delimited) of the read files containing the pool of interest.
 
 #### BLAST settings 
 
@@ -580,12 +641,11 @@ These settings allow you to set values related to quality filtering and paired-e
 <small>**`--min-align-len [num]`**</small>:   Minimum sequence overlap when merging forward/reverse reads (default: 12)  
 <small>**`--min-len [num]`**</small>:         Minimum overall sequence length (default: 50)  
 
-### Demultiplexing and sequence matching
-These settings control demultiplexing and sequence matching (e.g., allowable PCR primer mismatch).
+### Sequence filtering (`ngsfilter` options)
+These settings control options passed to the `ngsfilter` tool and include allowable PCR primer mismatch and whether to retain sequences with ambiguous Illumina indices.
 
 <small>**`--primer-mismatch [num]`**</small>:  Allowed number of mismatched primer bases (default: 2)  
-<small>**`--illumina-demultiplexed`**</small>:  Required if sequencing run is already demultiplexed  
-<small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed sequencing runs, remove reads that have ambiguous indices (i.e. they have bases other than AGCT). This assumes Illumina indices are included in fastq headers:  
+<small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed or pooled sequencing runs, remove reads that have ambiguous indices (i.e. they have bases other than AGCT). Illumina indices must be included in fastq headers:  
     <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAAWGTGG+TTCNAAGA</strong></code></pre>
 <small>**`--skip-primer-match`**</small>: Skip primer/barcode match and removal (ngsfilter step) for sequencing runs where metabarcoding primers are already removerd.   
 <small>**`--demuxed-fasta [file]`**</small>:  Skip demultiplexing step and use supplied FASTA (must be in usearch/vsearch format). See [above](#demux-fasta).  \
@@ -879,14 +939,14 @@ In order to use this custom database with the pipeline, if these files reside in
 
 ## Specifying parameters in a parameter file
 
-All the command-line options outlined in this document can either be passed as shown or, for convenience and repeatability, they may be defined in a parameter file in either YAML or json format. Then, launch the pipeline using the option `-params-file [file]` (**note the single dash before the option, this denotes a nextflow option rather than a rainbow_bridge option**). Option names can be entered as-is (they must be quoted if using json format), but **leading dashes need to be removed**. For example, the option `--illumina-demultiplexed` should be entered as `illumina-demultipexed`. Boolean options (i.e., options with no parameter that are just on/off switches such as `--single` or `--paired`) should be assigned a value of 'true' or 'false'. Here is an example parameter file in YAML format:
+All the command-line options outlined in this document can either be passed as shown or, for convenience and repeatability, they may be defined in a parameter file in either YAML or json format. Then, launch the pipeline using the option `-params-file [file]` (**note the single dash before the option, this denotes a nextflow option rather than a rainbow_bridge option**). Option names can be entered as-is (they must be quoted if using json format), but **leading dashes need to be removed**. For example, the option `--demultiplexed-by` should be entered as `demultiplexed-by`. Boolean options (i.e., options with no parameter that are just on/off switches such as `--single` or `--paired`) should be assigned a value of 'true' or 'false'. Here is an example parameter file in YAML format:
 
 ```yaml
 paired: true
 reads: ../fastq/
 fwd: forward
 rev: reverse
-illumina-demultipexed: true
+demultiplexed-by: index
 remove-ambiguous-indices: true
 collapse-taxonomy: true
 primer-mismatch: 3
@@ -900,7 +960,7 @@ and in json format:
   "reads": "../fastq/",
   "fwd": "forward",
   "rev": "reverse",
-  "illumina-demultipexed": true,
+  "demultiplexed-by": "index",
   "remove-ambiguous-indices": true,
   "collapse-taxonomy": true,
   "primer-mismatch": 3
@@ -922,7 +982,7 @@ $ rainbow_bridge.nf \
   --reads ../fastq/ \
   --fwd forward \
   --rev reverse \
-  --illumina-demultipexed \
+  --demultiplexed-by index \
   --remove-ambiguous-indices \
   --collapse-taxonomy \
   --primer-mismatch 3

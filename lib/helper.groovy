@@ -74,19 +74,28 @@ class helper {
 		System.out.println("""
     Usage: rainbow_bridge.nf [options]
 
+    Nextflow options (note single leading dash):
+      -params-file [file]          Load rainbow_bridge options from YAML or json parameters file
+      -N [email address]           Notify by email on pipeline completion or error
+
     General options:
-      --project [project]          Project name, applied to various output filenames (default: ${params.project}) 
+      --demultiplexed-by [option]  (required) Specify demultiplexing strategy. Accepted options are 
+                                   `index`, `barcode`, `combined` (default: ${params.demultiplexedBy})
       --barcode [file]             (required) Barcode file. Format must match OBITools requirements
                                    (see https://pythonhosted.org/OBITools/scripts/ngsfilter.html)
                                    To denote multiple barcode files, this may be a glob, but it must
                                    be surrounded by quotations (e.g. 'barcode*.tab'). 
                                    For previously-demultiplexed datasets, use ':' for barcode pairs
                                    Primer sequences are still used for primer-mismatch comparisons
+                                   For `combined` demultiplexing strategy, first column of barcode file
+                                   must match the underscore-delimited prefix of your sequence read files.
+                                   (See README for more details).
+      --project [project]          Project name, applied to various output filenames (default: ${params.project}) 
       --publish-mode [mode]        Specify how nextflow places files in output directories 
                                    (default: symlink)
       --fastqc                     Output FastQC reports for pre and post filter/merge steps 
       --split                      Split input fastq files and process in parallel
-                                   (not compatible with --illumina-demultiplexed)
+                                   (not compatible with --demultiplexed-by index)
       --split-by                   Number of sequences per split fastq chunk (default: ${params.splitBy})
       --sample-map [mapfile]       (Optional) A headerless tab-separated file mapping sample names to sequence-read
                                    filenames. Paired-end runs include both forward and reverse reads. Example map:
@@ -96,9 +105,7 @@ class helper {
                                    sample3	CL1_S2_L001_R1_001.fastq	CL1_S2_L001_R2_001.fastq
                                    sample4	CL2_S3_L001_R1_001.fastq	CL2_S3_L001_R2_001.fastq 
                                    ---
-                                   NOTE: if your fastq files are gzipped, DO NOT include the .gz extension 
-                                   in your sample map file, because the files will be unzipped 
-                                   (and .gz extension stripped) BEFORE sample IDs are remapped
+                                   NOTE: if your fastq files are gzipped, DO NOT include the .gz extension in filenames
 
     For single-end sequencing runs:
       --single                     Specify single-ended sequencing run (required)

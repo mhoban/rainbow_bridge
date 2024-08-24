@@ -15,7 +15,7 @@ class helper {
   // get common characters from left side of two strings
   static public String common(one, two) {
     def comm = ""
-    for (def i=0; i< one.size(); i++) {
+    for (def i=0; i < Math.min(one.size(),two.size()); i++) {
       if (one[i] == two[i]) comm += one[i]
       else break
     }

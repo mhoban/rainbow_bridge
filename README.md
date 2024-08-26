@@ -362,7 +362,7 @@ There are a few ways you can tell rainbow_bridge where your reads are:
   - Demultiplexed/pooled  
     Demultiplexed/pooled sequence reads can be located directly using [globs](#a-note-on-globswildcards) or by specifying directories and (optionally) search patterns.  
 
-    <a name="globbo"></na>When using globs, the following options are available:  
+    <a name="globbo"></a>When using globs, the following options are available:  
     <small>**`--reads [glob]`**</small>: A [glob](#a-note-on-globswildcards) directly indicating where all forward/reverse reads can be found. Typically, this will look something like '/dir/\*{R1,R2}\*.fastq'. This can be as simple or as complicated as you like, but it must be able to find all forward and reverse reads (whose filenames must match apart from their direction). Note that the shell will return these in alphabetical order so that if you have something like '/dir/\*{forward,backward}\*.fastq', the 'backward' reads will be erroneously treated as forward (since backward comes before forward alphabetically). If you encounter this issue, you can use the `--r1` and `--r2` options to specify the patterns delineating sequencing direction.  
     <small>**`--fwd [glob]`**</small>, <small>**`--rev [glob]`**</small> In lieu of passing a single glob to locate all reads, you may use separate globs for each read direction, e.g., "--fwd '/dir/r1/\*R1\*.fastq' --rev '/dir/r2/\*R2\*.fastq'". The same caveat regarding alphabetical order applies to these options.
     

@@ -658,13 +658,11 @@ process unzip {
 
   script:
   """
-  zips=( ${reads} )
-  for z in "\${zips[@]}"; do
-    # change extension to .fastq regardless of what it currently is
-    fn=\$(basename \$z .gz) # get rid of .gz
-    fn="\${fn%.*}.fastq"    # get rid of next extension and add .fastq
-    gunzip -c \$z > "\$fn"
-  done
+  z="${reads}"
+  # change extension to .fastq regardless of what it currently is
+  fn=\$(basename \$z .gz) # get rid of .gz
+  fn="\${fn%.*}.fastq"    # get rid of next extension and add .fastq
+  gunzip -c \$z > "\$fn"
   """
 }
 
@@ -1005,10 +1003,15 @@ workflow {
         exit(1)
       }
 
-      // here we unzip the zipped files (if any) and concatenate 
-      // them back together with the unzipped files (if any)
+      // here we decompress any gzipped reads and concatenate 
+      // them back together with any that weren't gzipped in the first place 
       reads.gz | 
+        // flatten paired-end reads to maximize parallelism in the unzip process
+        // [ id, [f1, r2] ] -> [id, r1], [id, r2]
+        ( params.paired ? transpose : map { it } ) | 
         unzip |
+        // regroup paired-end reads back to [ id, [r1, r2] ]
+        ( params.paired ? groupTuple : map { it } ) | 
         concat ( reads.regular ) |
         set { reads }
 

@@ -289,7 +289,7 @@ $ nextflow run -<nextflow-options> mhoban/rainbow_bridge --<rainbow_bridge-optio
 
 The most basic requirements for a rainbow_bridge run are fastq-formatted sequence file(s) and [a file defining PCR primers (and where applicable, sample barcodes)](#barcode-file)<sup>\*</sup>. Sequences can be either single- or paired-end and may be raw (i.e., one fastq file per sequencing direction), already demultiplexed by the sequencer (i.e., one fastq file per sample per sequencing direction), a combination of the two, or demultiplexed by a previous run of the pipeline (in FASTA format). The demultiplexing strategy must be specified to rainbow_bridge using the `--demultiplexed-by` option. See [below](#specifying-demultiplexing-strategy) for more information.  
 
-<sup>\*</sup>The barcode file can be omitted if your fastq files have already had their primers stripped and you pass the `--skip-primer-match` option.
+<sup>\*</sup>The barcode file can be omitted if your fastq files have already had their primers stripped and you pass the `--no-pcr` option.
 
 Details about the input formats the pipeline supports:
 
@@ -473,8 +473,8 @@ When the pipeline finishes, output from each step can be found in directories co
 |             | merged/                              | Merged relabeled FASTA file for denoising                    |                                                          |
 | output/     | fastqc/initial/<br />fastqc/filtered/ | FastQC/MultiQC reports                                       | --fastqc                                                 |
 |             | zotus/                               | Dereplicated/denoised sequence results<br />(unique sequences, zOTU sequences, zOTU table) |                                                          |
-|             | blast/\*                              | BLAST results. Directory names will reflect the options passed to the blast process as well as the names of the individual databases queried against. | --skip-blast not passed |
-|             | lulu/                                | LULU curation results                                        | --skip-lulu not passed |
+|             | blast/\*                              | BLAST results. Directory names will reflect the options passed to the blast process as well as the names of the individual databases queried against. | --blast |
+|             | lulu/                                | LULU curation results                                        | --lulu |
 |             | taxonomy/lca/\*                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --collapse-taxonomy                                      |
 |             | taxonomy/insect/\*                    | Insect classification results. Directory name will reflect the options passed to the insect process. | --insect                                                 |
 |             | phyloseq/                            | Phyloseq object                                              | --phyloseq and associated options                        |
@@ -654,7 +654,7 @@ These settings control options passed to the `ngsfilter` tool and include allowa
 <small>**`--primer-mismatch [num]`**</small>:  Allowed number of mismatched primer bases (default: 2)  
 <small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed or pooled sequencing runs, remove reads that have ambiguous indices (i.e. they have bases other than AGCT). Illumina indices must be included in fastq headers:  
     <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAAWGTGG+TTCNAAGA</strong></code></pre>
-<small>**`--skip-primer-match`**</small>: Skip primer/barcode match and removal (ngsfilter step) for sequencing runs where metabarcoding primers are already removerd.   
+<small>**`--no-pcr`**</small>: Skip primer/barcode match and removal (ngsfilter step) for sequencing runs where metabarcoding primers are already removed.   
 <small>**`--demuxed-fasta [file]`**</small>:  Skip demultiplexing step and use supplied FASTA (must be in usearch/vsearch format). See [above](#demux-fasta).  \
 <small>**`--demuxed-example`**</small>:  Spit out example usearch/vsearch demultiplexed FASTA format  
 <small>**`--demux-only`**</small>:  Stop after demultiplexing and splitting raw reads  
@@ -688,7 +688,7 @@ Multiple BLAST databases:
 It is possible to query your sequences agains multiple BLAST databases. As mentioned, the pipeline will, by default, use the value of the `$FLOW_BLAST` environment variable as its first BLAST database. If that variable is set, any value(s) passed to `--blast-db` will be added as additional databases. Nextflow does not support multiple values for the same option on the command line (e.g., `workflow.nf --opt val1 --opt val2`), but it *does* support them when using [parameter files](#specifying-parameters-in-a-parameter-file). Thus, if you're not using the `$FLOW_BLAST` variable and/or you want to use multiple custom databases, you'll need to pass them as a list in your parameter file ([see here](#setting-multiple-values-for-the-same-option) for an example). The pipeline will run BLAST queries agains each database separately and merge the results into a common output file.    
 
 All BLAST options:  
-<small>**`--skip-blast`**</small>: Pass this if you don't want to run a BLAST query at all.   
+<small>**`--blast`**</small>: Query zOTU sequences against a provided BLAST database.  
 <small>**`--blast-db [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db. If the environment variable `$FLOW_BLAST` is set, its value will be added to the list of databases being searched.   
 <small>**`--blast-taxdb [dir]`**</small>: Specify the location of the NCBI BLAST taxonomy database files (`taxdb.btd` and `taxdb.bti`). The value of this option must be the directory where these two files can be found. If these files already occur alongside any of the databases passed to `--blast-db`, they will be reused for all databases. If they are missing entirely, they will be downloaded from the NCBI servers.  
 <small>**`--ignore-blast-env`**</small>: Ignore the value of the `$FLOW_BLAST` environment variable set on the host system when running the pipeline.   
@@ -753,7 +753,7 @@ These options control how (and by what tool) sequences are denoised and zOTUs ar
 
 rainbow_bridge includes the option to curate zOTUs using [lulu](https://github.com/tobiasgf/lulu). For a more detailed explantion of these parameters please see the LULU documentation.
 
-<small>**`--skip-lulu`**</small>:  Skip LULU curation  
+<small>**`--lulu`**</small>:  Curate zOTUs using LULU  
 <small>**`--lulu-min-ratio-type [num]`**</small>: LULU minimum ratio type (accepted values: 'min', 'avg', default: 'min')  
 <small>**`--lulu-min-ratio [num]`**</small>: LULU minimum ratio (default: 1)  
 <small>**`--lulu-min-match [num]`**</small>: LULU minimum threshold of sequence similarity to consider zOTUs as spurious. Choose higher values when using markers with lower genetic variation and/or few expected PCR and sequencing errors (default: 84)  
@@ -851,7 +851,7 @@ rainbow_bridge supports generation of [phyloseq](https://joey711.github.io/phylo
 # Useful examples and tips
 
 ## Downloading the NCBI BLAST nucleotide database
-Unless you pass the `--skip-blast` option, you'll need to provide a path to a local GenBank nucleotide (nt) and/or your custom BLAST database. To download the NCBI nucleotide database locally, follow the steps below (these examples all use singularity, but the commands following 'singularity run' are universal):
+If you choose to BLAST your zOTUs, you'll need to provide a path to a local GenBank nucleotide (nt) and/or your custom BLAST database. To download the NCBI nucleotide database locally, follow the steps below (these examples all use singularity, but the commands following 'singularity run' are universal):
 
 1. Download the official [BLAST+ container](https://github.com/ncbi/blast_plus_docs#show-blast-databases-available-for-download-from-ncbi) with Singularity:
    ```console

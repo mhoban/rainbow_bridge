@@ -118,7 +118,7 @@ def check_params() {
   }
 
   // sanity check, blast database
-  if (!params.skipBlast) {
+  if (params.blast) {
 
     // if --blast-taxdb is passed, check that it's a directory and that files exist
     if (params.blastTaxdb != "+++__+++") {
@@ -154,7 +154,7 @@ def check_params() {
 
     // make sure we've got at least one db
     if (!blasts.size()) {
-      println(colors.red("Unless you want to skip the BLAST query with --skip-blast, you must pass at least one value to --blast-db"))
+      println(colors.red("You must pass at least one value to --blast-db or FLOW_BLAST must point to a valid BLAST database"))
       exit(1)
     } else {
       // make sure all dbs exist
@@ -1027,7 +1027,7 @@ workflow {
       // throw an error if the file(s) are bad, but only if we're not skipping the step that needs them.
       // we don't check in check_params because params.barcode could be a wildcard, which is trickier to check cleanly
       // and is handled automatically by fromPath
-      barcodes = Channel.fromPath(params.barcode, checkIfExists: !params.skipPrimerMatch)
+      barcodes = Channel.fromPath(params.barcode, checkIfExists: !params.noPcr)
 
       // if the sequences are already demultiplexed by illumina, we'll
       // process them separately, including optionally attempting to remove ambiguous indices
@@ -1076,7 +1076,7 @@ workflow {
           set { rfm_barcodes }
 
         // only run ngsfilter if we have primers
-        if(!params.skipPrimerMatch) {
+        if(!params.noPcr) {
           rfm_barcodes |
             ngsfilter |
             set { rfm_barcodes }
@@ -1228,7 +1228,7 @@ workflow {
       set { dereplicated }
 
     // run blast query, unless skipped
-    if (!params.skipBlast) {
+    if (params.blast) {
       // get $FLOW_BLAST environment variable
       bdb = helper.get_env("FLOW_BLAST")
 
@@ -1320,7 +1320,7 @@ workflow {
       set { zotu_table }
 
     // make lulu blast database and do lulu curation
-    if (!params.skipLulu) {
+    if (params.lulu) {
       dereplicated | 
         // get zotus and sample id
         map { sid, uniques, zotus, zotutable -> [sid,zotus,zotutable] } | 
@@ -1330,7 +1330,7 @@ workflow {
 
     // get NCBI lineage dump if needed
     lca = params.collapseTaxonomy || params.assignTaxonomy
-    if ((lca && !params.skipBlast) || params.insect) {
+    if ((lca && params.blast) || params.insect) {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.taxdump)) {
 
@@ -1384,7 +1384,7 @@ workflow {
     }
 
     // run taxonomy assignment/collapse script if so requested
-    if (lca && !params.skipBlast) {
+    if (lca && params.blast) {
       // then we smash it together with the blast results 
       // and run the taxonomy assignment/collapser script
       blast_result |
@@ -1394,7 +1394,7 @@ workflow {
     }
 
     // prepare for final output
-    if (lca && !params.skipBlast) {
+    if (lca && params.blast) {
       taxonomized.result | 
         map { it[1] } | 
         set { lca_taxonomy }
@@ -1412,7 +1412,7 @@ workflow {
         set { insect_taxonomy }
     }
 
-    if (!params.skipLulu) {
+    if (params.lulu) {
       lulu.out.result |
         map { it[0] } |
         set { curated_zotu_table }

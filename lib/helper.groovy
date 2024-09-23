@@ -147,7 +147,7 @@ class helper {
       --min-len [num]               Minimum overall sequence length (default: ${params.minLen})
 
     BLAST settings (one or more database is required, unless skipping):
-      --skip-blast                  Skip BLAST searches
+      --blast                       Query zOTUs against a BLAST database
       --blast-db [blastdb]          Location of BLAST database (path AND name).
                                     e.g., '/drive1/blast/custom_db', where the database files are named
                                     things like custom_db.ndb, custom_db.nhr, custom_db.nin, etc.
@@ -232,7 +232,7 @@ class helper {
       --demux-only                  Stop after demultiplexing and splitting raw reads
       --primer-mismatch             Allowed number of mismatched primer bases 
                                     (default: ${params.primerMismatch})
-      --skip-primer-match           Skip primer matching (ngsfilter) altogether. 
+      --no-pcr                      Skip primer matching (ngsfilter) altogether. 
                                     Use with demultiplexed runs lacking primer sequences.
 
     Denoising and zOTU inference:  
@@ -245,7 +245,7 @@ class helper {
       --usearch                     shortcut for --denoiser usearch
 
     LULU zOTU curation:
-      --skip-lulu                   Skip LULU curation
+      --lulu                        Curate zOTUs using LULU
       --lulu-min-ratio-type [num]   LULU minimum ratio type (accepted values: 'min', 'avg', default: ${params.luluMinRatioType})
       --lulu-min-ratio [num]        LULU minimum ratio (default: ${params.luluMinRatio})
       --lulu-min-match [num]        LULU minimum threshold of sequence similarity to consider zOTUs as spurious (default: ${params.luluMinMatch})

@@ -9,6 +9,8 @@
 
 <br><br>
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8278073.svg)](https://doi.org/10.5281/zenodo.8278073)
+
 # rainbow_bridge
 
 rainbow_bridge is a fully automated pipeline that employs a number of state-of-the-art applications to process eDNA and other metabarcoding data from raw sequences (single- or paired-end) to the generation of (optionally curated) zero-radius operational taxonomic units (zOTUs) and their abundance tables. The pipeline will also collapse assigned taxonomy (via BLAST and/or insect) to least common ancestor (LCA) based on user-supplied threshold values as well as perform other finalization steps (e.g., taxon filtering/remapping, decontamination, rarefaction, etc.). 
@@ -29,7 +31,7 @@ flowchart TB
   %% samplemap[/"Filename --> sample ID map"/]
   demuxed{Sequences demultiplexed?}
   fastqc("QA/QC report<br>(FastQC/MultiQC)")
-  fasta[/"Demultiplexed FASTA file in `usearch` format<br>(from previous pipeline run)"/]
+  fasta[/"Demultiplexed FASTA file in usearch format<br>(from previous pipeline run)"/]
   barcode1[/"Barcode file"/]
   barcode2[/"Barcode file"/]
   pooledbarcode[/"Split (pooled) barcode file"/]
@@ -69,13 +71,13 @@ flowchart TB
   end
 
   %% blast("Taxonomy assignment via BLAST (blastn)")
-  nt[/"NCBI `nt` BLAST database"/]
+  nt[/"NCBI nt BLAST database"/]
   customblast[/"Custom BLAST database(s)"/]
   subgraph blast["Taxonomy assignment via BLAST"]
     b1["Assign taxonomy to zOTU sequences (blastn)"]
   end
 
-  insect("Taxonomy assignment via `insect`<br>(R/insect)")
+  insect("Taxonomy assignment via insect<br>(R/insect)")
 
   taxdb[/"NCBI taxonomy database"/]
 

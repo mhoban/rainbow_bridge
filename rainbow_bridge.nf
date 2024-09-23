@@ -168,6 +168,11 @@ def check_params() {
         }  
       }
     }
+  } else {
+    if (params.collapseTaxonomy) { 
+      println(colors.red("--collapse-taxonomy requires the --blast option."))
+      exit(1)
+    }
   }
 
 

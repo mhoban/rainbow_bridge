@@ -458,6 +458,24 @@ process blast {
   pid = String.format("%d",(Integer)num(params.percentIdentity))
   evalue = String.format("%.3f",num(params.evalue))
   qcov = String.format("%d",(Integer)num(params.qcov))           
+  
+  // setup and populate the "basic" blast options
+  blast_options = [:]
+  blast_options['task'] = "blastn"
+  blast_options['perc_identity'] = params.percentIdentity
+  blast_options['evalue'] = params.evalue
+  blast_options['qcov_hsp_perc'] = params.qcov
+  blast_options['max_target_seqs'] = params.maxQueryResults
+  blast_options['best_hit_score_edge'] = 0.05
+  blast_options['best_hit_overhang'] = 0.25
+  // merge blast options with anything passed on the command line as --blastn-*
+  blast_options = blast_options << params
+    .findAll { it.key =~ /^blastn-/ }
+    .collectEntries { k, v -> [k.tokenize('-')[1],v] }
+  // collapse them into a single string
+  blast_opt_str = blast_options
+    .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
+    .join(" ")
   """
   # record blast settings
   echo "Percent identity: ${pid}" > blast_settings.txt
@@ -469,12 +487,10 @@ process blast {
   export BLASTDB=.
 
   # blast our zotus
-  blastn -task ${params.blastTask} \
+  blastn \
     -db "${db_name}" \
     -outfmt "6 qseqid sseqid staxid ssciname scomname sskingdom pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \
-    -perc_identity ${params.percentIdentity} -evalue ${params.evalue} \
-    -best_hit_score_edge 0.05 -best_hit_overhang 0.25 \
-    -qcov_hsp_perc ${params.qcov} -max_target_seqs ${params.maxQueryResults} \
+    ${blast_opt_str} \
     -query ${zotus_fasta} -num_threads ${task.cpus} \
     > blast_result.tsv
   """

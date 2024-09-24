@@ -694,11 +694,26 @@ All BLAST options:
 <small>**`--blast-db [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db. If the environment variable `$FLOW_BLAST` is set, its value will be added to the list of databases being searched.   
 <small>**`--blast-taxdb [dir]`**</small>: Specify the location of the NCBI BLAST taxonomy database files (`taxdb.btd` and `taxdb.bti`). The value of this option must be the directory where these two files can be found. If these files already occur alongside any of the databases passed to `--blast-db`, they will be reused for all databases. If they are missing entirely, they will be downloaded from the NCBI servers.  
 <small>**`--ignore-blast-env`**</small>: Ignore the value of the `$FLOW_BLAST` environment variable set on the host system when running the pipeline.   
-<small>**`--blast-task [task]`**</small>:  Set blast+ task (default: "blastn")  
-<small>**`--max-query-results [num]`**</small>:  Maximum number of BLAST results to return per query sequence (default: 10). See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter, but mayble also see [here](https://academic.oup.com/bioinformatics/article/35/15/2699/5259186) for a follow-up discussion.  
-<small>**`--percent-identity [num]`**</small>:  Minimum percent identity of matches (default: 95)  
-<small>**`--evalue [num]`**</small>:  BLAST e-value threshold (default: 0.001)  
-<small>**`--qcov [num]`**</small>:  Minimum percent query coverage (default: 100)  
+
+BLAST options passed to the NCBI `blastn` tool:  
+<small>**`--blastn-task [task]`**</small>:  Set blast+ task (default: "blastn"). NCBI `blastn` option: `-task`.  
+<small>**`--max-query-results [num]`**</small>:  Maximum number of BLAST results to return per query sequence (default: 10). See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter, but mayble also see [here](https://academic.oup.com/bioinformatics/article/35/15/2699/5259186) for a follow-up discussion. NCBI `blastn` option: `-max_target_seqs`.   
+<small>**`--percent-identity [num]`**</small>:  Minimum percent identity of matches (default: 95). NCBI `blastn` option: `-perc_identity`.  
+<small>**`--evalue [num]`**</small>:  BLAST e-value threshold (default: 0.001). NCBI `blastn` option: `-evalue`.   
+<small>**`--qcov [num]`**</small>:  Minimum percent query coverage (default: 100). NCBI `blastn` option: `-qcov_hsp_perc`.     
+
+Customizing other BLAST options:  
+Any [supported command-line option](https://www.ncbi.nlm.nih.gov/books/NBK279684/#_appendices_Options_for_the_commandline_a_) can be passed to the NCBI `blastn` tool by prefacing the option name with `--blastn-` when calling rainbow_bridge:  
+<small>**`--blastn-<blastn_option> [arg]`**</small>:  Pass `<blastn_option>` (and optional orgument) to `blastn` tool.    
+
+For example, the following call:
+```console
+$ rainbow_bridge.nf --blastn-gapopen 15 --blastn-gapextend 25 --blastn-html
+```
+Will result in `blastn` being executed like this:
+```console
+$ blastn -gapopen 15 -gapextend 25 -html
+```
 
 #### Classification using insect
 

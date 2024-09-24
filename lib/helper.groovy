@@ -159,11 +159,12 @@ class helper {
                                     If unspecified or missing from the --blast-db directory, the pipeline 
                                     will download these files from the NCBI server.
       --ignore-blast-env            Ignore the value of the \$FLOW_BLAST environment variable
-      --blast-task [task]           Set blast+ task (default: "blastn")
+      --blastn-task [task]          Set blast+ task (default: "blastn")
       --max-query-results [num]     Maxmimum number of BLAST results to return per zOTU (default: 10)
       --percent-identity [num]      Minimum percent identity of matches to report (default: 95)
       --evalue [num]                Expectation value threshold for saving hits (default: 0.001)
       --qcov [num]                  Percent query coverage per hsp (default: 100)
+      --blastn-<option> [arg?]      Pass <option> to blastn with optional argument
 
     LCA taxonomy collapse:
       --collapse-taxonomy           Collapse assigned BLAST results by least common ancestor (LCA)

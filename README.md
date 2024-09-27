@@ -745,7 +745,9 @@ These options control taxonomy assignment using the [insect](https://github.com/
 
 #### LCA collapse
 
-Options for the LCA method of taxonomy refinement. This method will selectively collapse assignments to higher taxonomic levels based on user-defined variability and certainty thresholds. The filtering applied in this method is based on a set of user specified thresholds, including query coverage (`qcov`), percentage identity (`pid`), and the difference between percent identities of two BLAST hits when their query coverage is equal (`diff`). Setting `qcov` and `pid` thresholds ensures that only BLAST hits greater than or equal to those thresholds will progress to the `diff` comparison step. Setting `diff` means that if the absolute value of the difference in `pid` between two BLAST results is \< `diff`, then a species level taxonomy will be returned. Otherwise, taxonomy of that zOTU will be collapsed to the least common ancestor of all the available BLAST results. Two files are produced: a file with assigned taxonomy, and an intermediate file which may give the user some idea of why zOTUs may have had taxonomic levels dropped.
+Options for the LCA method of taxonomy refinement.
+
+ This method will selectively collapse assignments to higher taxonomic levels based on user-defined variability and certainty thresholds. The filtering applied in this method is based on a set of user specified thresholds, including query coverage (`qcov`), percentage identity (`pid`), and the difference between percent identities of two BLAST hits when their query coverage is equal (`diff`). Setting `qcov` and `pid` thresholds ensures that only BLAST hits greater than or equal to those thresholds will progress to the `diff` comparison step. Setting `diff` means that if the absolute value of the difference in `pid` between two BLAST results is \< `diff`, then a species level taxonomy will be returned. Otherwise, taxonomy of that zOTU will be collapsed to the least common ancestor of available BLAST results (for that zOTU). Two files are produced: a file with assigned taxonomy, and an intermediate file which may give the user some idea of why zOTUs may have had taxonomic levels dropped.
 
 <small>**`--collapse-taxonomy`**</small>: Collapse assigned BLAST results by least common ancestor (LCA)  
 <small>**`--standalone-taxonomy`**</small>: Run LCA script standalone (i.e., separate from the pipeline) against user-supplied data  
@@ -756,7 +758,11 @@ Options for the LCA method of taxonomy refinement. This method will selectively 
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy refinement (default: 100)  
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy refinement (default: 97)  
 <small>**`--lca-diff [num]`**</small>:  Maximum difference between percent identities (with identical query coverage) where shared taxonomy is retained (default: 1)  
-<small>**`--keep-uncultured`**</small>:  Keep sequences that are listed as 'uncultured', 'environmental sample', 'clone', or 'synthetic' (these are filtered by default).  
+<small>**`--lca-taxon-filter [regex]`**</small>:  A regular expression with which to remove unwanted taxa from BLAST results. Defaults to filtering uncultured/environmental/synthetic sequences ('uncultured|environmental sample|clone|synthetic').  
+<small>**`--lca-case-insensitive`**</small>: Ignore case when applying the regex in `--lca-taxon-filter` (default: false).  
+<small>**`--lca-filter-max-qcov`**</small>: During LCA collapse, retain only BLAST records having the highest query coverage (default: false).  
+
+
 
 ### Denoising/dereplication and zOTU inference
 These options control how (and by what tool) sequences are denoised and zOTUs are inferred By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch), which does not suffer from the 4GB memory limit of the free version of [usearch](https://www.drive5.com/usearch/). You still retain the option of using either the free (32 bit) or commercial (64 bit) versions of usearch, if you really want to. 

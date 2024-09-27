@@ -32,10 +32,6 @@ def check_params() {
     exit(0)
   }
 
-  if (params.oldTaxonomy) {
-    println(colors.yellow("The parameter --old-taxonomy no longer does anything, since the original python script has been phased out."))
-  }
-
   // give example of what a demultiplexed FASTA file looks like
   if (params.demuxedExample) {
     helper.demuxed_example()

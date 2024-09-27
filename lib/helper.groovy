@@ -176,9 +176,12 @@ class helper {
       --lca-pid [num]               Minimum percent identity for LCA taxonomy assignment (default: 97)
       --lca-diff [num]              The difference between percent identities (when query coverage is
                                     identical) where species-level taxonomy is retained (default: 1)
-      --keep-uncultured             Keep sequences that are listed as 'uncultured', 'environmental sample',
-                                    'synthetic', or 'clone'
+      --lca-taxon-filter [regex]    Regular expression to filter taxa from BLAST results. 
+                                    (default: '${params.lcaTaxonFilter}')
+      --lca-case-insensitive        Ignore case when applying taxon filter regex.
+      --lca-filter-max-qcov         Retain only BLAST results having highest query coverage.
       --dropped [str]               Placeholder text for dropped taxonomic levels (use "NA" for blank/NA)
+                                    (default: '${params.dropped}')
 
     Insect taxonomy classification:
       --insect [classifier]         Perform taxonomy assignment using insect

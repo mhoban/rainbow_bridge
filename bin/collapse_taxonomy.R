@@ -49,13 +49,19 @@ nice_formatter <- function(object) {
   return(invisible(NULL))
 }
 
+na_opt <- function(opt, flag, val, parser, ...) {
+  replace(val,val == "",NA) 
+}
+
 # set up option list
-option_list = list(
+option_list <- list(
   make_option(c("-q", "--qcov"), action="store", default=NA, type='double', help="Minimum query coverage threshold"),
   make_option(c("-p", "--pid"), action="store", default=NA, type='double', help="Minimum percent match ID threshold"),
   make_option(c("-d", "--diff"), action="store", default=NA, type='double', help="Percent ID difference threshold for matching query coverage"),
-  make_option(c("-u", "--keep-uncultured"), action="store_true", default=FALSE, type='logical', help="Retain uncultured/environmental/cloned, etc. sequences"),
-  make_option(c("-i", "--intermediate"), action="store", default=NA, type='character', help="Store intermediate filtered BLAST results in specified file"),
+  make_option(c("-f", "--filter-max-qcov"), action="store_true", default=FALSE, type='logical', help="Retain only records with the highest query coverage"),
+  make_option(c("-t", "--taxon-filter"), action="callback", default=NA, type='character', help="Regex to filter taxa (e.g., uncultured/synthetic/environmental sequences)",callback=na_opt),
+  make_option(c("-c", "--case-insensitive"), action="store_true", default=FALSE, type='logical', help="Perform case-insensitve taxon filtering"),
+  make_option(c("-i", "--intermediate"), action="callback", default=NA, type='character', help="Store intermediate filtered BLAST results in specified file",callback=na_opt),
   make_option(c("-s", "--semicolon"), action="store_true", default=FALSE, type='logical', help="Interpret taxids split by semicolon"),
   make_option(c("-m", "--merged"), action="store", default="", type="character", help="NCBI merged.dmp file"),
   make_option(c("-k", "--drop-blank"), action="store_true", default=TRUE, type="logical", help="Drop entries with completely blank taxonomic lineages"),
@@ -63,8 +69,9 @@ option_list = list(
   make_option(c("-z","--zotu-table"),action="store",default=NA,type="character",help="Optional (tab-separated) OTU table to merge with results (first column must be OTU ID)")
 )
 
+
 # parse command-line options
-opt = parse_args(
+opt <- parse_args(
   OptionParser(
     option_list=option_list,
     formatter=nice_formatter,
@@ -73,7 +80,6 @@ opt = parse_args(
   ), 
   convert_hyphens_to_underscores = TRUE,
   positional_arguments = 4
-  # args = debug_args
 )
 
 # check that passed files all exist and bail on failure
@@ -92,7 +98,8 @@ output_table <- opt$args[4]
 qcov_thresh <- opt$options$qcov
 pid_thresh <- opt$options$pid
 diff_thresh <- opt$options$diff
-filter_uncultured <- !opt$options$keep_uncultured
+taxon_filter <- opt$options$taxon_filter
+ignore_case <- opt$options$case_insensitive
 intermediate <- opt$options$intermediate
 semicolon <- opt$options$semicolon
 drop_blank <- opt$options$drop_blank
@@ -112,17 +119,15 @@ blast <- read_tsv(
   col_types="ccccccnnnnnnnnnnncnnnn"
 )
 
-# for multiple seqid matches, keep just the best one
+# CEB for multiple seqid matches, keep just the best one
 best_score <- function(x,...) {
   x %>%
     group_by(...) %>%
-    filter(
-      pident == max(pident), 
-      evalue == min(evalue),
-      bitscore == max(bitscore),
-      mismatch == min(mismatch)
-    ) %>%
-    arrange(desc(pident),evalue,desc(bitscore),mismatch) %>%
+    filter(evalue == min(evalue)) %>%  #CEB
+    filter(pident == max(pident)) %>%  #CEB
+    filter(bitscore == max(bitscore)) %>%  #CEB
+    filter(mismatch == min(mismatch)) %>%  #CEB
+    arrange(evalue,desc(pident),desc(bitscore),mismatch) %>%   #CEB
     slice(1) %>%
     ungroup()
 }
@@ -131,16 +136,26 @@ best_score <- function(x,...) {
 filtered <- blast %>%
   # sort by descending pid
   arrange(desc(qcov),desc(pident)) %>%
-  # keep only the best sequence matches since you can get a ton of matches to the same sequence
-  # if it's something like a whole mito/genome 
-  # distinct(seqid,zotu,.keep_all = TRUE) %>%
-  best_score(zotu,seqid) %>%
+  # Collapse multiple seqid matches by best score combination
+  # (per CEB's suggestion in #97)
+  group_by(zotu,seqid) %>%
+  summarise(
+    across(taxid:kingdom,~.x[1]),
+    pident=max(pident),
+    across(length:slen,~.x[1]),
+    mismatch=min(mismatch),
+    across(gapopen:stitle,~.x[1]),
+    evalue=min(evalue),
+    bitscore=max(bitscore),
+    qcov=max(qcov),
+    qcovhsp=max(qcovhsp)
+  ) %>%
+  ungroup() %>%
   # add in count of unique blast hits
   add_count(zotu,name="unique_hits") %>%
-  # keep only unique zotu/taxid combinations
+  # keep only best zotu/taxid combinations
   best_score(zotu,taxid) %>%
-  # distinct(zotu,taxid,.keep_all = TRUE) %>%
-  # filter by percentid and query coverage thresholds
+  # filter by percent id and query coverage thresholds
   filter(pident >= pid_thresh & qcov >= qcov_thresh) %>%
   mutate(taxid = as.numeric(taxid))
 
@@ -156,7 +171,7 @@ if (semicolon) {
 }
 
 # load the lineage dump, the underscores in col_types lets us skip columns
-# because NCBI uses '\t|\t' as their delimiter, we'd have a bunch of columns that just contain a pipe
+# because NCBI uses '\t|\t' as their delimiter and we'd have a bunch of columns that just contain a pipe
 lineage <- read_tsv(
   lineage_dump,
   col_types = "i_c_c_c_c_c_c_c_c_c_",
@@ -191,18 +206,18 @@ if (!is.na(intermediate)) {
 filtered <- filtered %>%
   # group by zotu
   group_by(zotu) %>%
-  # retain only the highest query coverage (often 100%) within each zotu
-  filter(qcov == max(qcov)) %>%
+  # conditionally retain only the highest query coverage within each zotu
+  { if (opt$options$filter_max_qcov) filter(.,qcov == max(qcov)) else . } %>%
   # now calculate difference between each and the max pident within each zotu
   mutate(diff = abs(pident - max(pident))) %>%
   # discard anything with a difference over the threshold within each zotu
   filter(diff < diff_thresh) %>%
   ungroup() 
 
-# filter out any uncultured, environmental, etc.
-if (filter_uncultured) {
+# filter taxa using supplied regex
+if (!is.na(taxon_filter)) {
   filtered <- filtered %>%
-    filter(if_all(domain:species,~!replace_na(str_detect(.,"uncultured|environmental sample|clone|synthetic"),FALSE))) 
+    filter(if_all(domain:species,~!replace_na(str_detect(.,regex(taxon_filter,ignore_case = ignore_case)),FALSE))) 
 }
 
 # drop hits with empty taxonomy (use in combination with merged to be sure)

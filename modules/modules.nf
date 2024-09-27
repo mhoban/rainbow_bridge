@@ -13,22 +13,27 @@ process lca {
 
 
   script:
-  pf = params.keepUncultured ? "-u" : ""
+  pf = []
+  pf += params.lcaFilterMaxQcov ? "--filter-max-qcov" : []
+  pf += params.lcaCaseInsensitive ? "--case-insensitive" : []
   """
   # save settings
   echo "Minimum query coverage %: ${params.lcaQcov}" > lca_settings.txt
   echo "Minimum percent identity: ${params.lcaPid}" >> lca_settings.txt
   echo "Minium percent identity difference: ${params.lcaDiff}" >> lca_settings.txt
-  echo "Retain \"uncultured\" results: ${params.keepUncultured ? 'yes' : 'no'}" >> lca_settings.txt
+  echo "Filter to maximum query coverage: ${params.lcaFilterMaxQcov ? 'yes' : 'no'}" >> lca_settings.txt
+  echo "Filter taxa by regex: ${params.lcaTaxonFilter}" >> lca_settings.txt
+  echo "Taxon filter case sensitive: ${!params.lcaCaseInsensitive ? 'yes' : 'no'}" >> lca_settings.txt
 
   collapse_taxonomy.R \
     --qcov ${params.lcaQcov} \
     --pid ${params.lcaPid} \
     --diff ${params.lcaDiff} \
     --merged merged.dmp \
-    --dropped ${params.dropped} \
-    ${pf} \
+    --dropped "${params.dropped}" \
     --intermediate "lca_intermediate.tsv" \
+    ${pf.join(" ")} \
+    --taxon-filter "${params.lcaTaxonFilter}" \
     ${blast_result} rankedlineage.dmp nodes.dmp "lca_taxonomy.tsv"
   """
 }  

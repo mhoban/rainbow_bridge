@@ -140,6 +140,8 @@ class helper {
       --r2 [pattern]                Pattern distinguishing reverse read files (default: ${params.r2})
 
     Length, quality, and merge settings:
+      --mate-separator [char]       Forward/reverse read mate separator 
+                                    (default: '${params.mateSeparator}')
       --min-quality [num]           Minimum Phred score for sequence retention 
                                     (default: ${params.minQuality})
       --min-align-len [num]         Minimum sequence overlap when merging forward/reverse reads

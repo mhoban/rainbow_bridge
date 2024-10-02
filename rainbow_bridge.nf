@@ -185,6 +185,19 @@ def check_params() {
   }
 }
 
+// parse read directions from a glob
+// e.g., file*{R1,R2} -> [R1,R2]
+def parse_directions(reads) {
+  if (m = reads =~ /\{([^,]+),([^}]+)\}/) {
+    return [m.group(1),m.group(2)]
+  } else if (m = reads =~ /\[(\w)(\w)\]/) {
+    return [m.group(1),m.group(2)]
+  } else {
+    return []
+  }
+}
+
+
 // trim and (where relevant) merge paired-end reads
 process filter_merge {
   label 'adapterRemoval'
@@ -218,6 +231,7 @@ process filter_merge {
       --minquality $params.minQuality \
       --qualitymax ${params.maxQuality} \
       --minalignmentlength ${params.minAlignLen} \
+      --mate-separator ${params.mateSeparator} \
       --basename ${key}
 
     mv ${key}.collapsed ${key}_trimmed_merged.fastq  
@@ -773,6 +787,8 @@ workflow {
   // make sure our arguments are all in order
   check_params()
 
+  directions = []
+
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
     // build input channels and get appropriate process
@@ -832,6 +848,7 @@ workflow {
       } else if (params.paired) { 
         // if fwd and rev point to files that exists, just load them directly
         if ( helper.file_exists(params.fwd) && helper.file_exists(params.rev) ) {
+          directions = [params.fwd,params.rev]
           Channel.of(params.project) |
             combine(Channel.fromPath(params.fwd,checkIfExists: true)) | 
             combine(Channel.fromPath(params.rev,checkIfExists: true)) | 
@@ -994,13 +1011,18 @@ workflow {
           // returns the files in alphabetical order, so that if you have a glob like
           // '/reads/{forwards,backwards}*.fastq', the initial result will look like
           // '[ backwards1.fastq, forwards1.fastq ], [ backwards2.fastq, forwards2.fastq ]'
-          // Not having a much better option, use the values of the --r1/--r2 arguments
-          // to match forward/reverse reads. read order matters for the AdapterRemoval step.
+          // Since we've ended up with a glob here, we try to parse the forward/reverse directions
+          // from the {f,r} section of the glob 
+          directions = parse_directions(pattern)
+          if (!directions.size()) {
+            exit(1,"Unable to determine read direction patterns")
+          }
+
           Channel.fromFilePairs("${pattern}", checkIfExists: true) | 
             map { key,f -> 
               // enforce read order and make sure we have a key value
               if (key == "") key = params.project
-              [key.replaceAll("-","_"),f[0] =~ /${params.r1}/ ? [f[0],f[1]] : [f[1],f[0]]]  
+              [key.replaceAll("-","_"),f.sort{a,b -> a =~ /${directions[0]}/ ? -1 : 1}]  
             } | 
             ifEmpty {
               // bail if we didn't find anything
@@ -1027,7 +1049,8 @@ workflow {
         ( params.paired ? transpose : map { it } ) | 
         unzip |
         // regroup paired-end reads back to [ id, [r1, r2] ]
-        ( params.paired ? groupTuple : map { it } ) | 
+        // and enforce the read direction using groupTuple's sort parameter
+        ( params.paired ? groupTuple(sort: {a,b -> a =~ /${directions[0]}/ ? -1 : 1}) : map { it } ) | 
         concat ( reads.regular ) |
         set { reads }
 

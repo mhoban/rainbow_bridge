@@ -646,6 +646,7 @@ To improve performance, large input files can be split into multiple smaller fil
 ### Length, quality, and merge settings
 These settings allow you to set values related to quality filtering and paired-end merging.
 
+<small>**`--mate-separator [char]`**</small>: Forward/reverse read mate separator (passwed to `AdapterRemoval`, default: '/')  
 <small>**`--min-quality [num]`**</small>:     Minimum Phred score for sequence retention (default: 20)  
 <small>**`--min-align-len [num]`**</small>:   Minimum sequence overlap when merging forward/reverse reads (default: 12)  
 <small>**`--min-len [num]`**</small>:         Minimum overall sequence length (default: 50)  

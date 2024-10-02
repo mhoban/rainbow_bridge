@@ -31,6 +31,7 @@ process lca {
     --diff ${params.lcaDiff} \
     --merged merged.dmp \
     --dropped "${params.dropped}" \
+    --lineage-ranks "${params.lcaLineageRanks}" \
     --intermediate "lca_intermediate.tsv" \
     ${pf.join(" ")} \
     --taxon-filter "${params.lcaTaxonFilter}" \

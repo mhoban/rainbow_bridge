@@ -53,6 +53,12 @@ na_opt <- function(opt, flag, val, parser, ...) {
   replace(val,val == "",NA) 
 }
 
+parse_ranks <- function(opt, flag, val, parser, ...) {
+  str_split_1(val,",")
+}
+
+default_ranks <- c("species","_","genus","family","order","class","phylum","kingdom","domain")
+
 # set up option list
 option_list <- list(
   make_option(c("-q", "--qcov"), action="store", default=NA, type='double', help="Minimum query coverage threshold"),
@@ -60,15 +66,15 @@ option_list <- list(
   make_option(c("-d", "--diff"), action="store", default=NA, type='double', help="Percent ID difference threshold for matching query coverage"),
   make_option(c("-f", "--filter-max-qcov"), action="store_true", default=FALSE, type='logical', help="Retain only records with the highest query coverage"),
   make_option(c("-t", "--taxon-filter"), action="callback", default=NA, type='character', help="Regex to filter taxa (e.g., uncultured/synthetic/environmental sequences)",callback=na_opt),
+  make_option(c("-x", "--lineage-ranks"), action="callback", default=default_ranks, type='character', help="Taxonomic ranks in lineage",callback=parse_ranks),
   make_option(c("-c", "--case-insensitive"), action="store_true", default=FALSE, type='logical', help="Perform case-insensitve taxon filtering"),
   make_option(c("-i", "--intermediate"), action="callback", default=NA, type='character', help="Store intermediate filtered BLAST results in specified file",callback=na_opt),
   make_option(c("-s", "--semicolon"), action="store_true", default=FALSE, type='logical', help="Interpret taxids split by semicolon"),
   make_option(c("-m", "--merged"), action="store", default="", type="character", help="NCBI merged.dmp file"),
   make_option(c("-k", "--drop-blank"), action="store_true", default=TRUE, type="logical", help="Drop entries with completely blank taxonomic lineages"),
-  make_option(c("-r", "--dropped"), action="store", default="dropped", type='character', help="Placeholder for dropped taxonomic levels (default: dropped)"),
+  make_option(c("-r", "--dropped"), action="store", default="dropped", type='character', help="Placeholder for dropped taxonomic ranks (default: dropped)"),
   make_option(c("-z","--zotu-table"),action="store",default=NA,type="character",help="Optional (tab-separated) OTU table to merge with results (first column must be OTU ID)")
 )
-
 
 # parse command-line options
 opt <- parse_args(
@@ -99,6 +105,9 @@ qcov_thresh <- opt$options$qcov
 pid_thresh <- opt$options$pid
 diff_thresh <- opt$options$diff
 taxon_filter <- opt$options$taxon_filter
+lineage_ranks <- opt$options$lineage_ranks
+lineage_cols <- str_c("i_", str_c( if_else(lineage_ranks == "_","_","c"), collapse="_" ), "_")
+lineage_ranks <- lineage_ranks[which(lineage_ranks != "_")]
 ignore_case <- opt$options$case_insensitive
 intermediate <- opt$options$intermediate
 semicolon <- opt$options$semicolon
@@ -174,10 +183,10 @@ if (semicolon) {
 # because NCBI uses '\t|\t' as their delimiter and we'd have a bunch of columns that just contain a pipe
 lineage <- read_tsv(
   lineage_dump,
-  col_types = "i_c_c_c_c_c_c_c_c_c_",
-  col_names = c("taxid","taxon","species","genus","family","order","class","phylum","kingdom","domain")
-) %>%
-  select(taxid,domain,kingdom,phylum,class,order,family,genus,species,taxon)
+  col_types = lineage_cols,
+  col_names = c("taxid",lineage_ranks)
+) 
+
 
 # get new taxids for any merged taxa, if relevant
 if (file_exists(opt$options$merged)) {
@@ -192,10 +201,7 @@ if (file_exists(opt$options$merged)) {
 filtered <- filtered %>%
   rename(blast_species=species,blast_kingdom=kingdom) %>%
   mutate(taxid=as.integer(taxid)) %>%
-  left_join(lineage,by="taxid") %>%
-  # this next line works because blast results always contain
-  # species-level taxids
-  mutate(species = coalesce(species,taxon)) 
+  left_join(lineage,by="taxid") 
 
 # save intermediate file, if requested
 if (!is.na(intermediate)) {
@@ -223,15 +229,15 @@ if (!is.na(taxon_filter)) {
 # drop hits with empty taxonomy (use in combination with merged to be sure)
 if (drop_blank) {
   filtered <- filtered %>%
-    filter(!if_all(domain:species,is.na))
+    filter(!if_all(all_of(lineage_ranks),is.na))
 }
 
-# here we collapse taxonomic levels that differ across remaining blast results
+# here we collapse taxonomic ranks that differ across remaining blast results
 # keep taxids for species-level IDs, otherwise assign NA
 filtered <- filtered %>%
   group_by(zotu) %>%
   summarise(
-    across(domain:species,~if_else(n_distinct(.x) == 1,.x[1],dropped)),
+    across(all_of(lineage_ranks),~if_else(n_distinct(.x) == 1,.x[1],dropped)),
     unique_hits=unique_hits[1],
     taxid = (\(tids) {
       if (n_distinct(tids) == 1) {
@@ -244,7 +250,7 @@ filtered <- filtered %>%
   arrange(parse_number(zotu))
 
 
-# get taxid for last non-"dropped" taxonomic level
+# get taxid for last non-"dropped" taxonomic rank
 # skip this for now, because the join relationship goes wacky
 # collapsed <- filtered %>%
 #   mutate(
@@ -252,11 +258,11 @@ filtered <- filtered %>%
 #     across(domain:species,~replace(.x,which(is.na(.x)),"...")),
 #     across(domain:species,~replace(.x,which(.x == dropped),NA))
 #   ) %>%
-#   # now get the lowest non-NA taxonomic level
-#   mutate(last_level = coalesce(species,genus,family,order,class,phylum,kingdom,domain)) %>%
+#   # now get the lowest non-NA taxonomic rank
+#   mutate(last_rank = coalesce(species,genus,family,order,class,phylum,kingdom,domain)) %>%
 #   # there is a problem when multiple names exist for something
-#   # maybe use the actual level name in the join, if we can somehow
-#   left_join(lineage,by=c("last_level" = "taxon"),relationship = "many-to-many",suffix=c("","_other")) %>%
+#   # maybe use the actual rank name in the join, if we can somehow
+#   left_join(lineage,by=c("last_rank" = "taxon"),relationship = "many-to-many",suffix=c("","_other")) %>%
 #   mutate(
 #     across(ends_with('_other'),~replace_na(.x,"")),
 #     across(domain:species,~replace(.x,which(.x == "..."),"")),

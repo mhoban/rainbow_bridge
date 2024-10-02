@@ -219,6 +219,7 @@ process filter_merge {
       --trimns --trimqualities \
       --minquality ${params.minQuality} \
       --qualitymax ${params.maxQuality} \
+      --mate-separator ${params.mateSeparator} \
       --basename ${key}
 
     mv ${key}.truncated ${key}_trimmed_merged.fastq
@@ -634,6 +635,21 @@ process extract_taxonomy {
   """
 }
 
+// another dummy process to change the name of an input file
+process translate {
+  label 'shell'
+
+  input:
+    tuple val(newname), path(input)
+  output:
+    path(newname)
+
+  script:
+  """
+  mv ${input} ${newname}
+  """
+}
+
 // dummy process to generate published file
 process save_taxdump {
   label 'shell'
@@ -795,27 +811,37 @@ workflow {
     zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
     blast_result = Channel.fromPath(params.blastFile, checkIfExists: true)
 
-    // load the ranked lineage and merged channels
-    if (!helper.file_exists(params.taxdump)) {
-      if (params.taxdump != "") {
-        println(colors.yellow("Taxonomy dump archive '${params.taxdump}' does not exist and will be downloaded"))
+    // load lineage and (optionally) other taxonomy dump files
+    if (!helper.file_exists(params.lcaLineage)) {
+      if (!helper.file_exists(params.taxdump)) {
+        if (params.taxdump != "") {
+          println(colors.yellow("Taxonomy dump archive '${params.taxdump}' does not exist and will be downloaded"))
+        }
+
+        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') | 
+          combine(Channel.fromPath('new_taxdump.zip')) | 
+          get_taxdump | 
+          set { taxdump }
+        taxdump | 
+          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
+          extract_taxonomy | collect | toList |
+          set { lineage }
+
+        taxdump | 
+          save_taxdump
+      } else {
+        Channel.fromPath(params.taxdump) | 
+          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
+          extract_taxonomy | collect | toList |
+          set { lineage }
       }
-
-      Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') | 
-        combine(Channel.fromPath('new_taxdump.zip')) | 
-        get_taxdump | 
-        set { taxdump }
-      taxdump | 
-        combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
-        extract_taxonomy | collect | toList |
-        set { lineage }
-
-      taxdump | 
-        save_taxdump
     } else {
-      Channel.fromPath(params.taxdump) | 
-        combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
-        extract_taxonomy | collect | toList |
+      // if user has passed a custom ranked lineage dump, use it instead
+      Channel.value('rankedlineage.dmp') | 
+        combine(Channel.fromPath(params.lcaLineage)) |
+        translate |
+        concat(channel.of(file("merged.dmp"),file("nodes.dmp"))) | 
+        collect | toList |
         set { lineage }
     }
 
@@ -1375,7 +1401,7 @@ workflow {
 
     // get NCBI lineage dump if needed
     lca = params.collapseTaxonomy || params.assignTaxonomy
-    if ((lca && params.blast) || params.insect) {
+    if ((lca && params.blast && !helper.file_exists(params.lcaLineage)) || params.insect) {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.taxdump)) {
 
@@ -1396,6 +1422,16 @@ workflow {
         extract_taxonomy | collect | toList |
         set { lineage }
       }
+    }
+
+    if (helper.file_exists(params.lcaLineage)) {
+      // if user has passed a custom ranked lineage dump, use it instead
+      Channel.value('rankedlineage.dmp') | 
+        combine(Channel.fromPath(params.lcaLineage)) |
+        translate |
+        concat(channel.of(file("merged.dmp"),file("nodes.dmp"))) | 
+        collect | toList |
+        set { lineage }
     }
 
     // run the insect classifier, if so desired

@@ -4,6 +4,17 @@ suppressPackageStartupMessages(library(tidyverse))
 suppressPackageStartupMessages(library(optparse))
 suppressPackageStartupMessages(library(fs))
 
+# ordered hierarchy of taxa used by NCBI (and others)
+# we should probably assemble this programatically, but they don't make it easy
+hierarchy <- c( 
+  "domain", "superkingdom", "supergroup", "kingdom", "subkingdom", "superphylum", "phylum","division",
+  "subphylum","subdivision", "infraphylum", "superclass", "class", "subclass", "infraclass",
+  "cohort", "subcohort", "superorder", "order", "suborder", "infraorder", "parvorder",
+  "superfamily", "family", "subfamily", "tribe", "subtribe", "genus", "subgenus",
+  "section", "subsection", "series", "subseries", "species group", "species subgroup",
+  "species", "forma specialis", "subspecies", "varietas", "subvariety", "forma",
+  "serogroup", "serotype", "strain", "isolate" 
+)
 
 load_table <- function(fn,col_types=cols(),...) {
   tabs <- c("tsv","tab","txt")
@@ -48,9 +59,17 @@ nice_formatter <- function(object) {
   return(invisible(NULL))
 }
 
+parse_ranks <- function(opt, flag, val, parser, ...) {
+  str_split_1(val,",")
+}
+
+default_cols <- c("domain","kingdom","phylum","class","order","family","genus","species")
+
 # set up option list
 option_list = list(
+  make_option(c("-L", "--lca-cols"), action="callback", default=default_cols, type='character', help="Taxonomic ranks in lineage",callback=parse_ranks),
   make_option(c("-R", "--remap"), action="store", default="", type="character", help="Taxonomy remapping table"),
+  make_option(c("-D", "--dropped"), action="store", default="dropped", type="character", help="Placeholder for dropped taxonomic ranks (default: %default)"),
   make_option(c("-F", "--filter"), action="store", default="", type="character", help="Taxonomy filtering table"),
   make_option(c("-i", "--insect"), action="store", default="", type="character", help="Taxonomy derived from insect classification"),
   make_option(c("-l", "--lca"), action="store", default="", type="character", help="Taxonomy derived from LCA classification"),
@@ -68,7 +87,9 @@ option_list = list(
   make_option(c("-N", "--min-reads"), action="store", default=1000, type="double", help="Minimum number of reads in a sample [default: %default]"),
   make_option(c("-M", "--filter-min"), action="store_true", default=FALSE, type="logical", help="Filter out samples below minimum read threshold (step performed *before* rarefaction)"),
   make_option(c("-s", "--seed"), action="store", default=31337, type="double", help="Random number generator seed [default: %default]"),
-  make_option(c("-C", "--curated"), action="store", default="", type="character", help="LULU-curated zOTU table")
+  make_option(c("-C", "--curated"), action="store", default="", type="character", help="LULU-curated zOTU table"),
+  make_option(c("--lca-table"), action="store_true", default=FALSE, type="logical", help="Produce zOTU table using LCA results only"),
+  make_option(c("--insect-table"), action="store_true", default=FALSE, type="logical", help="Produce zOTU table using insect results only")
 )
 
 # parse command-line options
@@ -80,8 +101,7 @@ opt = parse_args(
     usage="%prog [options] <zotu_table>"
   ), 
   convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 1#,
-  # args=debug_args
+  positional_arguments = 1#, args=debug_args
 )
 
 
@@ -140,33 +160,52 @@ if (file_exists(insect_file)) {
   insect <- load_table(insect_file)
 }
 
-cols <- c("domain","kingdom","phylum","class","order","family","genus","species")
-sel <- c(str_c(cols,"_lca"),str_c(cols,"_insect"))
+lca_cols <- opt$options$lca_cols
+insect_cols <- default_cols
+combined_cols <- union(lca_cols,insect_cols)
+
+sel <- c(str_c(lca_cols,"_lca"),str_c(insect_cols,"_insect"))
+
 
 # both taxonomies were supplied
 if (!is.null(lca) & !is.null(insect)) {
   taxonomy <- lca %>%
-    full_join(insect,by="zotu",suffix=c("_lca","_insect")) %>%
+    rename_with(\(x) str_c(x,"_lca"),all_of(setdiff(lca_cols,insect_cols))) %>%
+    full_join(insect %>% rename_with(\(x) str_c(x,"_insect"),all_of(setdiff(insect_cols,lca_cols))),by="zotu",suffix=c("_lca","_insect")) %>%
     pivot_longer(all_of(sel),names_to = c("prefix","suffix"),names_pattern="(.*)_(insect|lca)") %>%
-    pivot_wider(names_from = suffix, values_from = value) 
-  if (tax_priority == "lca") {
-    taxonomy <- taxonomy %>%
-      mutate(taxon = coalesce(lca,insect),taxid = coalesce(taxid_lca,taxid_insect)) 
-  } else {
-    taxonomy <- taxonomy %>%
-      mutate(taxon = coalesce(insect,lca),taxid = coalesce(taxid_insect,taxid_lca)) 
-  }
-  taxonomy <- taxonomy %>%
-    select(-lca,-insect,-taxid_insect,-taxid_lca) %>%
+    pivot_wider(names_from = suffix, values_from = value)  %>%
+    mutate(
+      dropped = lca,
+      dropped = replace(dropped,dropped != opt$options$dropped,NA),
+      lca = replace(lca,lca == opt$options$dropped,NA),
+      taxon = case_when(
+        tax_priority == "lca" ~ coalesce(lca,insect,dropped),
+        .default = coalesce(insect,lca,dropped)
+      ),
+      taxid = case_when(
+        tax_priority == "lca" ~ coalesce(taxid_lca,taxid_insect),
+        .default = coalesce(taxid_insect,taxid_lca)
+      ),
+      best_taxid = case_when(
+        tax_priority == "lca" & taxid == taxid_lca  ~ "lca",
+        tax_priority == "insect" & taxid == taxid_insect  ~ "insect",
+        !is.na(taxid_lca) & is.na(taxid_insect) ~ "lca",
+        is.na(taxid_lca) & !is.na(taxid_insect) ~ "insect",
+        .default = tax_priority
+      )
+    ) %>%
+    select(-lca,-insect,-taxid_insect,-taxid_lca,-dropped) %>%
     pivot_wider(names_from = prefix, values_from = taxon) %>%
-    select(zotu,taxid,unique_hits,all_of(cols))
+    select(zotu,taxid,best_taxid,unique_hits,all_of(combined_cols))
 } else if (!is.null(lca)) {
+  combined_cols <- lca_cols
   taxonomy <- lca %>%
-    select(zotu,taxid,unique_hits,domain:species)
+    select(zotu,taxid,unique_hits,all_of(combined_cols))
 } else if (!is.null(insect)) {
+  combined_cols <- insect_cols
   taxonomy <- insect %>%
     mutate(unique_hits=NA) %>%
-    select(zotu,taxid,unique_hits,domain:species)
+    select(zotu,taxid,unique_hits,all_of(combined_cols))
 } else {
   stop("No taxonomy loaded, something went very wrong")
 }
@@ -175,35 +214,36 @@ taxonomy_raw <- taxonomy
 
 # remap taxonomy if requested
 if (file_exists(remap_file)) {
-  remap <- load_table(remap_file,col_select = c(level=1,val=2,newlevel=3,newval=4))
+  remap <- load_table(remap_file,col_select = c(rank=1,val=2,newrank=3,newval=4))
 
-  # this next bit is very clever, but may be more than necessary
-  # i.e., it could possibily be equally as clever, but shorter
+  # this next bit is clever, but may be more than necessary
+  # i.e., it could possibly be equally as clever, but shorter (and faster)
   taxonomy <- taxonomy %>%
-    pivot_longer(domain:species,names_to = "level") %>%
-    left_join(remap,by=c("level","value" = "val")) %>%
+    # pivot_longer(domain:species,names_to = "rank") %>%
+    pivot_longer(all_of(combined_cols),names_to = "rank") %>%
+    left_join(remap,by=c("rank","value" = "val")) %>%
     mutate(edit = case_when(
-      !is.na(newlevel) & !is.na(newval) ~ TRUE,
+      !is.na(newrank) & !is.na(newval) ~ TRUE,
       .default = FALSE
     )) %>%
-    unite("level",c(level,newlevel),sep=";",na.rm=TRUE) %>%
+    unite("rank",c(rank,newrank),sep=";",na.rm=TRUE) %>%
     unite("value",c(value,newval),sep=";",na.rm=TRUE) %>%
-    separate_longer_delim(c(level,value),delim = ";") %>%
-    distinct(zotu,level,value,.keep_all = TRUE) %>%
-    group_by(zotu,level) %>%
+    separate_longer_delim(c(rank,value),delim = ";") %>%
+    distinct(zotu,rank,value,.keep_all = TRUE) %>%
+    group_by(zotu,rank) %>%
     filter(n() == 1 | edit) %>%
     ungroup() %>%
     select(-edit) %>%
-    pivot_wider(names_from=level,values_from=value) %>%
-    select(zotu,taxid,unique_hits,domain,kingdom,phylum,class,order,family,genus,species)  
+    pivot_wider(names_from=rank,values_from=value) %>%
+    select(zotu,taxid,unique_hits,all_of(combined_cols))  
 }
 
 # filter known contaminants, etc.
 if (file_exists(filter_file)) {
-  tax_filter <- load_table(filter_file,col_select = c(level=1,value=2,action=3))
+  tax_filter <- load_table(filter_file,col_select = c(rank=1,value=2,action=3))
   taxonomy <- taxonomy %>%
-    pivot_longer(domain:species,names_to = "level") %>%
-    left_join(tax_filter,by=c("level","value"))  %>%
+    pivot_longer(all_of(combined_cols),names_to = "rank") %>%
+    left_join(tax_filter,by=c("rank","value"))  %>%
     group_by(zotu) %>%
     mutate(keep = any(action == "retain"),filter=any(action == "filter")) %>%
     ungroup() %>%
@@ -211,8 +251,13 @@ if (file_exists(filter_file)) {
     filter(keep) %>%
     filter(!filter) %>%
     select(-c(keep:filter),-action) %>%
-    pivot_wider(names_from=level,values_from=value)
+    pivot_wider(names_from=rank,values_from=value)
 }
+
+
+# try to order taxonomy columns hierarchically
+taxonomy <- taxonomy %>%
+  select(zotu,taxid,unique_hits,na.omit(match(hierarchy,colnames(.))),everything())
 
 
 # join in zotu table, rename the first column to zotu
@@ -333,6 +378,18 @@ write_tsv(taxonomy_raw,"taxonomy_raw.tsv",na="")
 final <- taxonomy %>%
   inner_join(zotu_table,by="zotu")
 write_tsv(final,"zotu_table_final.tsv",na="")
+
+if (opt$options$lca_table == TRUE) {
+  lca %>%
+    left_join(zotu_table_raw,by="zotu") %>%
+    write_tsv("zotu_table_lca.tsv",na="")
+}
+
+if (opt$options$insect_table == TRUE) {
+  insect %>%
+    left_join(zotu_table_raw,by="zotu") %>%
+    write_tsv("zotu_table_insect.tsv",na="")
+}
 
 if (file_exists(curated)) {
   # load curated zotu table and keep only zotus that ended up in the final shebang

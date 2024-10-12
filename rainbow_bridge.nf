@@ -753,25 +753,29 @@ process finalize {
     tuple path(zotu_table), path(curated_zotu_table), path(lca_taxonomy), path(insect_taxonomy)
 
   output:
-    tuple path("zotu_table_raw.tsv"), path("taxonomy_raw.tsv"), path("zotu_table_final*.tsv")
+    path("zotu_table_raw.tsv")
+    path("taxonomy_raw.tsv")
+    path("zotu_table_final*.tsv")
+    path("zotu_table_lca.tsv"), optional: true
+    path("zotu_table_insect.tsv"), optional: true
 
   script:
   opt = []
-  if (params.abundanceFilter) {
-    opt.add("--abundance-filter")
-  }
-  if (params.rarefy) {
-    opt.add("--rarefy")
-  }
-  if (params.filterMinimum) {
-    opt.add("--filter-min")
-  }
+  params.abundanceFilter && opt << "--abundance-filter"
+  params.rarefy && opt << "--rarefy"
+  params.filterMinimum && opt << "--filter-min"
+  params.lcaTable && opt << "--lca-table"
+  params.insectTable && opt << "--insect-table"
+
+  ranks = params.lcaLineageRanks.tokenize(',').findAll {it != '_'}.join(',')
   """
   finalize.R \
     --filter "${params.taxonFilter}" \
     --remap "${params.taxonRemap}" \
     --insect "${insect_taxonomy}" \
     --lca "${lca_taxonomy}" \
+    --dropped "${params.dropped}" \
+    --lca-cols "${ranks}" \
     --controls "${params.controls}" \
     --control-action "${params.controlAction}" \
     --control-threshold "${params.controlThreshold}" \
@@ -823,32 +827,31 @@ workflow {
           get_taxdump | 
           set { taxdump }
         taxdump | 
-          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
+          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp','taxidlineage.dmp')) |
           extract_taxonomy | collect | toList |
-          set { lineage }
+          set { ncbi_lineage }
 
         taxdump | 
           save_taxdump
       } else {
         Channel.fromPath(params.taxdump) | 
-          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
+          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp','taxidlineage.dmp')) |
           extract_taxonomy | collect | toList |
-          set { lineage }
+          set { ncbi_lineage }
       }
     } else {
       // if user has passed a custom ranked lineage dump, use it instead
       Channel.value('rankedlineage.dmp') | 
         combine(Channel.fromPath(params.lcaLineage)) |
         translate |
-        concat(channel.of(file("merged.dmp"),file("nodes.dmp"))) | 
         collect | toList |
-        set { lineage }
+        set { custom_lineage }
     }
 
 
     // run taxonomy process
     blast_result |
-      combine(lineage) | 
+      ( helper.file_exists(params.lcaLineage) ? combine(custom_lineage) : combine(ncbi_lineage) ) | 
       collapse_taxonomy
 
   } else {
@@ -1318,44 +1321,47 @@ workflow {
         !b ? 
           channel.of(file(d).Name) | combine(channel.fromPath("${d}${wildcard}")) :
           b | concat(channel.of(file(d).Name) | combine(channel.fromPath("${d}${wildcard}")))
-          // channel.of(d) | combine(channel.fromPath("${d}.*n*")) :
-          // b | concat(channel.of(d) | combine(channel.fromPath("${d}.*n*}")))
       }) | 
         groupTuple | 
         set { blastdb }
 
-      // try to find taxdb files in any of the supplied blast databases
-      db = blasts.collect {
-        blastr -> 
-          file(blastr).Parent.list().findAll {
-            it =~ /taxdb\.bt[id]/
-          }.collect {
-            "${file(blastr).Parent}/${it}"
-          }
-      }.getAt(0)
+      if (!helper.file_exists(params.lcaLineage)) {
+        // try to find taxdb files in any of the supplied blast databases
+        db = blasts.collect {
+          blastr -> 
+            file(blastr).Parent.list().findAll {
+              it =~ /taxdb\.bt[id]/
+            }.collect {
+              "${file(blastr).Parent}/${it}"
+            }
+        }.getAt(0)
 
-      // get taxdb files (either download or from command line)
-      if (params.blastTaxdb == "+++__+++") {
-        if (db.size() > 0) {
-          // if we found something and we don't want something else, use what we found
-          Channel.fromPath(db) | 
+        // get taxdb files (either download or from command line)
+        if (params.blastTaxdb == "+++__+++") {
+          if (db.size() > 0) {
+            // if we found something and we don't want something else, use what we found
+            Channel.fromPath(db) | 
+              collect | 
+              toList | 
+              set { taxdb }
+          } else {
+            // download and extract taxdb from ncbi website
+            Channel.of('https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz') | 
+              combine(Channel.fromPath('taxdb.tar.gz')) | 
+              get_taxdb | 
+              combine(Channel.of('taxdb.btd','taxdb.bti')) |
+              extract_taxdb | 
+              collect | toList |
+              set { taxdb }
+          }
+        } else {
+          Channel.fromPath("${params.blastTaxdb}/taxdb.bt*", checkIfExists: true) | 
             collect | 
             toList | 
             set { taxdb }
-        } else {
-          // download and extract taxdb from ncbi website
-          Channel.of('https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz') | 
-            combine(Channel.fromPath('taxdb.tar.gz')) | 
-            get_taxdb | 
-            combine(Channel.of('taxdb.btd','taxdb.bti')) |
-            extract_taxdb | 
-            collect | toList |
-            set { taxdb }
         }
       } else {
-        Channel.fromPath("${params.blastTaxdb}/taxdb.bt*", checkIfExists: true) | 
-          collect | 
-          toList | 
+        Channel.value([[file("taxdb.bti"),file("taxdb.btd")]]) |
           set { taxdb }
       }
 
@@ -1410,17 +1416,17 @@ workflow {
           get_taxdump | 
           set { taxdump }
         taxdump | 
-          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
+          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp','taxidlineage.dmp')) |
         extract_taxonomy | collect | toList |
-        set { lineage }
+        set { ncbi_lineage }
 
         taxdump | 
           save_taxdump
       } else {
         Channel.fromPath(params.taxdump) | 
-          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
+          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp','taxidlineage.dmp')) |
         extract_taxonomy | collect | toList |
-        set { lineage }
+        set { ncbi_lineage }
       }
     }
 
@@ -1429,9 +1435,8 @@ workflow {
       Channel.value('rankedlineage.dmp') | 
         combine(Channel.fromPath(params.lcaLineage)) |
         translate |
-        concat(channel.of(file("merged.dmp"),file("nodes.dmp"))) | 
         collect | toList |
-        set { lineage }
+        set { custom_lineage }
     }
 
     // run the insect classifier, if so desired
@@ -1458,7 +1463,7 @@ workflow {
 
       // run the insect classification
       classifier | 
-        combine(lineage) | 
+        combine(ncbi_lineage) | 
         combine(zotus) | 
         insect | 
         set { insectized }
@@ -1469,7 +1474,7 @@ workflow {
       // then we smash it together with the blast results 
       // and run the taxonomy assignment/collapser script
       blast_result |
-        combine(lineage) | 
+        ( helper.file_exists(params.lcaLineage) ? combine(custom_lineage) : combine(ncbi_lineage) ) | 
         collapse_taxonomy |
         set { taxonomized }
     }

@@ -14,8 +14,8 @@ process lca {
 
   script:
   pf = []
-  pf += params.lcaFilterMaxQcov ? "--filter-max-qcov" : []
-  pf += params.lcaCaseInsensitive ? "--case-insensitive" : []
+  params.lcaFilterMaxQcov && pf << "--filter-max-qcov"
+  params.lcaCaseInsensitive && pf << "--case-insensitive" 
   """
   # save settings
   echo "Minimum query coverage %: ${params.lcaQcov}" > lca_settings.txt
@@ -30,12 +30,16 @@ process lca {
     --pid ${params.lcaPid} \
     --diff ${params.lcaDiff} \
     --merged merged.dmp \
+    --lineage rankedlineage.dmp \
+    --nodes nodes.dmp \
+    --taxid-lineage taxidlineage.dmp \
+    --output lca_taxonomy.tsv \
     --dropped "${params.dropped}" \
     --lineage-ranks "${params.lcaLineageRanks}" \
     --intermediate "lca_intermediate.tsv" \
     ${pf.join(" ")} \
     --taxon-filter "${params.lcaTaxonFilter}" \
-    ${blast_result} rankedlineage.dmp nodes.dmp "lca_taxonomy.tsv"
+    ${blast_result}
   """
 }  
 

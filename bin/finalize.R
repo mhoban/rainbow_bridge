@@ -63,11 +63,8 @@ parse_ranks <- function(opt, flag, val, parser, ...) {
   str_split_1(val,",")
 }
 
-default_cols <- c("domain","kingdom","phylum","class","order","family","genus","species")
-
 # set up option list
 option_list = list(
-  make_option(c("-L", "--lca-cols"), action="callback", default=default_cols, type='character', help="Taxonomic ranks in lineage",callback=parse_ranks),
   make_option(c("-R", "--remap"), action="store", default="", type="character", help="Taxonomy remapping table"),
   make_option(c("-D", "--dropped"), action="store", default="dropped", type="character", help="Placeholder for dropped taxonomic ranks (default: %default)"),
   make_option(c("-F", "--filter"), action="store", default="", type="character", help="Taxonomy filtering table"),
@@ -88,8 +85,8 @@ option_list = list(
   make_option(c("-M", "--filter-min"), action="store_true", default=FALSE, type="logical", help="Filter out samples below minimum read threshold (step performed *before* rarefaction)"),
   make_option(c("-s", "--seed"), action="store", default=31337, type="double", help="Random number generator seed [default: %default]"),
   make_option(c("-C", "--curated"), action="store", default="", type="character", help="LULU-curated zOTU table"),
-  make_option(c("--lca-table"), action="store_true", default=FALSE, type="logical", help="Produce zOTU table using LCA results only"),
-  make_option(c("--insect-table"), action="store_true", default=FALSE, type="logical", help="Produce zOTU table using insect results only")
+  make_option(c("-L","--lca-table"), action="store_true", default=FALSE, type="logical", help="Produce zOTU table using LCA results only"),
+  make_option(c("-I","--insect-table"), action="store_true", default=FALSE, type="logical", help="Produce zOTU table using insect results only")
 )
 
 # parse command-line options
@@ -150,22 +147,31 @@ if (all(!file_exists(c(lca_file,insect_file)))) {
   stop("Must provide at least one of insect and/or LCA taxonomies")
 }
 
-# load the taxonomies
 lca <- NULL
 insect <- NULL
+insect_cols <- character(0)
+lca_cols <- character(0)
+
+# load the taxonomies
 if (file_exists(lca_file)) {
   lca <- load_table(lca_file)
+  lca_cols <- lca %>%
+    select(zotu:unique_hits,-c(zotu,unique_hits)) %>%
+    colnames() 
 }
 if (file_exists(insect_file)) {
   insect <- load_table(insect_file)
+  insect_cols <- c("domain","kingdom","phylum","class","order","family","genus","species")
 }
 
-lca_cols <- opt$options$lca_cols
-insect_cols <- default_cols
+# get all columns
 combined_cols <- union(lca_cols,insect_cols)
-
+# try to order them hierarchically and slap anything not in the hierarchy on the end
+combined_cols <- combined_cols[c(
+  na.omit(match(hierarchy,combined_cols)),
+  which(!combined_cols %in% hierarchy)
+)]
 sel <- c(str_c(lca_cols,"_lca"),str_c(insect_cols,"_insect"))
-
 
 # both taxonomies were supplied
 if (!is.null(lca) & !is.null(insect)) {
@@ -255,9 +261,9 @@ if (file_exists(filter_file)) {
 }
 
 
-# try to order taxonomy columns hierarchically
+# make sure everything is in order, since combined_cols should be ordered already
 taxonomy <- taxonomy %>%
-  select(zotu,taxid,unique_hits,na.omit(match(hierarchy,colnames(.))),everything())
+  select(zotu,taxid,unique_hits,all_of(combined_cols))
 
 
 # join in zotu table, rename the first column to zotu
@@ -381,13 +387,13 @@ write_tsv(final,"zotu_table_final.tsv",na="")
 
 if (opt$options$lca_table == TRUE) {
   lca %>%
-    left_join(zotu_table_raw,by="zotu") %>%
+    inner_join(zotu_table_raw,by="zotu") %>%
     write_tsv("zotu_table_lca.tsv",na="")
 }
 
 if (opt$options$insect_table == TRUE) {
   insect %>%
-    left_join(zotu_table_raw,by="zotu") %>%
+    inner_join(zotu_table_raw,by="zotu") %>%
     write_tsv("zotu_table_insect.tsv",na="")
 }
 
@@ -398,5 +404,16 @@ if (file_exists(curated)) {
   final_curated <- taxonomy %>%
     inner_join(lulu_table,by="zotu")
   write_tsv(final_curated,"zotu_table_final_curated.tsv",na="")
+  
+  if (opt$options$lca_table == TRUE) {
+    lca %>%
+      inner_join(lulu_table,by="zotu") %>%
+      write_tsv("zotu_table_lca_curated.tsv",na="")
+  }
+    if (opt$options$insect_table == TRUE) {
+    insect %>%
+      inner_join(lulu_table,by="zotu") %>%
+      write_tsv("zotu_table_insect_curated.tsv",na="")
+  }
 }
 

@@ -174,5 +174,5 @@ classified <- classified %>%
   select(zotu=representative,taxid=taxID,domain:species,everything())
 
 # save final output
-write_tsv(classified,output_file)
+write_tsv(classified,output_file,na="")
 

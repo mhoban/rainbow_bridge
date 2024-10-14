@@ -152,8 +152,8 @@ LCA <- R6Class(
 # ordered hierarchy of taxa used by NCBI (and others)
 # we should probably assemble this programatically, but they don't make it easy
 hierarchy <- c( 
-  "domain", "superkingdom", "supergroup", "kingdom", "subkingdom", "superphylum", "phylum","division",
-  "subphylum","subdivision", "infraphylum", "superclass", "class", "subclass", "infraclass",
+  "domain", "superkingdom", "supergroup", "kingdom", "subkingdom", "superphylum", "phylum", "division",
+  "subphylum", "subdivision", "infraphylum", "superclass", "class", "subclass", "infraclass",
   "cohort", "subcohort", "superorder", "order", "suborder", "infraorder", "parvorder",
   "superfamily", "family", "subfamily", "tribe", "subtribe", "genus", "subgenus",
   "section", "subsection", "series", "subseries", "species group", "species subgroup",
@@ -199,82 +199,19 @@ parse_ranks <- function(opt, flag, val, parser, ...) {
   str_split_1(val,",")
 }
 
-default_ranks <- c("species","_","genus","family","order","class","phylum","kingdom","domain")
-
-# set up option list
-option_list <- list(
-  make_option(c("-q", "--qcov"), action="store", default=NA, type='double', help="Minimum query coverage threshold"),
-  make_option(c("-p", "--pid"), action="store", default=NA, type='double', help="Minimum percent match ID threshold"),
-  make_option(c("-d", "--diff"), action="store", default=NA, type='double', help="Percent ID difference threshold for matching query coverage"),
-  make_option(c("-f", "--filter-max-qcov"), action="store_true", default=FALSE, type='logical', help="Retain only records with the highest query coverage"),
-  make_option(c("-t", "--taxon-filter"), action="callback", default=NA, type='character', help="Regex to filter taxa (e.g., uncultured/synthetic/environmental sequences)",callback=na_opt),
-  make_option(c("-x", "--lineage-ranks"), action="callback", default=default_ranks, type='character', help="Taxonomic ranks in lineage",callback=parse_ranks),
-  make_option(c("-c", "--case-insensitive"), action="store_true", default=FALSE, type='logical', help="Perform case-insensitve taxon filtering"),
-  make_option(c("-i", "--intermediate"), action="callback", default=NA, type='character', help="Store intermediate filtered BLAST results in specified file",callback=na_opt),
-  make_option(c("-s", "--semicolon"), action="store_true", default=FALSE, type='logical', help="Interpret taxids split by semicolon"),
-  make_option(c("-m", "--merged"), action="store", default="", type="character", help="NCBI merged.dmp file"),
-  make_option(c("-n", "--nodes"), action="store", default="", type="character", help="NCBI nodes.dmp file"),
-  make_option(c("-l", "--lineage"), action="store", default="", type="character", help="NCBI rankedlineage.dmp file"),
-  make_option(c("-a", "--taxid-lineage"), action="store", default="", type="character", help="NCBI taxidlineage.dmp file"),
-  make_option(c("-k", "--drop-blank"), action="store_true", default=TRUE, type="logical", help="Drop entries with completely blank taxonomic lineages"),
-  make_option(c("-r", "--dropped"), action="store", default="dropped", type='character', help="Placeholder for dropped taxonomic ranks (default: %default)"),
-  make_option(c("-o", "--output"),action="store",default="lca_taxonomy.tsv",type="character",help="Output file (default: %default)")
-)
-
-# parse command-line options
-opt <- parse_args(
-  OptionParser(
-    option_list=option_list,
-    formatter=nice_formatter,
-    prog="collapse_taxonomy.R",
-    usage="%prog [options] <blast_result>"
-  ), 
-  convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 1#, args = debug_args
-)
-
-# get options
-blast_file <- opt$args[1]
-output_table <- opt$options$output
-taxid_lineage_dump <- opt$options$taxid_lineage
-lineage_dump <- opt$options$lineage
-nodes_dump <- opt$options$nodes
-merged_dump <- opt$options$merged
-qcov_thresh <- opt$options$qcov
-pid_thresh <- opt$options$pid
-diff_thresh <- opt$options$diff
-taxon_filter <- opt$options$taxon_filter
-lineage_ranks <- opt$options$lineage_ranks
-lineage_cols <- str_c("i_", str_c( if_else(lineage_ranks == "_","_","c"), collapse="_" ), "_")
-lineage_ranks <- lineage_ranks[which(lineage_ranks != "_")]
-ignore_case <- opt$options$case_insensitive
-intermediate <- opt$options$intermediate
-semicolon <- opt$options$semicolon
-drop_blank <- opt$options$drop_blank
-dropped <- opt$options$dropped
-
-# check that passed files all exist and bail on failure
-fe <- file_exists(c(blast_file,lineage_dump))
-if (any(!fe)) {
-  bad <- fe[!fe]
-  msg <- str_c(str_glue("Missing/bad filename: {names(bad)}"),collapse="\n")
-  stop(msg)
+# load a csv or tsv file
+load_table <- function(fn,col_types=cols(),...) {
+  tabs <- c("tsv","tab","txt")
+  commas <- c("csv")
+  if (str_to_lower(path_ext(fn)) %in% commas){
+    return(read_csv(fn,col_types=col_types,...))
+  } else if (str_to_lower(path_ext(fn)) %in% tabs) {
+    return(read_tsv(fn,col_types=col_types,...))
+  } else {
+    stop(str_glue("File '{fn}' must be either .csv or .tsv format"))
+  }
+  return(NULL)
 }
-
-if (str_to_lower(dropped) == "na") {
-  dropped <- NA_character_
-}
-
-
-# read blast results table
-blast <- read_tsv(
-  blast_file,
-  col_names = c("zotu","seqid","taxid","species","commonname","domain","pident","length","qlen","slen","mismatch",
-                "gapopen","gaps","qstart","wend","sstart","send","stitle","evalue","bitscore","qcov","qcovhsp"),
-  col_types="ccccccnnnnnnnnnnncnnnn",
-  progress=FALSE,
-  show_col_types = FALSE
-)
 
 # CEB for multiple seqid matches, keep just the best one
 best_score <- function(x,...) {
@@ -288,6 +225,93 @@ best_score <- function(x,...) {
     slice(1) %>%
     ungroup()
 }
+
+# validate NCBI lineage dump
+check_ncbi_lineage <- function(f) {
+  hdr <- read_lines(f,n_max = 1) %>%
+    str_split_1("\t")
+  if (length(hdr) == 20) {
+    if (hdr[1] == "1" & hdr[3] == "root" & last(hdr) == "|") {
+      return(TRUE)
+    } 
+  } 
+  return(FALSE)
+}
+
+
+# set up option list
+option_list <- list(
+  make_option(c("-q", "--qcov"), action="store", default=NA, type='double', help="Minimum query coverage threshold"),
+  make_option(c("-p", "--pid"), action="store", default=NA, type='double', help="Minimum percent match ID threshold"),
+  make_option(c("-d", "--diff"), action="store", default=NA, type='double', help="Percent ID difference threshold for matching query coverage"),
+  make_option(c("-f", "--filter-max-qcov"), action="store_true", default=FALSE, type='logical', help="Retain only records with the highest query coverage"),
+  make_option(c("-t", "--taxon-filter"), action="callback", default=NA, type='character', help="Regex to filter taxa (e.g., uncultured/synthetic/environmental sequences)",callback=na_opt),
+  make_option(c("-c", "--case-insensitive"), action="store_true", default=FALSE, type='logical', help="Perform case-insensitve taxon filtering"),
+  make_option(c("-i", "--intermediate"), action="callback", default=NA, type='character', help="Store intermediate filtered BLAST results in specified file",callback=na_opt),
+  make_option(c("-s", "--semicolon"), action="store_true", default=FALSE, type='logical', help="Interpret taxids split by semicolon"),
+  make_option(c("-m", "--merged"), action="store", default="", type="character", help="NCBI merged.dmp file"),
+  make_option(c("-n", "--nodes"), action="store", default="", type="character", help="NCBI nodes.dmp file"),
+  make_option(c("-a", "--taxid-lineage"), action="store", default="", type="character", help="NCBI taxidlineage.dmp file"),
+  make_option(c("-k", "--drop-blank"), action="store_true", default=TRUE, type="logical", help="Drop entries with completely blank taxonomic lineages"),
+  make_option(c("-r", "--dropped"), action="store", default="dropped", type='character', help="Placeholder for dropped taxonomic ranks (default: %default)"),
+  make_option(c("-o", "--output"),action="store",default="lca_taxonomy.tsv",type="character",help="Output file (default: %default)"),
+  make_option(c("-z","--zotu-table"),action="store",default=NA,type="character",help="Optional (tab-separated) OTU table to merge with results (first column must be OTU ID)")
+)
+
+
+# parse command-line options
+opt <- parse_args(
+  OptionParser(
+    option_list=option_list,
+    formatter=nice_formatter,
+    prog="collapse_taxonomy.R",
+    usage="%prog [options] <blast_result> <taxonomic_lineage>`"
+  ), 
+  convert_hyphens_to_underscores = TRUE,
+  positional_arguments = 2#, args = debug_args
+)
+
+# check that files in positional args all exist and bail on failure
+if (any(!file_exists(opt$args))) {
+  bad <- fe[!fe]
+  msg <- str_c(str_glue("Missing/bad filename: {names(bad)}"),collapse="\n")
+  stop(msg)
+}
+
+# get options
+blast_file <- opt$args[1]
+lineage_dump <- opt$args[2]
+output_table <- opt$options$output
+taxid_lineage_dump <- opt$options$taxid_lineage
+nodes_dump <- opt$options$nodes
+merged_dump <- opt$options$merged
+qcov_thresh <- opt$options$qcov
+pid_thresh <- opt$options$pid
+diff_thresh <- opt$options$diff
+taxon_filter <- opt$options$taxon_filter
+ignore_case <- opt$options$case_insensitive
+intermediate <- opt$options$intermediate
+semicolon <- opt$options$semicolon
+drop_blank <- opt$options$drop_blank
+dropped <- opt$options$dropped
+zotu_table_file <- opt$options$zotu_table
+
+if (str_to_lower(dropped) == "na") {
+  dropped <- NA_character_
+}
+
+
+# read blast results table
+blast <- read_tsv(
+  blast_file,
+  col_names = c("zotu","seqid","taxid","species","commonname","domain","pident","length","qlen","slen","mismatch",
+                "gapopen","gaps","qstart","wend","sstart","send","stitle","evalue","bitscore","qcov","qcovhsp"),
+  col_types="ccccccnnnnnnnnnnncnnnn",
+  progress=FALSE,
+  show_col_types = FALSE,
+  na = "N/A"
+)
+
 
 # perform initial filtering
 filtered <- blast %>%
@@ -313,7 +337,8 @@ filtered <- blast %>%
   # keep only best zotu/taxid combinations
   best_score(zotu,taxid) %>%
   # filter by percent id and query coverage thresholds
-  filter(pident >= pid_thresh & qcov >= qcov_thresh) %>%
+  filter(pident >= pid_thresh) %>%
+  filter(qcov >= qcov_thresh) %>%
   mutate(taxid = as.numeric(taxid))
 
 if (semicolon) {
@@ -327,19 +352,34 @@ if (semicolon) {
     filter(!str_detect(taxid,';'))
 }
 
-# load the lineage dump, the underscores in col_types lets us skip columns
-# because NCBI uses '\t|\t' as their delimiter and we'd have a bunch of columns that just contain a pipe
 
-
-# if we're using the NCBI ranked lineage dump, we treat the 'taxon' column
-# as the species column, since blast always returns species-level taxids
-lineage <- read_tsv(
-  lineage_dump,
-  col_types = lineage_cols,
-  col_names = c("taxid",lineage_ranks),
-  progress=FALSE,
-  show_col_types = FALSE
-) 
+# lineage file is the NCBI dump
+if (str_to_lower(path_file(lineage_dump)) == "rankedlineage.dmp") {
+  if (check_ncbi_lineage(lineage_dump)) {
+    # load the NCBI lineage dump, the underscores in lineage_cols lets us skip columns
+    # because NCBI uses '\t|\t' as their delimiter and we'd have a bunch of columns that just contain a pipe
+    # treat the 'taxon' column as the species column since blast always returns species-level taxids
+    ncbi_ranks <- c("species","_","genus","family","order","class","phylum","kingdom","domain")
+    lineage_cols <- str_c("i_", str_c( if_else(ncbi_ranks == "_","_","c"), collapse="_" ), "_")
+    lineage_ranks <- ncbi_ranks[which(ncbi_ranks != "_")]
+    lineage <- read_tsv(
+      lineage_dump,
+      col_types = lineage_cols,
+      col_names = c("taxid",lineage_ranks),
+      progress=FALSE,
+      show_col_types = FALSE
+    ) 
+  } else {
+    stop(str_glue("File {lineage_dump} is not a valid NCBI lineage dump"))
+  }
+} else {
+  lineage <- load_table(lineage_dump,progress=FALSE,show_col_types=FALSE) %>%
+    rename(taxid=1)
+  if (!is.numeric(lineage$taxid)) {
+    stop("First column of lineage table must be numeric taxon ID")
+  }
+  lineage_ranks <- colnames(lineage)[-1]
+}
 
 
 # get new taxids for any merged taxa, if relevant
@@ -402,7 +442,7 @@ if (file_exists(nodes_dump) | file_exists(taxid_lineage_dump)) {
 collapsed <- filtered %>%
   group_by(zotu) %>%
   summarise(
-    across(all_of(lineage_ranks),~if_else(n_distinct(.x) == 1,.x[1],dropped)),
+    across(all_of(lineage_ranks),~ifelse(n_distinct(.x) == 1,first(.x),dropped)),
     unique_hits=unique_hits[1],
     taxid = (\(tids) {
       if (n_distinct(tids) == 1) {
@@ -429,11 +469,20 @@ collapsed <- filtered %>%
       # length(names(taxid)) > 0 ~ names(taxid),
       .default = NA
     )
-  ) %>%
+    ) %>%
   arrange(parse_number(zotu)) %>%
   # try to order the column hierarchically, matching the order of NCBI taxonomic hierarchy
   # if we have ranks not in the list, they'll end up at the end, but they'll still be there
   select(zotu,na.omit(match(hierarchy,colnames(.))),everything(),unique_hits,taxid,taxid_rank)
+
+
+# merge zotu table, if desired
+if (file_exists(zotu_table_file)) {
+  zotu_table <- read_tsv(zotu_table_file,col_types=cols())
+  # use inner join so we only get complete data
+  collapsed <- collapsed %>%
+    inner_join(zotu_table,by=setNames(colnames(zotu_table)[1],"zotu")) 
+}
 
 # save the collapsed output table
 write_tsv(collapsed,output_table,na="")

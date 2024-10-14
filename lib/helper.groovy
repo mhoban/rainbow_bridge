@@ -173,6 +173,7 @@ class helper {
       --standalone-taxonomy         Run LCA script as standalone
       --blast-file [file]           Blast result table (only for standalone LCA assignment)
       --zotu-table [file]           zOTU table file (only for standalone LCA assignment)
+      --lca-lineage [file]          Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage 
       --taxdump [file]              Previously downloaded NCBI taxonomy dump zip archive (new_taxdump) (leave blank to download)
       --lca-qcov [num]              Minimum query coverage for LCA taxonomy assignment (default: 100)
       --lca-pid [num]               Minimum percent identity for LCA taxonomy assignment (default: 97)
@@ -218,6 +219,10 @@ class helper {
       --rarefy                      Rarefy samples to minimum depth
       --rarefaction-method [method] Rarefaction method (available options: perm, phyloseq)
       --permutations [num]          For 'perm' rarefaction method, number of permutations
+    
+    Final output:
+      --lca-table                   Produce final zOTU table merged with LCA taxonomy only
+      --insect-table                Produce final zOTU table merged with insect taxonomy only
 
     Decontamination & taxon filtering
       --taxon-remap [file]          Taxonomy remap file (.csv or .tsv)

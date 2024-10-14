@@ -604,52 +604,6 @@ process insect {
   """
 }
 
-// extract the NCBI blast taxonomy database
-process extract_taxdb {
-  label 'shell'
-
-  input:
-    tuple path(taxdb), val(to_extract)
-  
-  output:
-    path(to_extract)
-
-  script:
-  """
-  gunzip -c taxdb.tar.gz | tar x ${to_extract}
-  """
-}
-
-// extract arbitrary files from a zip archive
-process extract_taxonomy {
-  label 'shell'
-
-  input:
-    tuple path(zipfile), val(f)
-  output:
-    path(f)
-  
-  script:
-  """
-  unzip -p ${zipfile} ${f} > ${f}
-  """
-}
-
-// another dummy process to change the name of an input file
-process translate {
-  label 'shell'
-
-  input:
-    tuple val(newname), path(input)
-  output:
-    path(newname)
-
-  script:
-  """
-  mv ${input} ${newname}
-  """
-}
-
 // dummy process to generate published file
 process save_taxdump {
   label 'shell'
@@ -767,7 +721,6 @@ process finalize {
   params.lcaTable && opt << "--lca-table"
   params.insectTable && opt << "--insect-table"
 
-  ranks = params.lcaLineageRanks.tokenize(',').findAll {it != '_'}.join(',')
   """
   finalize.R \
     --filter "${params.taxonFilter}" \
@@ -775,7 +728,6 @@ process finalize {
     --insect "${insect_taxonomy}" \
     --lca "${lca_taxonomy}" \
     --dropped "${params.dropped}" \
-    --lca-cols "${ranks}" \
     --controls "${params.controls}" \
     --control-action "${params.controlAction}" \
     --control-threshold "${params.controlThreshold}" \
@@ -802,6 +754,9 @@ include { lca as collapse_taxonomy  } from './modules/modules.nf'
 include { get_web as get_model } from './modules/modules.nf'
 include { get_web as get_taxdb } from './modules/modules.nf'
 include { get_web as get_taxdump } from './modules/modules.nf'
+include { extract_zip as extract_lineage } from './modules/modules.nf'
+include { extract_zip as extract_ncbi } from './modules/modules.nf'
+include { extract_targz as extract_taxdb } from './modules/modules.nf'
 
 workflow {
   // make sure our arguments are all in order
@@ -826,32 +781,40 @@ workflow {
           combine(Channel.fromPath('new_taxdump.zip')) | 
           get_taxdump | 
           set { taxdump }
-        taxdump | 
-          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp','taxidlineage.dmp')) |
-          extract_taxonomy | collect | toList |
-          set { ncbi_lineage }
+
+        taxdump |
+          combine(Channel.of('rankedlineage.dmp')) |
+          extract_lineage | collect |
+          set { lineage }
+        taxdump |
+          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
+          extract_ncbi | collect | toList |
+          set { ncbi_dumps }
 
         taxdump | 
           save_taxdump
       } else {
-        Channel.fromPath(params.taxdump) | 
-          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp','taxidlineage.dmp')) |
-          extract_taxonomy | collect | toList |
-          set { ncbi_lineage }
+        zip = Channel.fromPath(params.taxdump) 
+        zip |
+          combine(Channel.of('rankedlineage.dmp')) |
+          extract_lineage | collect |
+          set { lineage }
+        zip |
+          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
+          extract_ncbi | collect | toList |
+          set { ncbi_dumps }
       }
     } else {
       // if user has passed a custom ranked lineage dump, use it instead
-      Channel.value('rankedlineage.dmp') | 
-        combine(Channel.fromPath(params.lcaLineage)) |
-        translate |
-        collect | toList |
-        set { custom_lineage }
+      lineage = Channel.fromPath(params.lcaLineage) 
+      ncbi_dumps = Channel.fromPath('nodumps')
     }
 
 
     // run taxonomy process
     blast_result |
-      ( helper.file_exists(params.lcaLineage) ? combine(custom_lineage) : combine(ncbi_lineage) ) | 
+      combine(lineage) | 
+      combine(ncbi_dumps) |
       collapse_taxonomy
 
   } else {
@@ -1407,7 +1370,7 @@ workflow {
 
     // get NCBI lineage dump if needed
     lca = params.collapseTaxonomy || params.assignTaxonomy
-    if ((lca && params.blast && !helper.file_exists(params.lcaLineage)) || params.insect) {
+    if ((lca && params.blast && !helper.file_exists(params.lcaLineage))) {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.taxdump)) {
 
@@ -1415,28 +1378,46 @@ workflow {
           combine(Channel.fromPath('new_taxdump.zip')) | 
           get_taxdump | 
           set { taxdump }
-        taxdump | 
-          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp','taxidlineage.dmp')) |
-        extract_taxonomy | collect | toList |
-        set { ncbi_lineage }
+        taxdump |
+          combine(Channel.of('rankedlineage.dmp')) |
+          extract_lineage | collect |
+          set { lineage }
+        taxdump |
+          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
+          extract_ncbi | collect | toList |
+          set { ncbi_dumps }
 
         taxdump | 
           save_taxdump
       } else {
-        Channel.fromPath(params.taxdump) | 
-          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp','taxidlineage.dmp')) |
-        extract_taxonomy | collect | toList |
-        set { ncbi_lineage }
+        zip = Channel.fromPath(params.taxdump) 
+        zip |
+          combine(Channel.of('rankedlineage.dmp')) |
+          extract_lineage | collect |
+          set { lineage }
+        zip |
+          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
+          extract_ncbi | collect | toList |
+          set { ncbi_dumps }
       }
     }
 
     if (helper.file_exists(params.lcaLineage)) {
       // if user has passed a custom ranked lineage dump, use it instead
-      Channel.value('rankedlineage.dmp') | 
-        combine(Channel.fromPath(params.lcaLineage)) |
-        translate |
-        collect | toList |
-        set { custom_lineage }
+      lineage = Channel.fromPath(params.lcaLineage)
+      ncbi_dumps = Channel.fromPath('nodumps')
+      
+      // if we're doing an insect classification, we still need rankedlineage.dmp from NCBI
+      if (params.insect) {
+        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') | 
+          combine(Channel.fromPath('new_taxdump.zip')) | 
+          get_taxdump | 
+          set { taxdump }
+        taxdump |
+          combine(Channel.of('rankedlineage.dmp')) |
+          extract_lineage | collect |
+          set { ncbi_lineage }
+      }
     }
 
     // run the insect classifier, if so desired
@@ -1463,7 +1444,8 @@ workflow {
 
       // run the insect classification
       classifier | 
-        combine(ncbi_lineage) | 
+        // join the correct lineage dump
+        ( helper.file_exists(params.lcaLineage) ? combine(ncbi_lineage) : combine(lineage) ) | 
         combine(zotus) | 
         insect | 
         set { insectized }
@@ -1474,7 +1456,8 @@ workflow {
       // then we smash it together with the blast results 
       // and run the taxonomy assignment/collapser script
       blast_result |
-        ( helper.file_exists(params.lcaLineage) ? combine(custom_lineage) : combine(ncbi_lineage) ) | 
+        combine(lineage) | 
+        combine(ncbi_dumps) |
         collapse_taxonomy |
         set { taxonomized }
     }

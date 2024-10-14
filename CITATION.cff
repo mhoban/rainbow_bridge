@@ -1,0 +1,38 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  rainbow_bridge: a comprehensive nextflow-based
+  metabarcoding pipeline
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Mykle L
+    family-names: Hoban
+    email: mhoban@hawaii.edu
+    affiliation: Hawai‘i Institute of Marine Biology
+    orcid: 'https://orcid.org/0000-0002-2514-3599'
+  - given-names: Mahsa
+    family-names: Mousavi-Derazmahalleh
+    affiliation: Curtin University
+    orcid: 'https://orcid.org/0000-0002-2299-2050'
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.13845842
+repository-code: 'https://github.com/mhoban/rainbow_bridge'
+abstract: >-
+  rainbow_bridge is a fully automated containerized 
+  pipeline based on nextflow that employs a number of
+  state-of-the-art applications to process eDNA and other
+  metabarcoding data from raw sequences to the generation of
+  operational taxonomic units and their abundance tables.
+keywords:
+  - metabarcoding
+  - environmental DNA
+  - eDNA
+  - biodiversity
+license: AGPL-3.0-or-later
+commit: 24e1eebec3219733b3aa35cf65c05a8a2e34fa98

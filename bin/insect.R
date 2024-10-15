@@ -75,6 +75,13 @@ option_list = list(
   make_option(c("-m","--merged"),action="store",default=NA,type="character",help="NCBI merged taxid table")
 )
 
+# use debug arguments if we have 'em
+if (exists('debug_args')) {
+  opt_args <- debug_args
+} else {
+  opt_args <- commandArgs(TRUE)
+}
+
 # parse command-line options
 opt = parse_args(
   OptionParser(
@@ -84,7 +91,8 @@ opt = parse_args(
     usage="%prog [options] <zotus> <model> <output>"
   ), 
   convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 3
+  positional_arguments = 3,
+  args = opt_args
 )
 
 # check that passed files all exist and bail on failure

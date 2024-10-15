@@ -85,6 +85,13 @@ option_list = list(
   make_option(c("-I","--insect-table"), action="store_true", default=FALSE, type="logical", help="Produce zOTU table using insect results only")
 )
 
+# use debug arguments if we have 'em
+if (exists('debug_args')) {
+  opt_args <- debug_args
+} else {
+  opt_args <- commandArgs(TRUE)
+}
+
 # parse command-line options
 opt = parse_args(
   OptionParser(
@@ -94,7 +101,8 @@ opt = parse_args(
     usage="%prog [options] <zotu_table>"
   ), 
   convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 1#, args=debug_args
+  positional_arguments = 1,
+  args=opt_args
 )
 
 

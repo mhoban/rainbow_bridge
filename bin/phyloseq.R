@@ -98,8 +98,21 @@ option_list = list(
 # Setup
 #........................................................................
 
+# use debug arguments if we have 'em
+if (exists('debug_args')) {
+  opt_args <- debug_args
+} else {
+  opt_args <- commandArgs(TRUE)
+}
+
 # parse command-line args
-opt = parse_args2(OptionParser(option_list=option_list,formatter=nice_formatter))
+opt = parse_args2(
+  OptionParser(
+    option_list=option_list,
+    formatter=nice_formatter
+  ),
+  args = opt_args
+)
 
 taxonomy_file <- opt$options$taxonomy
 otu_file      <- opt$options$otu_table

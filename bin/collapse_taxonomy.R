@@ -254,6 +254,12 @@ option_list <- list(
   make_option(c("-z","--zotu-table"),action="store",default=NA,type="character",help="Optional (tab-separated) OTU table to merge with results (first column must be OTU ID)")
 )
 
+# use debug arguments if we have 'em
+if (exists('debug_args')) {
+  opt_args <- debug_args
+} else {
+  opt_args <- commandArgs(TRUE)
+}
 
 # parse command-line options
 opt <- parse_args(
@@ -264,7 +270,8 @@ opt <- parse_args(
     usage="%prog [options] <blast_result> <taxonomic_lineage>`"
   ), 
   convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 2#, args = debug_args
+  positional_arguments = 2, 
+  args = opt_args
 )
 
 # check that files in positional args all exist and bail on failure
@@ -317,11 +324,11 @@ filtered <- blast %>%
   # (per CEB's suggestion in #97)
   group_by(zotu,seqid) %>%
   summarise(
-    across(taxid:domain,~.x[1]),
+    across(taxid:domain,~first(.x)),
     pident=max(pident),
-    across(length:slen,~.x[1]),
+    across(length:slen,~first(.x)),
     mismatch=min(mismatch),
-    across(gapopen:stitle,~.x[1]),
+    across(gapopen:stitle,~first(.x)),
     evalue=min(evalue),
     bitscore=max(bitscore),
     qcov=max(qcov),

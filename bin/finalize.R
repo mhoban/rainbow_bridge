@@ -59,10 +59,6 @@ nice_formatter <- function(object) {
   return(invisible(NULL))
 }
 
-parse_ranks <- function(opt, flag, val, parser, ...) {
-  str_split_1(val,",")
-}
-
 # set up option list
 option_list = list(
   make_option(c("-R", "--remap"), action="store", default="", type="character", help="Taxonomy remapping table"),

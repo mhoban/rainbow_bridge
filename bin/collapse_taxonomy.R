@@ -195,10 +195,6 @@ na_opt <- function(opt, flag, val, parser, ...) {
   replace(val,val == "",NA) 
 }
 
-parse_ranks <- function(opt, flag, val, parser, ...) {
-  str_split_1(val,",")
-}
-
 # load a csv or tsv file
 load_table <- function(fn,col_types=cols(),...) {
   tabs <- c("tsv","tab","txt")

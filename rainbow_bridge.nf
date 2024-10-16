@@ -219,6 +219,7 @@ process filter_merge {
       --trimns --trimqualities \
       --minquality ${params.minQuality} \
       --qualitymax ${params.maxQuality} \
+      --mate-separator ${params.mateSeparator} \
       --basename ${key}
 
     mv ${key}.truncated ${key}_trimmed_merged.fastq
@@ -603,37 +604,6 @@ process insect {
   """
 }
 
-// extract the NCBI blast taxonomy database
-process extract_taxdb {
-  label 'shell'
-
-  input:
-    tuple path(taxdb), val(to_extract)
-  
-  output:
-    path(to_extract)
-
-  script:
-  """
-  gunzip -c taxdb.tar.gz | tar x ${to_extract}
-  """
-}
-
-// extract arbitrary files from a zip archive
-process extract_taxonomy {
-  label 'shell'
-
-  input:
-    tuple path(zipfile), val(f)
-  output:
-    path(f)
-  
-  script:
-  """
-  unzip -p ${zipfile} ${f} > ${f}
-  """
-}
-
 // dummy process to generate published file
 process save_taxdump {
   label 'shell'
@@ -737,25 +707,27 @@ process finalize {
     tuple path(zotu_table), path(curated_zotu_table), path(lca_taxonomy), path(insect_taxonomy)
 
   output:
-    tuple path("zotu_table_raw.tsv"), path("taxonomy_raw.tsv"), path("zotu_table_final*.tsv")
+    path("zotu_table_raw.tsv")
+    path("taxonomy_raw.tsv")
+    path("zotu_table_final*.tsv")
+    path("zotu_table_lca.tsv"), optional: true
+    path("zotu_table_insect.tsv"), optional: true
 
   script:
   opt = []
-  if (params.abundanceFilter) {
-    opt.add("--abundance-filter")
-  }
-  if (params.rarefy) {
-    opt.add("--rarefy")
-  }
-  if (params.filterMinimum) {
-    opt.add("--filter-min")
-  }
+  params.abundanceFilter && opt << "--abundance-filter"
+  params.rarefy && opt << "--rarefy"
+  params.filterMinimum && opt << "--filter-min"
+  params.lcaTable && opt << "--lca-table"
+  params.insectTable && opt << "--insect-table"
+
   """
   finalize.R \
     --filter "${params.taxonFilter}" \
     --remap "${params.taxonRemap}" \
     --insect "${insect_taxonomy}" \
     --lca "${lca_taxonomy}" \
+    --dropped "${params.dropped}" \
     --controls "${params.controls}" \
     --control-action "${params.controlAction}" \
     --control-threshold "${params.controlThreshold}" \
@@ -782,6 +754,9 @@ include { lca as collapse_taxonomy  } from './modules/modules.nf'
 include { get_web as get_model } from './modules/modules.nf'
 include { get_web as get_taxdb } from './modules/modules.nf'
 include { get_web as get_taxdump } from './modules/modules.nf'
+include { extract_zip as extract_lineage } from './modules/modules.nf'
+include { extract_zip as extract_ncbi } from './modules/modules.nf'
+include { extract_targz as extract_taxdb } from './modules/modules.nf'
 
 workflow {
   // make sure our arguments are all in order
@@ -795,34 +770,51 @@ workflow {
     zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
     blast_result = Channel.fromPath(params.blastFile, checkIfExists: true)
 
-    // load the ranked lineage and merged channels
-    if (!helper.file_exists(params.taxdump)) {
-      if (params.taxdump != "") {
-        println(colors.yellow("Taxonomy dump archive '${params.taxdump}' does not exist and will be downloaded"))
+    // load lineage and (optionally) other taxonomy dump files
+    if (!helper.file_exists(params.lcaLineage)) {
+      if (!helper.file_exists(params.taxdump)) {
+        if (params.taxdump != "") {
+          println(colors.yellow("Taxonomy dump archive '${params.taxdump}' does not exist and will be downloaded"))
+        }
+
+        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') | 
+          combine(Channel.fromPath('new_taxdump.zip')) | 
+          get_taxdump | 
+          set { taxdump }
+
+        taxdump |
+          combine(Channel.of('rankedlineage.dmp')) |
+          extract_lineage | collect |
+          set { lineage }
+        taxdump |
+          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
+          extract_ncbi | collect | toList |
+          set { ncbi_dumps }
+
+        taxdump | 
+          save_taxdump
+      } else {
+        zip = Channel.fromPath(params.taxdump) 
+        zip |
+          combine(Channel.of('rankedlineage.dmp')) |
+          extract_lineage | collect |
+          set { lineage }
+        zip |
+          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
+          extract_ncbi | collect | toList |
+          set { ncbi_dumps }
       }
-
-      Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') | 
-        combine(Channel.fromPath('new_taxdump.zip')) | 
-        get_taxdump | 
-        set { taxdump }
-      taxdump | 
-        combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
-        extract_taxonomy | collect | toList |
-        set { lineage }
-
-      taxdump | 
-        save_taxdump
     } else {
-      Channel.fromPath(params.taxdump) | 
-        combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
-        extract_taxonomy | collect | toList |
-        set { lineage }
+      // if user has passed a custom ranked lineage dump, use it instead
+      lineage = Channel.fromPath(params.lcaLineage) 
+      ncbi_dumps = Channel.fromPath('nodumps')
     }
 
 
     // run taxonomy process
     blast_result |
       combine(lineage) | 
+      combine(ncbi_dumps) |
       collapse_taxonomy
 
   } else {
@@ -1292,44 +1284,47 @@ workflow {
         !b ? 
           channel.of(file(d).Name) | combine(channel.fromPath("${d}${wildcard}")) :
           b | concat(channel.of(file(d).Name) | combine(channel.fromPath("${d}${wildcard}")))
-          // channel.of(d) | combine(channel.fromPath("${d}.*n*")) :
-          // b | concat(channel.of(d) | combine(channel.fromPath("${d}.*n*}")))
       }) | 
         groupTuple | 
         set { blastdb }
 
-      // try to find taxdb files in any of the supplied blast databases
-      db = blasts.collect {
-        blastr -> 
-          file(blastr).Parent.list().findAll {
-            it =~ /taxdb\.bt[id]/
-          }.collect {
-            "${file(blastr).Parent}/${it}"
-          }
-      }.getAt(0)
+      if (!helper.file_exists(params.lcaLineage)) {
+        // try to find taxdb files in any of the supplied blast databases
+        db = blasts.collect {
+          blastr -> 
+            file(blastr).Parent.list().findAll {
+              it =~ /taxdb\.bt[id]/
+            }.collect {
+              "${file(blastr).Parent}/${it}"
+            }
+        }.getAt(0)
 
-      // get taxdb files (either download or from command line)
-      if (params.blastTaxdb == "+++__+++") {
-        if (db.size() > 0) {
-          // if we found something and we don't want something else, use what we found
-          Channel.fromPath(db) | 
+        // get taxdb files (either download or from command line)
+        if (params.blastTaxdb == "+++__+++") {
+          if (db.size() > 0) {
+            // if we found something and we don't want something else, use what we found
+            Channel.fromPath(db) | 
+              collect | 
+              toList | 
+              set { taxdb }
+          } else {
+            // download and extract taxdb from ncbi website
+            Channel.of('https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz') | 
+              combine(Channel.fromPath('taxdb.tar.gz')) | 
+              get_taxdb | 
+              combine(Channel.of('taxdb.btd','taxdb.bti')) |
+              extract_taxdb | 
+              collect | toList |
+              set { taxdb }
+          }
+        } else {
+          Channel.fromPath("${params.blastTaxdb}/taxdb.bt*", checkIfExists: true) | 
             collect | 
             toList | 
             set { taxdb }
-        } else {
-          // download and extract taxdb from ncbi website
-          Channel.of('https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz') | 
-            combine(Channel.fromPath('taxdb.tar.gz')) | 
-            get_taxdb | 
-            combine(Channel.of('taxdb.btd','taxdb.bti')) |
-            extract_taxdb | 
-            collect | toList |
-            set { taxdb }
         }
       } else {
-        Channel.fromPath("${params.blastTaxdb}/taxdb.bt*", checkIfExists: true) | 
-          collect | 
-          toList | 
+        Channel.value([[file("taxdb.bti"),file("taxdb.btd")]]) |
           set { taxdb }
       }
 
@@ -1375,7 +1370,7 @@ workflow {
 
     // get NCBI lineage dump if needed
     lca = params.collapseTaxonomy || params.assignTaxonomy
-    if ((lca && params.blast) || params.insect) {
+    if ((lca && params.blast && !helper.file_exists(params.lcaLineage))) {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.taxdump)) {
 
@@ -1383,18 +1378,45 @@ workflow {
           combine(Channel.fromPath('new_taxdump.zip')) | 
           get_taxdump | 
           set { taxdump }
-        taxdump | 
-          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
-        extract_taxonomy | collect | toList |
-        set { lineage }
+        taxdump |
+          combine(Channel.of('rankedlineage.dmp')) |
+          extract_lineage | collect |
+          set { lineage }
+        taxdump |
+          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
+          extract_ncbi | collect | toList |
+          set { ncbi_dumps }
 
         taxdump | 
           save_taxdump
       } else {
-        Channel.fromPath(params.taxdump) | 
-          combine(Channel.of('rankedlineage.dmp','merged.dmp','nodes.dmp')) |
-        extract_taxonomy | collect | toList |
-        set { lineage }
+        zip = Channel.fromPath(params.taxdump) 
+        zip |
+          combine(Channel.of('rankedlineage.dmp')) |
+          extract_lineage | collect |
+          set { lineage }
+        zip |
+          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
+          extract_ncbi | collect | toList |
+          set { ncbi_dumps }
+      }
+    }
+
+    if (helper.file_exists(params.lcaLineage)) {
+      // if user has passed a custom ranked lineage dump, use it instead
+      lineage = Channel.fromPath(params.lcaLineage)
+      ncbi_dumps = Channel.fromPath('nodumps')
+      
+      // if we're doing an insect classification, we still need rankedlineage.dmp from NCBI
+      if (params.insect) {
+        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') | 
+          combine(Channel.fromPath('new_taxdump.zip')) | 
+          get_taxdump | 
+          set { taxdump }
+        taxdump |
+          combine(Channel.of('rankedlineage.dmp')) |
+          extract_lineage | collect |
+          set { ncbi_lineage }
       }
     }
 
@@ -1422,7 +1444,8 @@ workflow {
 
       // run the insect classification
       classifier | 
-        combine(lineage) | 
+        // join the correct lineage dump
+        ( helper.file_exists(params.lcaLineage) ? combine(ncbi_lineage) : combine(lineage) ) | 
         combine(zotus) | 
         insect | 
         set { insectized }
@@ -1434,6 +1457,7 @@ workflow {
       // and run the taxonomy assignment/collapser script
       blast_result |
         combine(lineage) | 
+        combine(ncbi_dumps) |
         collapse_taxonomy |
         set { taxonomized }
     }

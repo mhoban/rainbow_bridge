@@ -43,6 +43,13 @@ option_list = list(
   make_option(c("-r", "--min-rc"), action="store", default=0.95, type='double', help="Minimum relative co-ocurrence rate [default: 0.95]")
 )
 
+# use debug arguments if we have 'em
+if (exists('debug_args')) {
+  opt_args <- debug_args
+} else {
+  opt_args <- commandArgs(TRUE)
+}
+
 # parse command-line options
 opt = parse_args(
   OptionParser(
@@ -52,7 +59,8 @@ opt = parse_args(
     usage="%prog [options] <zotu_table> <match_list> <curated_zotu_table> <curation_map> <rds>"
   ), 
   convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 5
+  positional_arguments = 5,
+  args = opt_args
 )
 
 # get command-line options

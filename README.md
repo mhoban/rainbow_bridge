@@ -13,7 +13,7 @@
 
 # rainbow_bridge
 
-rainbow_bridge is a fully automated pipeline that employs a number of state-of-the-art applications to process eDNA and other metabarcoding data from raw sequences (single- or paired-end) to the generation of (optionally curated) zero-radius operational taxonomic units (zOTUs) and their abundance tables. The pipeline will also collapse assigned taxonomy (via BLAST and/or insect) to least common ancestor (LCA) based on user-supplied threshold values as well as perform other finalization steps (e.g., taxon filtering/remapping, decontamination, rarefaction, etc.). 
+rainbow_bridge is a fully automated pipeline that employs a number of state-of-the-art applications to process eDNA and other metabarcoding data from raw sequences (single- or paired-end) to the generation of (optionally curated) zero-radius operational taxonomic units (zOTUs) and their abundance tables. The pipeline will also collapse assigned taxonomy (via BLAST and/or insect) to lowest common ancestor (LCA) based on user-supplied threshold values as well as perform other finalization steps (e.g., taxon filtering/remapping, decontamination, rarefaction, etc.). 
 
 This pipeline uses [nextflow](https://www.nextflow.io/) and a containerized subsystem (e.g., [singularity](https://docs.sylabs.io/guides/3.5/user-guide/introduction.html), [podman](https://podman.io/), etc.) to enable a scalable, portable and reproducible workflow on a local computer, cloud (eventually) or high-performance computing (HPC) clusters.
 
@@ -81,8 +81,8 @@ flowchart TB
 
   taxdb[/"NCBI taxonomy database"/]
 
-  subgraph taxonomy["Collapse taxonomy (python)"]
-    tax1["Collapse taxonomy to<br>least-common ancestor (LCA)"]
+  subgraph taxonomy["Collapse taxonomy (R)"]
+    tax1["Collapse taxonomy to<br>lowest-common ancestor (LCA)"]
   end
 
   subgraph lulu["Table curation (R/lulu)"]
@@ -177,6 +177,9 @@ flowchart TB
          - [BLAST settings](#blast-settings-1)
          - [Classification using insect](#classification-using-insect)
          - [LCA collapse](#lca-collapse)
+            * [LCA worked example](#lca-worked-example)
+            * [Using LCA with custom taxonomy and/or BLAST databases](#using-lca-with-custom-taxonomy-andor-blast-databases)
+            * [LCA options](#lca-options)
       + [Denoising/dereplication and zOTU inference](#denoisingdereplication-and-zotu-inference)
       + [zOTU curation using LULU](#zotu-curation-using-lulu)
       + [Resource allocation](#resource-allocation)
@@ -186,6 +189,7 @@ flowchart TB
             * [Data cleanup](#data-cleanup)
             * [Contamination / negative controls](#contamination--negative-controls)
             * [Abundance filtration and rarefaction](#abundance-filtration-and-rarefaction)
+            * [Other finalization options](#other-finalization-options)
          - [Output products](#output-products)
             * [Generating phyloseq objects](#generating-phyloseq-objects)
 - [Useful examples and tips](#useful-examples-and-tips)
@@ -664,7 +668,7 @@ These settings control options passed to the `ngsfilter` tool and include allowa
 
 ### Assigning taxonomy
 
-These options relate to assignment/collapsing of taxonomy by zOTU sequence. Initial taxonomic assignment is performed using BLAST and/or insect and further refined using least common ancestor (LCA) collapse.  
+These options relate to assignment/collapsing of taxonomy by zOTU sequence. Initial taxonomic assignment is performed using BLAST and/or insect and further refined using lowest common ancestor (LCA) collapse.  
 
 BLAST is an alignment-based approach that uses the NCBI [GenBank](https://www.ncbi.nlm.nih.gov/genbank/) database to match zOTUs to sequences with known taxonomic identity. [insect](https://github.com/shaunpwilkinson/insect) is a phylogenetic (tree-based) approach to taxonomic assignment. It is particularly useful for assigning higher-order (e.g. phylum, order) taxonomy to zOTUs that are otherwise unidentified by BLAST. In the LCA method, BLAST results for each zOTU are compared to one another and a decision is made whether or not to collapse to the next highest taxonomic rank based on a user-defined variability threshold among those results. 
 
@@ -746,14 +750,91 @@ These options control taxonomy assignment using the [insect](https://github.com/
 
 #### LCA collapse
 
-Options for the LCA method of taxonomy refinement.
+Options for the lowest common ancestor (LCA) method of taxonomy refinement.
 
- This method will selectively collapse assignments to higher taxonomic levels based on user-defined variability and certainty thresholds. The filtering applied in this method is based on a set of user specified thresholds, including query coverage (`qcov`), percentage identity (`pid`), and the difference between percent identities of two BLAST hits when their query coverage is equal (`diff`). Setting `qcov` and `pid` thresholds ensures that only BLAST hits greater than or equal to those thresholds will progress to the `diff` comparison step. Setting `diff` means that if the absolute value of the difference in `pid` between two BLAST results is \< `diff`, then a species level taxonomy will be returned. Otherwise, taxonomy of that zOTU will be collapsed to the least common ancestor of available BLAST results (for that zOTU). Two files are produced: a file with assigned taxonomy, and an intermediate file which may give the user some idea of why zOTUs may have had taxonomic levels dropped.
+The LCA method will selectively collapse BLAST assignments to their lowest common ancestor based on user-defined variability and certainty thresholds. This script first filters BLAST results according to minimum quality thresholds (percent identity: `--lca-pid` and query coverage: `--lca-qcov`). For cases where zOTU sequences return multiple matches to the same sequence ID, the matches are summarized by the best combination of match scores. Then, results whose percent identity differs from the best result by more than a user-defined amount (`--lca-diff`) are discarded. Finally, zOTUs with taxonomic assignments that are consistent across remaining BLAST results will receive species-level taxonomy. Otherwise, the taxonomy of that zOTU will be collapsed to the lowest common ancestor of remaining BLAST results (if using NCBI taxonomy, the NCBI taxid for the common ancestor will also be retrieved). Two files are produced: a collapsed taxonomy table and an intermediate table retaining all zOTUs passing minimum quality thresholds. The intermediate table may be useful in determining why a given zOTU may have had its taxonomy collapsed.
 
-<small>**`--collapse-taxonomy`**</small>: Collapse assigned BLAST results by least common ancestor (LCA)  
+##### LCA worked example
+
+Here is a brief worked example using default parameters (`--lca-pid 97`, `--lca-qcov 100`, `--lca-diff 1`) and BLAST results for two different zOTUs. In this example, one zOTU will be collapsed to LCA and the other will receive a species-level assignment. 
+
+Here is the (abridged) BLAST results table, sorted by zOTU and descending percent identity and query coverage:
+
+|zotu  |species                 |pident|evalue   |qcov|
+|------|------------------------|------|---------|----|
+|Zotu8 |Acanthurus nigricans    |99.505|4.86e-95 |100 |
+|Zotu8 |Acanthurus achilles     |99.505|4.86e-95 |100 |
+|Zotu8 |Acanthurus nigricans    |99.505|4.86e-95 |100 |
+|Zotu8 |Acanthurus nigricans    |99.505|4.86e-95 |100 |
+|Zotu8 |Ctenochaetus tominiensis|99.505|4.86e-95 |100 |
+|Zotu8 |Acanthurus japonicus    |99.505|4.86e-95 |100 |
+|Zotu8 |Acanthurus leucosternon |99.01 |5.92e-94 |100 |
+|Zotu8 |Acanthurus leucosternon |98.515|2.52e-92 |100 |
+|Zotu11|Halichoeres ornatissimus|100   |4.78e-95 |100 |
+|Zotu11|Halichoeres ornatissimus|98.995|2.47e-92 |100 |
+|Zotu11|Halichoeres ornatissimus|98.995|2.47e-92 |100 |
+|Zotu11|Halichoeres cosmetus    |98.492|1.05e-90 |100 |
+|Zotu11|Halichoeres cosmetus    |98.492|1.05e-90 |100 |
+|Zotu11|Halichoeres cosmetus    |98.492|1.05e-90 |100 |
+|Zotu11|Halichoeres ornatissimus|97.99 |8.63e-92 |100 |
+
+First, the BLAST table is filtered by minimum query coverage and pecent identity, the original number of unique hits are recorded, and the difference in percent identity to the best match is calculated for each zOTU (diff column). We lose several matches within both zOTUs:
+
+|zotu  |species                 |pident|evalue  |bitscore|qcov|unique_hits|diff|
+|------|------------------------|------|--------|--------|----|-----------|----|
+|Zotu11|Halichoeres ornatissimus|100   |4.78e-95|360     |100 |7          |0   |
+|Zotu11|Halichoeres cosmetus    |98.492|1.05e-90|346     |100 |7          |1.5 |
+|Zotu8 |Ctenochaetus tominiensis|99.505|4.86e-95|361     |100 |8          |0   |
+|Zotu8 |Acanthurus nigricans    |99.505|4.86e-95|361     |100 |8          |0   |
+|Zotu8 |Acanthurus japonicus    |99.505|4.86e-95|361     |100 |8          |0   |
+|Zotu8 |Acanthurus leucosternon |99.01 |5.92e-94|356     |100 |8          |0.5 |
+|Zotu8 |Acanthurus achilles     |99.505|4.86e-95|361     |100 |8          |0   |
+
+
+Then, we retain only those hits with `diff` value below our threshold. We lose the match to *Halichoeres cosmetus*:
+
+|zotu  |species                 |pident|evalue  |bitscore|qcov|unique_hits|diff|
+|------|------------------------|------|--------|--------|----|-----------|----|
+|Zotu11|Halichoeres ornatissimus|100   |4.78e-95|360     |100 |7          |0   |
+|Zotu8 |Ctenochaetus tominiensis|99.505|4.86e-95|361     |100 |8          |0   |
+|Zotu8 |Acanthurus nigricans    |99.505|4.86e-95|361     |100 |8          |0   |
+|Zotu8 |Acanthurus japonicus    |99.505|4.86e-95|361     |100 |8          |0   |
+|Zotu8 |Acanthurus leucosternon |99.01 |5.92e-94|356     |100 |8          |0.5 |
+|Zotu8 |Acanthurus achilles     |99.505|4.86e-95|361     |100 |8          |0   |
+
+Finally, we collapse zOTUs with more than one species assignment to lowest common ancestor, with the final result of:
+
+|zotu  |domain    |kingdom|phylum   |class|order|family|genus|species                 |unique_hits|
+|------|----------|-------|---------|-----|-----|------|-----|------------------------|-----------|
+|Zotu8 |Eukaryota |Metazoa|Chordata |Actinopteri|Acanthuriformes|Acanthuridae|dropped|dropped|8|
+|Zotu11|Eukaryota |Metazoa|Chordata |Actinopteri|Labriformes|Labridae|Halichoeres|Halichoeres ornatissimus|7|
+
+Note that Zotu8 matched both *Ctenochaetus* and *Acanthurus* and was collapsed to family level (Acanthuridae) while Zotu11 matched only *Halichoeres ornatissimus* and so retained its species-level ID.
+
+
+##### Using LCA with custom taxonomy and/or BLAST databases
+
+By default, rainbow_bridge assumes that taxonomy IDs (taxids) returned from BLAST searches are NCBI taxids. That is, it is assumed that they will match entries in the NCBI [taxonomy database](https://www.ncbi.nlm.nih.gov/taxonomy/). This is true for both NCBI and custom BLAST databases. However, since published reference databases (e.g., [PR2](https://pr2-database.org/)) frequently come with associated taxonomic lineage information that may not match NCBI databases, it is also possible to provide that custom lineage data to be used by rainbow_bridge (and the LCA process). In order for rainbow_bridge to use your custom taxonomic lineage, you must provide a custom blast database with taxids (see [below](#making-a-custom-blast-database)) that match entries in a custom lineage file. The taxids can be any integers you'd like, since if a custom lineage is given, the pipeline won't attempt to match them to the NCBI database. However, the taxids in the BLAST database *must* match the taxids in the lineage file. The lineage file is a tabular file (either comma- or tab-separated) in which the first column must contain the (numeric) taxid, and subsequent columns contain whatever taxonomic ranks you want associated with it. Each column (other than taxid) should be named for its taxonomic rank (e.g., species, family, etc.). An example lineage file with the ranks family, genus, and species might look like this:
+
+|taxid|family|genus      |species|
+|-----|------|-----------|-------|
+|31343|Anguillidae|Anguilla   |Anguilla japonica|
+|31344|Anguillidae|Anguilla   |Anguilla anguilla|
+|31345|Anguillidae|Anguilla   |Anguilla australis|
+|31346|Anguillidae|Anguilla   |Anguilla malgumora|
+
+
+To use a custom taxonomic lineage, pass this tabular lineage file to rainbow_bridge using the `--lca-lineage` option.
+
+##### LCA options
+
+The following command-line options are available for the LCA collapse method:
+
+<small>**`--collapse-taxonomy`**</small>: Collapse assigned BLAST results by lowest common ancestor (LCA)  
 <small>**`--standalone-taxonomy`**</small>: Run LCA script standalone (i.e., separate from the pipeline) against user-supplied data  
 <small>**`--blast-file [file]`**</small>: (Only with --standalone-taxonomy) BLAST result table (e.g., output from the blast process)  
 <small>**`--zotu-table [file]`**</small>: (Only with --standalone-taxonomy) zOTU table file (e.g., output from the denoising process)  
+<small>**`--lca-lineage [file]`**</small>: Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage (for use with custom BLAST db)  
 <small>**`--taxdump [file]`**</small>: Previously-downloaded NCBI taxonomy dump zip archive ([new_taxdump.zip](https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/taxdump_readme.txt))  
 <small>**`--dropped [str]`**</small>: Placeholder string for dropped taxonomic levels (default: 'dropped'). Pass "NA" for blank/NA  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy refinement (default: 100)  
@@ -859,6 +940,11 @@ These options provide the ability to filter output by absolute and relative sequ
 <small>**`--rarefy`**</small>: Rarefy read counts to minimum depth using specified method.  
 <small>**`--rarefaction-method [method]`**</small>: Method by which to rarefy read counts. Available options are 'perm' and 'phyloseq'. For 'perm', perform permutational rarefaction using the `rrarefy.perm` function in the [EcolUtils](https://github.com/GuillemSalazar/EcolUtils) package. For 'phyloseq', use the `rarefy_even_depth` function in the [phyloseq](https://joey711.github.io/phyloseq/) package. (default: 'perm')  
 <small>**`--permutations [num]`**</small>: Number of permutations to use in permutational rarefaction (only when `--rarefy` and `--rarefy-method perm` are passed). (default: 100)  
+
+##### Other finalization options
+
+<small>**`--lca-table`**</small>: Produce final zOTU table merged with LCA taxonomy only.  
+<small>**`--insect-table`**</small>: Produce final zOTU table merged with insect taxonomy only.  
 
 #### Output products
 

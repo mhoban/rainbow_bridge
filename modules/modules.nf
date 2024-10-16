@@ -5,7 +5,7 @@ process lca {
   publishDir "${params.outDir}/taxonomy/lca/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}", mode: params.publishMode 
 
   input:
-    tuple path(blast_result), path('*')
+    tuple path(blast_result), path(lineage), path('*')
 
   output:
     tuple path("lca_intermediate*.tsv"), path("lca_taxonomy*.tsv"), emit: result
@@ -14,8 +14,8 @@ process lca {
 
   script:
   pf = []
-  pf += params.lcaFilterMaxQcov ? "--filter-max-qcov" : []
-  pf += params.lcaCaseInsensitive ? "--case-insensitive" : []
+  params.lcaFilterMaxQcov && pf << "--filter-max-qcov"
+  params.lcaCaseInsensitive && pf << "--case-insensitive" 
   """
   # save settings
   echo "Minimum query coverage %: ${params.lcaQcov}" > lca_settings.txt
@@ -30,11 +30,14 @@ process lca {
     --pid ${params.lcaPid} \
     --diff ${params.lcaDiff} \
     --merged merged.dmp \
+    --nodes nodes.dmp \
+    --taxid-lineage taxidlineage.dmp \
+    --output lca_taxonomy.tsv \
     --dropped "${params.dropped}" \
     --intermediate "lca_intermediate.tsv" \
     ${pf.join(" ")} \
     --taxon-filter "${params.lcaTaxonFilter}" \
-    ${blast_result} rankedlineage.dmp nodes.dmp "lca_taxonomy.tsv"
+    ${blast_result} ${lineage}
   """
 }  
 
@@ -93,4 +96,35 @@ process get_web {
     classifier = task.workDir / localfile 
     url = new URL(location)
     url.withInputStream { stream -> classifier << stream }
+}
+
+// extract arbitrary files from a zip archive
+process extract_zip {
+  label 'shell'
+
+  input:
+    tuple path(zipfile), val(f)
+  output:
+    path(f)
+  
+  script:
+  """
+  unzip -p ${zipfile} ${f} > ${f}
+  """
+}
+
+// extract files from a .tar.gz archive
+process extract_targz {
+  label 'shell'
+
+  input:
+    tuple path(archive), val(to_extract)
+  
+  output:
+    path(to_extract)
+
+  script:
+  """
+  gunzip -c ${archive} | tar x ${to_extract}
+  """
 }

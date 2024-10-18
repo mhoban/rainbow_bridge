@@ -88,10 +88,6 @@ def check_params() {
       println(colors.red("The supplied blast result table \"${params.blastFile}\" does not exist"))  
       exit(1)
     }
-    if (!helper.file_exists(params.zotuTable)) {
-      println(colors.red("The supplied zOTU table \"${params.zotuTable}\" does not exist"))  
-      exit(1)
-    }
   }
 
   if (params.sampleMap != "" && !helper.file_exists(params.sampleMap)) {
@@ -709,7 +705,10 @@ process phyloseq {
 process finalize {
   label 'r'
   
-  publishDir "${params.outDir}/final", mode: params.publishMode
+  publishDir {
+    td = params.standaloneTaxonomy ? '/standalone' : ''
+    "${params.outDir}/final${td}"
+  }, mode: params.publishMode
 
   input:
     tuple path(zotu_table), path(curated_zotu_table), path(lca_taxonomy), path(insect_taxonomy)
@@ -775,9 +774,7 @@ workflow {
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
     // build input channels and get appropriate process
-    zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
     blast_result = Channel.fromPath(params.blastFile, checkIfExists: true)
-
     // load lineage and (optionally) other taxonomy dump files
     if (!helper.file_exists(params.lcaLineage)) {
       if (!helper.file_exists(params.taxdump)) {
@@ -823,8 +820,26 @@ workflow {
     blast_result |
       combine(lineage) | 
       combine(ncbi_dumps) |
-      collapse_taxonomy
+      collapse_taxonomy | 
+      set { taxonomized }
 
+    // pull out lca table
+    taxonomized.result | 
+      map { it[1] } | 
+      set { lca_taxonomy }
+    
+    // do this part if the zotu table exists
+    if (helper.file_exists(params.zotuTable)) {
+      zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: false)
+      curated_zotu_table = Channel.fromPath("NOTADANGFILE.nothing.lulu", checkIfExists: false) 
+      insect_taxonomy = Channel.fromPath("NOTADANGFILE.nothing.insect", checkIfExists: false) 
+      // run it through finalize
+      zotu_table |
+        combine(curated_zotu_table) | 
+        combine(lca_taxonomy) | 
+        combine(insect_taxonomy) |
+        finalize
+    }
   } else {
     if (!helper.file_exists(params.demuxedFasta)) {
       if (params.single) {

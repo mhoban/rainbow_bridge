@@ -2,7 +2,10 @@
 process lca {
   label 'r'
 
-  publishDir "${params.outDir}/taxonomy/lca/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}", mode: params.publishMode 
+  publishDir {
+    td = params.standaloneTaxonomy ? 'standalone_lca' : 'lca'
+    "${params.outDir}/taxonomy/${td}/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}"
+  }, mode: params.publishMode
 
   input:
     tuple path(blast_result), path(lineage), path('*')

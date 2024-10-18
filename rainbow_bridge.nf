@@ -171,6 +171,14 @@ def check_params() {
     }
   }
 
+  // check LCA options
+  if (params.collapseTaxonomy) {
+    if (params.lcaDiff <= 0) {
+      println(colors.red("--lca-diff argument must be a number greater than zero."))  
+      exit(1)
+    }
+  }
+
 
   // make sure insect parameter is valid: either a file or one of the pretrained models
   if (params.insect) {

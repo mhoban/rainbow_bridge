@@ -839,12 +839,10 @@ workflow {
     blast_result |
       combine(lineage) | 
       combine(ncbi_dumps) |
-      collapse_taxonomy | 
-      set { taxonomized }
+      collapse_taxonomy 
 
     // pull out lca table
-    taxonomized.result | 
-      map { it[1] } | 
+    collapse_taxonomy.out.taxonomy | 
       set { lca_taxonomy }
     
     // do this part if the zotu table exists
@@ -1500,14 +1498,12 @@ workflow {
       blast_result |
         combine(lineage) | 
         combine(ncbi_dumps) |
-        collapse_taxonomy |
-        set { taxonomized }
+        collapse_taxonomy
     }
 
     // prepare for final output
     if (lca && params.blast) {
-      taxonomized.result | 
-        map { it[1] } | 
+      collapse_taxonomy.out.taxonomy | 
         set { lca_taxonomy }
     } else {
       Channel.fromPath("NOTADANGFILE.nothing.lca",checkIfExists: false) | 
@@ -1545,8 +1541,7 @@ workflow {
       switch (params.taxonomy) {
         case "lca":
           if (lca) {
-            taxonomized.result | 
-              map { it[1] } |
+            collapse_taxonomy.out.taxonomy | 
               combine(zotu_table) | 
               combine( dereplicated | map { sid, uniques, zotus, zotutable -> zotus } ) |
               combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 

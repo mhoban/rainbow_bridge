@@ -11,7 +11,8 @@ process lca {
     tuple path(blast_result), path(lineage), path('*')
 
   output:
-    tuple path("lca_intermediate*.tsv"), path("lca_taxonomy*.tsv"), emit: result
+    path("lca_taxonomy.tsv"), emit: taxonomy
+    path("lca_intermediate.tsv")
     path 'lca_settings.txt'
 
 

@@ -3,8 +3,8 @@ process lca {
   label 'r'
 
   publishDir {
-    td = params.standaloneTaxonomy ? 'standalone_lca' : 'lca'
-    "${params.outDir}/taxonomy/${td}/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}"
+    td = params.standaloneTaxonomy ? 'standalone_taxonomy' : 'taxonomy'
+    "${params.outDir}/${td}/lca/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}"
   }, mode: params.publishMode
 
   input:

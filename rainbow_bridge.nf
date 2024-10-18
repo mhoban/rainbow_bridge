@@ -725,8 +725,8 @@ process finalize {
   label 'r'
   
   publishDir {
-    td = params.standaloneTaxonomy ? '/standalone' : ''
-    "${params.outDir}/final${td}"
+    td = params.standaloneTaxonomy ? 'standalone_taxonomy/final' : 'final'
+    "${params.outDir}/${td}"
   }, mode: params.publishMode
 
   input:

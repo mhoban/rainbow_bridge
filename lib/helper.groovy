@@ -253,6 +253,7 @@ class helper {
       --alpha [num]                 Sets the alpha parameter for the UNOISE3 algorithm (default: ${params.alpha})
       --min-abundance [num]         Minimum sequence abundance for zOTU determination; sequences below threshold will be discarded
                                     (default: ${params.minAbundance}) 
+      --zotu-identity [num]         Fractional identity (0–1) for zOTU search (default: 0.97)
       --usearch                     shortcut for --denoiser usearch
 
     LULU zOTU curation:

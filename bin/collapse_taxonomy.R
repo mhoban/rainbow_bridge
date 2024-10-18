@@ -250,8 +250,7 @@ option_list <- list(
   make_option(c("-a", "--taxid-lineage"), action="store", default="", type="character", help="NCBI taxidlineage.dmp file"),
   make_option(c("-k", "--drop-blank"), action="store_true", default=TRUE, type="logical", help="Drop entries with completely blank taxonomic lineages"),
   make_option(c("-r", "--dropped"), action="store", default="dropped", type='character', help="Placeholder for dropped taxonomic ranks (default: %default)"),
-  make_option(c("-o", "--output"),action="store",default="lca_taxonomy.tsv",type="character",help="Output file (default: %default)"),
-  make_option(c("-z","--zotu-table"),action="store",default=NA,type="character",help="Optional (tab-separated) OTU table to merge with results (first column must be OTU ID)")
+  make_option(c("-o", "--output"),action="store",default="lca_taxonomy.tsv",type="character",help="Output file (default: %default)")
 )
 
 # use debug arguments if we have 'em
@@ -297,7 +296,6 @@ intermediate <- opt$options$intermediate
 semicolon <- opt$options$semicolon
 drop_blank <- opt$options$drop_blank
 dropped <- opt$options$dropped
-zotu_table_file <- opt$options$zotu_table
 
 if (str_to_lower(dropped) == "na") {
   dropped <- NA_character_
@@ -478,14 +476,6 @@ collapsed <- filtered %>%
   # if we have ranks not in the list, they'll end up at the end, but they'll still be there
   select(zotu,na.omit(match(hierarchy,colnames(.))),everything(),unique_hits,taxid,taxid_rank)
 
-
-# merge zotu table, if desired
-if (file_exists(zotu_table_file)) {
-  zotu_table <- read_tsv(zotu_table_file,col_types=cols())
-  # use inner join so we only get complete data
-  collapsed <- collapsed %>%
-    inner_join(zotu_table,by=setNames(colnames(zotu_table)[1],"zotu")) 
-}
 
 # save the collapsed output table
 write_tsv(collapsed,output_table,na="")

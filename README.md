@@ -177,9 +177,10 @@ flowchart TB
          - [BLAST settings](#blast-settings-1)
          - [Classification using insect](#classification-using-insect)
          - [LCA collapse](#lca-collapse)
+            * [LCA options](#lca-options)
+            * [Standalone LCA](#standalone-lca)
             * [LCA worked example](#lca-worked-example)
             * [Using LCA with custom taxonomy and/or BLAST databases](#using-lca-with-custom-taxonomy-andor-blast-databases)
-            * [LCA options](#lca-options)
       + [Denoising/dereplication and zOTU inference](#denoisingdereplication-and-zotu-inference)
       + [zOTU curation using LULU](#zotu-curation-using-lulu)
       + [Resource allocation](#resource-allocation)
@@ -754,6 +755,30 @@ Options for the lowest common ancestor (LCA) method of taxonomy refinement.
 
 The LCA method will selectively collapse BLAST assignments to their lowest common ancestor based on user-defined variability and certainty thresholds. This script first filters BLAST results according to minimum quality thresholds (percent identity: `--lca-pid` and query coverage: `--lca-qcov`). For cases where zOTU sequences return multiple matches to the same sequence ID, the matches are summarized by the best combination of match scores. Then, results whose percent identity differs from the best result by more than a user-defined amount (`--lca-diff`) are discarded. Finally, zOTUs with taxonomic assignments that are consistent across remaining BLAST results will receive species-level taxonomy. Otherwise, the taxonomy of that zOTU will be collapsed to the lowest common ancestor of remaining BLAST results (if using NCBI taxonomy, the NCBI taxid for the common ancestor will also be retrieved). Two files are produced: a collapsed taxonomy table and an intermediate table retaining all zOTUs passing minimum quality thresholds. The intermediate table may be useful in determining why a given zOTU may have had its taxonomy collapsed.
 
+##### LCA options
+
+The following command-line options are available for the LCA collapse method:
+
+<small>**`--collapse-taxonomy`**</small>: Collapse assigned BLAST results by lowest common ancestor (LCA)  
+<small>**`--standalone-taxonomy`**</small>: Run LCA script standalone (i.e., separate from the pipeline) against user-supplied data  
+<small>**`--blast-file [file]`**</small>: (Only with --standalone-taxonomy) BLAST result table (e.g., output from the blast process)  
+<small>**`--zotu-table [file]`**</small>: (Only with --standalone-taxonomy) zOTU table file (e.g., output from the denoising process)  
+<small>**`--lca-lineage [file]`**</small>: Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage (for use with custom BLAST db)  
+<small>**`--taxdump [file]`**</small>: Previously-downloaded NCBI taxonomy dump zip archive ([new_taxdump.zip](https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/taxdump_readme.txt))  
+<small>**`--dropped [str]`**</small>: Placeholder string for dropped taxonomic levels (default: 'dropped'). Pass "NA" for blank/NA  
+<small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy refinement (default: 100)  
+<small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy refinement (default: 97)  
+<small>**`--lca-diff [num]`**</small>:  Maximum difference between percent identities (with identical query coverage) where shared taxonomy is retained (default: 1)  
+<small>**`--lca-taxon-filter [regex]`**</small>:  A regular expression with which to remove unwanted taxa from BLAST results. Defaults to filtering uncultured/environmental/synthetic sequences ('uncultured|environmental sample|clone|synthetic').  
+<small>**`--lca-case-insensitive`**</small>: Ignore case when applying the regex in `--lca-taxon-filter` (default: false).  
+<small>**`--lca-filter-max-qcov`**</small>: During LCA collapse, retain only BLAST records having the highest query coverage (default: false).  
+
+##### Standalone LCA
+rainbow_bridge can run the LCA collapse process independent of the rest of the pipeline. This is useful for experimenting with different values of percent ID and difference threshold, among other things. To run LCA in standalone mode, the pipeline must be run with the `--standalone-taxonomy` option. In addition to `--standalone-taxonomy`, you must supply a BLAST results file with the `--blast-file` option. You may also optionally provide a zOTU table using the `--zotu-table` option. When running LCA in standalone mode, the output files will be placed in the following directories:
+
+LCA taxonomy file: `output/standalone_taxonomy/lca/<settings>`  
+Merged zOTU table (if `--zotu-table` was present): `output/standalone_taxonomy/final`
+
 ##### LCA worked example
 
 Here is a brief worked example using default parameters (`--lca-pid 97`, `--lca-qcov 100`, `--lca-diff 1`) and BLAST results for two different zOTUs. In this example, one zOTU will be collapsed to LCA and the other will receive a species-level assignment. 
@@ -825,26 +850,6 @@ By default, rainbow_bridge assumes that taxonomy IDs (taxids) returned from BLAS
 
 
 To use a custom taxonomic lineage, pass this tabular lineage file to rainbow_bridge using the `--lca-lineage` option.
-
-##### LCA options
-
-The following command-line options are available for the LCA collapse method:
-
-<small>**`--collapse-taxonomy`**</small>: Collapse assigned BLAST results by lowest common ancestor (LCA)  
-<small>**`--standalone-taxonomy`**</small>: Run LCA script standalone (i.e., separate from the pipeline) against user-supplied data  
-<small>**`--blast-file [file]`**</small>: (Only with --standalone-taxonomy) BLAST result table (e.g., output from the blast process)  
-<small>**`--zotu-table [file]`**</small>: (Only with --standalone-taxonomy) zOTU table file (e.g., output from the denoising process)  
-<small>**`--lca-lineage [file]`**</small>: Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage (for use with custom BLAST db)  
-<small>**`--taxdump [file]`**</small>: Previously-downloaded NCBI taxonomy dump zip archive ([new_taxdump.zip](https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/taxdump_readme.txt))  
-<small>**`--dropped [str]`**</small>: Placeholder string for dropped taxonomic levels (default: 'dropped'). Pass "NA" for blank/NA  
-<small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy refinement (default: 100)  
-<small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy refinement (default: 97)  
-<small>**`--lca-diff [num]`**</small>:  Maximum difference between percent identities (with identical query coverage) where shared taxonomy is retained (default: 1)  
-<small>**`--lca-taxon-filter [regex]`**</small>:  A regular expression with which to remove unwanted taxa from BLAST results. Defaults to filtering uncultured/environmental/synthetic sequences ('uncultured|environmental sample|clone|synthetic').  
-<small>**`--lca-case-insensitive`**</small>: Ignore case when applying the regex in `--lca-taxon-filter` (default: false).  
-<small>**`--lca-filter-max-qcov`**</small>: During LCA collapse, retain only BLAST records having the highest query coverage (default: false).  
-
-
 
 ### Denoising/dereplication and zOTU inference
 These options control how (and by what tool) sequences are denoised and zOTUs are inferred By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch), which does not suffer from the 4GB memory limit of the free version of [usearch](https://www.drive5.com/usearch/). You still retain the option of using either the free (32 bit) or commercial (64 bit) versions of usearch, if you really want to. 

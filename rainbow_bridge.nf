@@ -407,6 +407,7 @@ process dereplicate {
   output:
     tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tsv"), emit: result
     path 'settings.txt'
+    path 'zotu_map.tsv'
 
   script:
   if (params.denoiser == "vsearch") {
@@ -419,10 +420,24 @@ process dereplicate {
     # 3. get rid of chimeras
     # 4. match original sequences to zotus by 97% identity
     if [ -s "${relabeled_merged}" ]; then 
-      vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --derep_fulllength ${relabeled_merged} --sizeout --output "${id}_unique.fasta"
-      vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
-      vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" --relabel Zotu 
-      vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" --id 0.97 --otutabout zotu_table.tsv
+      vsearch \
+        --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
+        --derep_fulllength ${relabeled_merged} --sizeout \
+        --output "${id}_unique.fasta"
+      vsearch \
+        --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
+        --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" \
+        --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
+      vsearch \
+        --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
+        --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" \
+        --relabel Zotu 
+      vsearch \
+        --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
+        --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" \
+        --id ${params.zotuIdentity} --otutabout zotu_table.tsv \
+        --userout zotu_map.tsv --userfields "query+target" \
+        --top_hits_only
     else
       >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
       exit 1
@@ -438,9 +453,13 @@ process dereplicate {
     # 2. run denoising & chimera removal
     # 3. generate zotu table
     if [ -s "${relabeled_merged}" ]; then
-      ${denoiser} -fastx_uniques ${relabeled_merged} -sizeout -fastaout "${id}_unique.fasta"
-      ${denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} -unoise_alpha ${params.alpha}
-      ${denoiser} -otutab ${relabeled_merged} -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zmap.txt
+      ${denoiser} -fastx_uniques ${relabeled_merged} \
+        -sizeout -fastaout "${id}_unique.fasta"
+      ${denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" \
+        -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} \
+        -unoise_alpha ${params.alpha}
+      ${denoiser} -otutab ${relabeled_merged} -id ${params.zotuIdentity} \
+        -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zotu_map.tsv
     else
       >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
       exit 1

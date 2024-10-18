@@ -852,6 +852,7 @@ These options control how (and by what tool) sequences are denoised and zOTUs ar
 <small>**`--denoiser [tool/path]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'usearch32', 'vsearch', path to 64-bit usearch executable (default: vsearch)    
 <small>**`--min-abundance [num]`**</small>:  Minimum sequence abundance for zOTU determination; sequences with abundances below the specified threshold will be discarded during the denoising process (default: 8)   
 <small>**`--alpha [num]`**</small>: Alpha parameter passed to the UNOISE3 algorithm (see the [unoise2 paper for more info](https://doi.org/10.1101/081257)) (default: 2.0)  
+<small>**`--zotu-identity [num]`**</small>: Fractional pairwise identity used to match raw reads to zOTUs, equivalent to `vsearch` `--id`/`usearch` `-id` parameters (default: 0.97)  
 <small>**`--usearch`**</small>:  Alias for `--denoiser usearch`  
 
 ### zOTU curation using LULU

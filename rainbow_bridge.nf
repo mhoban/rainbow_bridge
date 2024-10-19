@@ -113,7 +113,7 @@ def check_params() {
   if (params.blast) {
 
     // if --blast-taxdb is passed, check that it's a directory and that files exist
-    if (params.blastTaxdb != "+++__+++") {
+    if (params.blastTaxdb != "nofile-blast-taxdb") {
       ok = false
       // check for directory
       if (helper.is_dir(params.blastTaxdb)) {
@@ -847,9 +847,9 @@ workflow {
     
     // do this part if the zotu table exists
     if (helper.file_exists(params.zotuTable)) {
-      zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: false)
-      curated_zotu_table = Channel.fromPath("NOTADANGFILE.nothing.lulu", checkIfExists: false) 
-      insect_taxonomy = Channel.fromPath("NOTADANGFILE.nothing.insect", checkIfExists: false) 
+      zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
+      curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table", checkIfExists: false) 
+      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false) 
       // run it through finalize
       zotu_table |
         combine(curated_zotu_table) | 
@@ -1340,7 +1340,7 @@ workflow {
         }.getAt(0)
 
         // get taxdb files (either download or from command line)
-        if (params.blastTaxdb == "+++__+++") {
+        if (params.blastTaxdb == "nofile-blast-taxdb") {
           if (db.size() > 0) {
             // if we found something and we don't want something else, use what we found
             Channel.fromPath(db) | 
@@ -1506,7 +1506,7 @@ workflow {
       collapse_taxonomy.out.taxonomy | 
         set { lca_taxonomy }
     } else {
-      Channel.fromPath("NOTADANGFILE.nothing.lca",checkIfExists: false) | 
+      Channel.fromPath("nofile-lca-taxonomy",checkIfExists: false) | 
         set { lca_taxonomy } 
     }
 
@@ -1515,7 +1515,7 @@ workflow {
         map { it[0] } |
         set { insect_taxonomy }
     } else {
-      Channel.fromPath("NOTADANGFILE.nothing.insect", checkIfExists: false) | 
+      Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false) | 
         set { insect_taxonomy }
     }
 
@@ -1524,7 +1524,7 @@ workflow {
         map { it[0] } |
         set { curated_zotu_table }
     } else {
-      Channel.fromPath("NOTADANGFILE.nothing.lulu", checkIfExists: false) | 
+      Channel.fromPath("nofile-curated-zotu-table", checkIfExists: false) | 
         set { curated_zotu_table }
     }
 

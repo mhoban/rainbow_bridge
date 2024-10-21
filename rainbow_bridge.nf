@@ -480,7 +480,7 @@ process blast {
   }, mode: params.publishMode 
 
   input:
-    tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb), val(extra_options)
+    tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb)
 
   output:
     path("blast_result.tsv"), emit: result
@@ -502,6 +502,11 @@ process blast {
   blast_options['max_target_seqs'] = params.maxQueryResults
   blast_options['best_hit_score_edge'] = 0.05
   blast_options['best_hit_overhang'] = 0.25
+
+  // get extra blast options passed on the command line as --blastn-*
+  extra_options = params
+    .findAll { it.key =~ /^blastn-/ }
+    .collectEntries { k, v -> [k.tokenize('-')[1],v] }
 
   // merge blast options with any extra options
   blast_options = blast_options << extra_options
@@ -1368,17 +1373,11 @@ workflow {
           set { taxdb }
       }
 
-      // get extra blast options passed on the command line as --blastn-*
-      blast_options = params
-        .findAll { it.key =~ /^blastn-/ }
-        .collectEntries { k, v -> [k.tokenize('-')[1],v] }
-
       // run the blast query
       dereplicated | 
         map { sid, uniques, zotus, zotutable -> zotus } | 
         combine(blastdb) |
         combine(taxdb) | 
-        combine(Channel.value(blast_options)) |
         blast 
 
       // format output directory name for merged blast results

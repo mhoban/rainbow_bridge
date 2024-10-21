@@ -6,6 +6,12 @@ on:
       - 'main'
     paths:
       - 'containers/**/Dockerfile'  
+  pull_request:
+    branches:
+      - 'main'
+    paths:
+      - 'containers/**/Dockerfile'  
+
   workflow_dispatch:
 
 jobs:

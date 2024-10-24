@@ -9,7 +9,7 @@ class helper {
     '18sv4': 'https://www.dropbox.com/s/s315gxuo4p24kx8/classifier.rds?dl=1',
     'p23s': 'https://www.dropbox.com/s/6o8cauqrlgnmwp5/classifier.rds?dl=1',
     'mlcoiint': 'https://www.dropbox.com/s/dvnrhnfmo727774/classifier.rds?dl=1',
-    'scl5.8S': 'https://www.dropbox.com/s/f07cka6308ebk2o/classifier.rds?dl=1'
+    'scl5.8s': 'https://www.dropbox.com/s/f07cka6308ebk2o/classifier.rds?dl=1'
   ]
 
   // get common characters from left side of two strings

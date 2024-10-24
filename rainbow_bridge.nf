@@ -114,7 +114,7 @@ def check_params() {
 
     // if --blast-taxdb is passed, check that it's a directory and that files exist
     if (params.blastTaxdb != "nofile-blast-taxdb") {
-      ok = false
+      def ok = false
       // check for directory
       if (helper.is_dir(params.blastTaxdb)) {
         // make sure we have two files matching our search pattern
@@ -130,10 +130,10 @@ def check_params() {
     }
 
     // get blast environment variable
-    bdb = helper.get_env("FLOW_BLAST")
+    def bdb = helper.get_env("FLOW_BLAST")
 
     // make --blast-db param into a list, if it isn't
-    blasts = params.blastDb
+    def blasts = params.blastDb
     if (!helper.is_list(blasts)) 
       blasts = [blasts]
 
@@ -312,7 +312,7 @@ process filter_length {
 
   script:
   // if we're already demultiplexed we probably don't have the forward_tag and reverse_tag annotations
-  p = params.demultiplexedBy in ['barcode','combined'] ? "-p 'forward_tag is not None and reverse_tag is not None'" : ''
+  def p = params.demultiplexedBy in ['barcode','combined'] ? "-p 'forward_tag is not None and reverse_tag is not None'" : ''
   """
   obigrep --uppercase -l ${params.minLen} ${p} "${fastq}" > "${key}_length_filtered.fastq"
   """
@@ -352,7 +352,7 @@ process relabel {
   script:
   
   if (params.denoiser == "vsearch") {
-    combined = "<(cat input-*.fastq)"
+    def combined = "<(cat input-*.fastq)"
     """
     echo "denoiser: vsearch" > settings.txt
     # this may or may not be necessary anymore, but it seems like a good sanity check
@@ -362,8 +362,8 @@ process relabel {
     """
   } else {
     // combined = fastq.collect{ it.baseName }.join('_') + "_combined.fastq"
-    combined = "combined.fastq"
-    denoiser = params.execDenoiser ? params.denoiser : 'usearch'
+    def combined = "combined.fastq"
+    def denoiser = params.execDenoiser ? params.denoiser : 'usearch'
     """
     echo "denoiser: ${params.denoiser}" > settings.txt
     cat input-*.fastq > ${combined}
@@ -444,7 +444,7 @@ process dereplicate {
     fi
     """
   } else {
-    denoiser = params.execDenoiser ? params.denoiser : 'usearch'
+    def denoiser = params.execDenoiser ? params.denoiser : 'usearch'
     """
     echo "denoiser: ${denoiser}" > settings.txt
     echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
@@ -473,9 +473,9 @@ process blast {
   label 'blast'
 
   publishDir { 
-    pid = String.format("%d",(Integer)num(params.percentIdentity ))
-    evalue = String.format("%.3f",num(params.evalue))
-    qcov = String.format("%d",(Integer)num(params.qcov))
+    def pid = String.format("%d",(Integer)num(params.percentIdentity ))
+    def evalue = String.format("%.3f",num(params.evalue))
+    def qcov = String.format("%d",(Integer)num(params.qcov))
     return "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}/${db_name}" 
   }, mode: params.publishMode 
 
@@ -489,12 +489,12 @@ process blast {
   script:
 
   // format settings values
-  pid = String.format("%d",(Integer)num(params.percentIdentity))
-  evalue = String.format("%.3f",num(params.evalue))
-  qcov = String.format("%d",(Integer)num(params.qcov))           
+  def pid = String.format("%d",(Integer)num(params.percentIdentity))
+  def evalue = String.format("%.3f",num(params.evalue))
+  def qcov = String.format("%d",(Integer)num(params.qcov))           
   
   // setup and populate the "basic" blast options
-  blast_options = [:]
+  def blast_options = [:]
   blast_options['task'] = "blastn"
   blast_options['perc_identity'] = params.percentIdentity
   blast_options['evalue'] = params.evalue
@@ -504,14 +504,14 @@ process blast {
   blast_options['best_hit_overhang'] = 0.25
 
   // get extra blast options passed on the command line as --blastn-*
-  extra_options = params
+  def extra_options = params
     .findAll { it.key =~ /^blastn-/ }
     .collectEntries { k, v -> [k.tokenize('-')[1],v] }
 
   // merge blast options with any extra options
   blast_options = blast_options << extra_options
   // collapse them into a single string
-  blast_opt_str = blast_options
+  def blast_opt_str = blast_options
     .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
     .join(" ")
   """
@@ -590,10 +590,10 @@ process insect {
   label 'insect'
 
   publishDir { 
-    offs = String.format("%d",(Integer)num(params.insectOffset))
-    thresh = String.format("%.2f",num(params.insectThreshold))
-    minc = String.format("%d",(Integer)num(params.insectMinCount))
-    ping = String.format("%.2f",num(params.insectPing))
+    def offs = String.format("%d",(Integer)num(params.insectOffset))
+    def thresh = String.format("%.2f",num(params.insectThreshold))
+    def minc = String.format("%d",(Integer)num(params.insectMinCount))
+    def ping = String.format("%.2f",num(params.insectPing))
     return "${params.outDir}/taxonomy/insect/thresh${thresh}_offset${offs}_mincount${minc}_ping${ping}"
   }, mode: params.publishMode 
 
@@ -605,10 +605,10 @@ process insect {
     path 'insect_settings.txt'
 
   script:
-  offs = String.format("%d",(Integer)num(params.insectOffset))
-  thresh = String.format("%.2f",num(params.insectThreshold))
-  minc = String.format("%d",(Integer)num(params.insectMinCount))
-  ping = String.format("%.2f",num(params.insectPing))
+  def offs = String.format("%d",(Integer)num(params.insectOffset))
+  def thresh = String.format("%.2f",num(params.insectThreshold))
+  def minc = String.format("%d",(Integer)num(params.insectMinCount))
+  def ping = String.format("%.2f",num(params.insectPing))
 
   """
   # record insect settings
@@ -706,10 +706,11 @@ process phyloseq {
     path("phyloseq_${method}.rds")
 
   script:
-  otu = "OTU"
-  t = params.noTree ? "--no-tree" : ""
-  o = params.optimizeTree ? "--optimize" : ""
-  c = params.taxColumns != "" ? "--tax-columns ${params.taxColumns}" : ""
+  // TODO: handle options better
+  def otu = "OTU"
+  def t = params.noTree ? "--no-tree" : ""
+  def o = params.optimizeTree ? "--optimize" : ""
+  def c = params.taxColumns != "" ? "--tax-columns ${params.taxColumns}" : ""
   if (method == "insect") {
     otu = "representative"
     c = "--tax-columns \"kingdom,phylum,class,order,family,genus,species,taxon,NNtaxon,NNrank\""
@@ -730,7 +731,7 @@ process finalize {
   label 'r'
   
   publishDir {
-    td = params.standaloneTaxonomy ? 'standalone_taxonomy/final' : 'final'
+    def td = params.standaloneTaxonomy ? 'standalone_taxonomy/final' : 'final'
     "${params.outDir}/${td}"
   }, mode: params.publishMode
 
@@ -745,7 +746,7 @@ process finalize {
     path("zotu_table_insect.tsv"), optional: true
 
   script:
-  opt = []
+  def opt = []
   params.abundanceFilter && opt << "--abundance-filter"
   params.rarefy && opt << "--rarefy"
   params.filterMinimum && opt << "--filter-min"
@@ -793,7 +794,7 @@ workflow {
   // make sure our arguments are all in order
   check_params()
 
-  directions = []
+  def directions = []
 
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
@@ -1001,9 +1002,9 @@ workflow {
             }
 
             // MH: if these are both blank, we don't need the '{,}' part
-            fd = (fwd_file_diff + rev_file_diff != "") ? "{${fwd_file_diff},${rev_file_diff}}" : ""
+            def fd = (fwd_file_diff + rev_file_diff != "") ? "{${fwd_file_diff},${rev_file_diff}}" : ""
             // MH: a boolean shorthand to check if these are the same
-            suf = common_file_prefix == common_file_suffix
+            def suf = common_file_prefix == common_file_suffix
 
             // CEB: Construct the final pattern
             pattern = fwd_path == rev_path
@@ -1029,8 +1030,8 @@ workflow {
             // MH: there's a weird business where if the things inside of the {} end with '/',
             // the glob is not matched (even though this works in bash).
             // so we'll strip off any trailing slash
-            f = params.fwd.replaceAll(/\/$/,'')
-            r = params.rev.replaceAll(/\/$/,'')
+            def f = params.fwd.replaceAll(/\/$/,'')
+            def r = params.rev.replaceAll(/\/$/,'')
             pattern = "{${f},${r}}/*{${params.r1},${params.r2}}*.f*q*"
 
           //CEB dir is specified by --reads; original functionality
@@ -1305,11 +1306,14 @@ workflow {
 
     // run blast query, unless skipped
     if (params.blast) {
+      // def only works on its own line
+      // possibly related to NF issue #804: https://github.com/nextflow-io/nextflow/issues/804
+      def bdb 
       // get $FLOW_BLAST environment variable
       bdb = helper.get_env("FLOW_BLAST")
 
       // make --blast-db value a list, if it's not already
-      blasts = params.blastDb
+      def blasts = params.blastDb
       if (!helper.is_list(blasts)) 
         blasts = [blasts]
 
@@ -1321,7 +1325,7 @@ workflow {
       blasts = blasts.unique(false)
 
       // wildcard to capture blast database files
-      wildcard = "{.n*,.[0-9]*.n*}"
+      def wildcard = "{.n*,.[0-9]*.n*}"
 
       // collect list of files within blast databases
       // and group them by blast db names
@@ -1335,7 +1339,7 @@ workflow {
 
       if (!helper.file_exists(params.lcaLineage)) {
         // try to find taxdb files in any of the supplied blast databases
-        db = blasts.collect {
+        def db = blasts.collect {
           blastr -> 
             file(blastr).Parent.list().findAll {
               it =~ /taxdb\.bt[id]/
@@ -1381,10 +1385,10 @@ workflow {
         blast 
 
       // format output directory name for merged blast results
-      pid = String.format("%d",(Integer)num(params.percentIdentity ))
-      evalue = String.format("%.3f",num(params.evalue))
-      qcov = String.format("%d",(Integer)num(params.qcov))
-      blast_dir = "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}" 
+      def pid = String.format("%d",(Integer)num(params.percentIdentity ))
+      def evalue = String.format("%.3f",num(params.evalue))
+      def qcov = String.format("%d",(Integer)num(params.qcov))
+      def blast_dir = "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}" 
 
       // since we're now doing blasts separately for each database, combine the results
       // and store it below each indiviudal database result
@@ -1408,8 +1412,8 @@ workflow {
     }
 
     // get NCBI lineage dump if needed
-    lca = params.collapseTaxonomy || params.assignTaxonomy
-    if ((lca && params.blast && !helper.file_exists(params.lcaLineage))) {
+    def lca = params.collapseTaxonomy || params.assignTaxonomy
+    if ((lca && params.blast && !helper.file_exists(params.lcaLineage)) || params.insect != false) {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.taxdump)) {
 
@@ -1473,8 +1477,8 @@ workflow {
       } else {
         // download the classifier model if it's one of the supported ones
         // previous sanity checks ensure the model is in our helper map
-        m = params.insect.toLowerCase()
-        url = helper.insect_classifiers[m]
+        def m = params.insect.toLowerCase()
+        def url = helper.insect_classifiers[m]
         Channel.of(url) | 
           combine(Channel.fromPath('insect_model.rds')) |
           get_model | 

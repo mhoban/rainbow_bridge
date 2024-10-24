@@ -3,7 +3,7 @@ process lca {
   label 'r'
 
   publishDir {
-    td = params.standaloneTaxonomy ? 'standalone_taxonomy' : 'taxonomy'
+    def td = params.standaloneTaxonomy ? 'standalone_taxonomy' : 'taxonomy'
     "${params.outDir}/${td}/lca/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}"
   }, mode: params.publishMode
 
@@ -17,7 +17,7 @@ process lca {
 
 
   script:
-  pf = []
+  def pf = []
   params.lcaFilterMaxQcov && pf << "--filter-max-qcov"
   params.lcaCaseInsensitive && pf << "--case-insensitive" 
   """
@@ -97,8 +97,8 @@ process get_web {
     path(localfile)
 
   exec:
-    classifier = task.workDir / localfile 
-    url = new URL(location)
+    def classifier = task.workDir / localfile 
+    def url = new URL(location)
     url.withInputStream { stream -> classifier << stream }
 }
 

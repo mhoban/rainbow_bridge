@@ -154,13 +154,14 @@ tax_cols <- taxonomy %>%
 otu_cols <- otus %>%
   colnames()
 
-# do inner join so taxonomy and otus have same order ,etc.
+# left join taxonomy to zotu table
+# then we can extract the original columns in the same order
 combined <- otus %>%
   left_join(taxonomy,by="otu")
 
 if (!is.null(sequences)) {
-  # filter sequences by what's in the otu table/taxonomy and make sure
-  # it's in the same order
+  # filter sequences by otus in the otu table/taxonomy 
+  # and sort them in the same order
   sequences <- sequences %>%
     filter(otu %in% combined$otu) %>%
     arrange(factor(otu,levels=combined$otu))

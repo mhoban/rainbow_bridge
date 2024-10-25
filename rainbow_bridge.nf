@@ -62,7 +62,7 @@ def check_params() {
 
     switch(params.taxonomy) {
       case 'lca':
-        if (!params.assignTaxonomy && !params.collapseTaxonomy) {
+        if (!params.collapseTaxonomy) {
           println(colors.yellow("You passed --phyloseq with 'lca' as the taxonomy option, but LCA has not been run."))
           println(colors.yellow("Did you forget the --collapse-taxonomy option?"))
         }
@@ -71,6 +71,11 @@ def check_params() {
         if (!params.insect) {
           println(colors.yellow("You passed --phyloseq with 'insect' as the taxonomy option, but insect has not been run."))
           println(colors.yellow("Did you forget the --insect option?"))
+        }
+        break
+      case 'combined':
+        if (!params.collapseTaxonomy && !params.insect) {
+          println(colors.yellow("Note: phyloseq generation requires one of --insect, --collapse-taxonomy, or a custom taxonomy table."))
         }
         break
       default:
@@ -584,6 +589,52 @@ process lulu {
   """
 }
 
+// assign/collapse taxonomy using the R port of the original python script
+process collapse_taxonomy {
+  label 'r'
+
+  publishDir {
+    def td = params.standaloneTaxonomy ? 'standalone_taxonomy' : 'taxonomy'
+    "${params.outDir}/${td}/lca/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}"
+  }, mode: params.publishMode
+
+  input:
+    tuple path(blast_result), path(lineage), path('*')
+
+  output:
+    path("lca_taxonomy.tsv"), emit: taxonomy
+    path("lca_intermediate.tsv")
+    path 'lca_settings.txt'
+
+
+  script:
+  def pf = []
+  params.lcaFilterMaxQcov && pf << "--filter-max-qcov"
+  params.lcaCaseInsensitive && pf << "--case-insensitive" 
+  """
+  # save settings
+  echo "Minimum query coverage %: ${params.lcaQcov}" > lca_settings.txt
+  echo "Minimum percent identity: ${params.lcaPid}" >> lca_settings.txt
+  echo "Minium percent identity difference: ${params.lcaDiff}" >> lca_settings.txt
+  echo "Filter to maximum query coverage: ${params.lcaFilterMaxQcov ? 'yes' : 'no'}" >> lca_settings.txt
+  echo "Filter taxa by regex: ${params.lcaTaxonFilter}" >> lca_settings.txt
+  echo "Taxon filter case sensitive: ${!params.lcaCaseInsensitive ? 'yes' : 'no'}" >> lca_settings.txt
+
+  collapse_taxonomy.R \
+    --qcov ${params.lcaQcov} \
+    --pid ${params.lcaPid} \
+    --diff ${params.lcaDiff} \
+    --merged merged.dmp \
+    --nodes nodes.dmp \
+    --taxid-lineage taxidlineage.dmp \
+    --output lca_taxonomy.tsv \
+    --dropped "${params.dropped}" \
+    --intermediate "lca_intermediate.tsv" \
+    ${pf.join(" ")} \
+    --taxon-filter "${params.lcaTaxonFilter}" \
+    ${blast_result} ${lineage}
+  """
+}  
 
 // run insect classifier model
 process insect {
@@ -601,8 +652,9 @@ process insect {
     tuple path(classifier), path('*'), path(zotus)
 
   output:
-    tuple path('insect_taxonomy.tsv'), path('insect_model.rds'), emit: result
-    path 'insect_settings.txt'
+    path('insect_taxonomy.tsv'), emit: taxonomy
+    path('insect_model.rds')
+    path('insect_settings.txt')
 
   script:
   def offs = String.format("%d",(Integer)num(params.insectOffset))
@@ -694,36 +746,35 @@ process unzip {
   """
 }
 
+// produce a phyloseq object from pipeline output
 process phyloseq {
   label 'r'
 
   publishDir "${params.outDir}/phyloseq", mode: params.publishMode
 
   input:
-    tuple path(tax_table), path(zotu_table), path(fasta), path(metadata), val(method)
+    path(zotu_table)
+    path(taxonomy)
+    path(metadata)
+    path(sequences)
   
   output:
-    path("phyloseq_${method}.rds")
+    path("phyloseq.rds")
 
   script:
-  // TODO: handle options better
-  def otu = "OTU"
-  def t = params.noTree ? "--no-tree" : ""
-  def o = params.optimizeTree ? "--optimize" : ""
-  def c = params.taxColumns != "" ? "--tax-columns ${params.taxColumns}" : ""
-  if (method == "insect") {
-    otu = "representative"
-    c = "--tax-columns \"kingdom,phylum,class,order,family,genus,species,taxon,NNtaxon,NNrank\""
-  }
+  def opt = []
+  params.tree && opt << "--tree"  
+  params.tree && opt << "--sequences \"${sequences}\""
+  params.optimizeTree && opt << "--optimize"
+  // if (method == "insect") {
+  //   otu = "representative"
+  //   c = "--tax-columns \"kingdom,phylum,class,order,family,genus,species,taxon,NNtaxon,NNrank\""
+  // }
   """
   phyloseq.R \
-    --taxonomy "${tax_table}" \
-    --otu "${otu}" \
-    --otu-table "${zotu_table}" \
-    --cores ${task.cpus} \
-    --fasta "${fasta}" \
-    --metadata "${metadata}" \
-    --phyloseq "phyloseq_${method}.rds" ${t} ${o} ${c}
+    --out phyloseq.rds \
+    ${opt.join(" ")} \
+    "${zotu_table}" "${taxonomy}" "${metadata}"
   """
 }
 
@@ -740,7 +791,7 @@ process finalize {
 
   output:
     path("zotu_table_raw.tsv")
-    path("taxonomy_raw.tsv")
+    path("taxonomy.tsv"), emit: taxonomy
     path("zotu_table_final*.tsv")
     path("zotu_table_lca.tsv"), optional: true
     path("zotu_table_insect.tsv"), optional: true
@@ -782,7 +833,6 @@ include { fastqc as first_fastqc }    from './modules/modules.nf'
 include { fastqc as second_fastqc }   from './modules/modules.nf'
 include { multiqc as first_multiqc }  from './modules/modules.nf'
 include { multiqc as second_multiqc } from './modules/modules.nf'
-include { lca as collapse_taxonomy  } from './modules/modules.nf'
 include { get_web as get_model } from './modules/modules.nf'
 include { get_web as get_taxdb } from './modules/modules.nf'
 include { get_web as get_taxdump } from './modules/modules.nf'
@@ -1412,8 +1462,7 @@ workflow {
     }
 
     // get NCBI lineage dump if needed
-    def lca = params.collapseTaxonomy || params.assignTaxonomy
-    if ((lca && params.blast && !helper.file_exists(params.lcaLineage)) || params.insect != false) {
+    if ((params.collapseTaxonomy && params.blast && !helper.file_exists(params.lcaLineage)) || params.insect != false) {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.taxdump)) {
 
@@ -1495,7 +1544,7 @@ workflow {
     }
 
     // run taxonomy assignment/collapse script if so requested
-    if (lca && params.blast) {
+    if (params.collapseTaxonomy && params.blast) {
       // then we smash it together with the blast results 
       // and run the taxonomy assignment/collapser script
       blast_result |
@@ -1505,7 +1554,7 @@ workflow {
     }
 
     // prepare for final output
-    if (lca && params.blast) {
+    if (params.collapseTaxonomy && params.blast) {
       collapse_taxonomy.out.taxonomy | 
         set { lca_taxonomy }
     } else {
@@ -1514,12 +1563,9 @@ workflow {
     }
 
     if (params.insect) {
-      insectized.result | 
-        map { it[0] } |
-        set { insect_taxonomy }
+      insect_taxonomy = insectized.taxonomy 
     } else {
-      Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false) | 
-        set { insect_taxonomy }
+      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false) 
     }
 
     if (params.lulu) {
@@ -1541,38 +1587,41 @@ workflow {
 
     /* put all the phyloseq stuff down here */
     if (params.phyloseq && helper.file_exists(params.metadata)) {
+      def physeq = true
       switch (params.taxonomy) {
         case "lca":
-          if (lca) {
-            collapse_taxonomy.out.taxonomy | 
-              combine(zotu_table) | 
-              combine( dereplicated | map { sid, uniques, zotus, zotutable -> zotus } ) |
-              combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 
-              combine( Channel.of("lca") ) |
-              phyloseq 
+          if (params.collapseTaxonomy) {
+            ph_taxonomy = collapse_taxonomy.out.taxonomy
+          } else {
+            physeq = false
           }
           break
         case "insect":
-          if (params.insect != false) {
-            insectized.result | 
-              map { it[0] } |
-              combine(zotu_table) | 
-              combine( zotus ) |
-              combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 
-              combine( Channel.of("insect") ) |
-              phyloseq
+          if (params.insect) {
+            ph_taxonomy = insectized.taxonomy 
+          } else {
+            physeq = false
+          }
+          break
+        case "combined":
+          if (params.insect || params.collapseTaxonomy) {
+            ph_taxonomy = finalize.out.taxonomy
+          } else {
+            physeq = false
           }
           break
         default:
           if (helper.file_exists(params.taxonomy)) {
-            Channel.fromPath(params.taxonomy, checkIfExists: true) | 
-              combine(zotu_table) | 
-              combine( dereplicated | map { sid, uniques, zotus, zotutable -> zotus } ) |
-              combine( Channel.fromPath(params.metadata, checkIfExists: true) ) | 
-              combine( Channel.of("file") ) |
-              phyloseq
+            ph_taxonomy = Channel.fromPath(params.taxonomy, checkIfExists: true) 
+          } else {
+            physeq = false
           } 
           break
+      }
+      if (physeq) {
+        metadata = Channel.fromPath(params.metadata, checkIfExists: true)
+        seqs = dereplicated.map { sid, uniques, zotus, zotutable -> zotus }
+        phyloseq(zotu_table,ph_taxonomy,metadata,seqs)
       }
     }
   }

@@ -71,27 +71,17 @@ load_table <- function(fn,...) {
 
 # Define options for command line
 option_list = list(
-  make_option(c("-t", "--taxonomy"), action="store", default=NA, type='character',
-              help=str_c("Taxonomy table with OTU IDs and taxonomic classification",
-                         "(accepted extensions for this and other tabular data: .csv, .tab, .tsv)")),
-  make_option(c("-o", "--otu"), action="store", default="OTU", type='character',
-              help="'OTU' column name (default: OTU)"),
-  make_option(c("-x", "--tax-columns"), action="store", default=NA, type='character',
-              help="Comma-separated list of columns to retain in taxonomy table"),
-  make_option(c("-O", "--otu-table"), action="store", default=NA, type='character',
-              help="OTU table file (first column must contain OTU IDs)"),
-  make_option(c("-f", "--fasta"), action="store", default=NA, type='character',
+  make_option(c("-t", "--tree"), action="store_true", default=FALSE, type='logical',
+              help="Generate a phylogenetic tree from OTU sequences"),
+  make_option(c("-s", "--sequences"), action="store", default=NA, type='character',
               help="OTU sequences file in fasta format (sequence IDs must match OTU names)"),
-  make_option(c("-m", "--metadata"), action="store", default=NA, type='character',
-              help="Metadata table (first column must contain sample IDs, which must match OTU table column names)"),          
   make_option(c("-c", "--cores"), action="store", default=parallel::detectCores(), type='integer',
               help="Number of CPU cores"),
-  make_option(c("-p", "--phyloseq"), action="store", default=NA, type='character',
+  make_option(c("-o", "--out"), action="store", default=NA, type='character',
               help="Output filename (.rds)"),
-  make_option(c("-Z", "--optimize"), action="store_true", default=FALSE, type='logical',
-              help="Optimize phylogenetic tree creation (will add considerable processing time)"),
-  make_option(c("-T", "--no-tree"), action="store_true", default=FALSE, type='logical',
-              help="Do not include a phylogenetic tree"))
+  make_option(c("-z", "--optimize"), action="store_true", default=FALSE, type='logical',
+              help="Optimize phylogenetic tree creation (will add considerable processing time)")
+)
 
 
 #........................................................................
@@ -106,25 +96,26 @@ if (exists('debug_args')) {
 }
 
 # parse command-line args
-opt = parse_args2(
+opt <- parse_args(
   OptionParser(
     option_list=option_list,
-    formatter=nice_formatter
-  ),
+    formatter=nice_formatter,
+    prog="phyloseq.R",
+    usage="%prog [options] <otu_table> <taxonomy> <metadata>"
+  ), 
+  convert_hyphens_to_underscores = TRUE,
+  positional_arguments = 3,
   args = opt_args
 )
 
-taxonomy_file <- opt$options$taxonomy
-otu_file      <- opt$options$otu_table
-otu_col       <- opt$options$otu
-fasta_file    <- opt$options$fasta
-metadata_file <- opt$options$metadata
+otu_file      <- opt$args[1]
+taxonomy_file <- opt$args[2]
+metadata_file <- opt$args[3]
+fasta_file    <- opt$options$sequences
 cores         <- opt$options$cores
-phyloseq_file <- opt$options$phyloseq
+output_file   <- opt$options$out
 optimize      <- opt$options$optimize
-no_tree       <- opt$options$no_tree
-tax_columns   <- opt$options$tax_columns
-
+build_tree    <- opt$options$tree
 
 # sanity checking: make sure files exist
 if (!file_exists(taxonomy_file)) {
@@ -136,41 +127,26 @@ if (!file_exists(otu_file)) {
 if (!file_exists(metadata_file)) {
   stop(str_glue("Specified metadata file '{metadata_file}' does not exist!"))
 }
-if (!no_tree & !file_exists(fasta_file)) {
+if (build_tree & !file_exists(fasta_file)) {
   stop(str_glue("Specified FASTA file '{fasta_file}' does not exist!"))
 }
 
-to_rename = c(otu = otu_col)
 # load taxonomy table
 taxonomy <- load_table(taxonomy_file,col_types=cols()) %>%
-  dplyr::rename(all_of(to_rename)) %>%
-  # select(where(is.character)) %>%
-  select(otu,everything())
-
-if (!is.na(tax_columns)) {
-  to_keep <- tax_columns %>%
-    str_split_1(",")
-  taxonomy <- taxonomy %>% select(otu,all_of(to_keep))
-} else {
-  taxonomy <- taxonomy %>% select(where(is.character))
-}
+  rename(otu=1) 
 
 # load otu table
 otus <- load_table(otu_file,col_types=cols()) %>%
   dplyr::rename(otu=1)
 
+sequences <- NULL
 # load sequences if they want a tree
-if (!no_tree) {
-  seqs <- read.fasta(fasta_file, as.string = TRUE, forceDNAtolower = FALSE) %>%
+if (build_tree) {
+  sequences <- read.fasta(fasta_file, as.string = TRUE, forceDNAtolower = FALSE) %>%
     map_dfr(~{
       c("otu" = attr(.x,"name"),"sequence"=.x)
     })
-  taxonomy <- taxonomy %>%
-    left_join(seqs %>% select(otu,sequence),by="otu") 
-} else {
-  taxonomy <- taxonomy %>%
-    mutate(sequence=NA_character_)
-}
+} 
 
 tax_cols <- taxonomy %>%
   colnames()
@@ -178,9 +154,18 @@ tax_cols <- taxonomy %>%
 otu_cols <- otus %>%
   colnames()
 
-# do inner join so taxonomy and otus have same order ,etc.
+# left join taxonomy to zotu table
+# then we can extract the original columns in the same order
 combined <- otus %>%
-  inner_join(taxonomy,by="otu")
+  left_join(taxonomy,by="otu")
+
+if (!is.null(sequences)) {
+  # filter sequences by otus in the otu table/taxonomy 
+  # and sort them in the same order
+  sequences <- sequences %>%
+    filter(otu %in% combined$otu) %>%
+    arrange(factor(otu,levels=combined$otu))
+}
 
 # recreate original tables
 otus <- combined %>%
@@ -191,10 +176,13 @@ taxonomy <- combined %>%
 
 #........................................................................
 # Prepare metadata
-#........................................................................
 # assume that the first column is the sample ID
+# and make sure it has the sample sample IDs as the OTU table
+#........................................................................
 metadata <- load_table(metadata_file,col_types=cols()) %>%
-  column_to_rownames(colnames(.)[1])
+  rename(sample=1) %>%
+  filter(sample %in% (otus %>% select(-otu) %>% colnames())) %>%
+  column_to_rownames("sample")
 
 #........................................................................
 # Prepare taxonomy data
@@ -216,14 +204,14 @@ otu <- otus %>%
 # Create phylogenetic tree
 #........................................................................
 
-if (!no_tree) {
+if (build_tree) {
   suppressPackageStartupMessages(library(DECIPHER))
   suppressPackageStartupMessages(library(phangorn))
   suppressPackageStartupMessages(library(Biostrings))
   # Phylogenetic tree code based on code from
   # https://ucdavis-bioinformatics-training.github.io/2021-May-Microbial-Community-Analysis/data_reduction/02-dada2
-  dna <- DNAStringSet(taxonomy %>% pull(sequence))
-  names(dna) <- taxonomy %>% pull(otu)
+  dna <- DNAStringSet(sequences %>% pull(sequence))
+  names(dna) <- sequences %>% pull(otu)
 
   alignment <- AlignSeqs(dna, anchor=NA, processors=cores)
 
@@ -251,11 +239,11 @@ OTU    <- otu_table(otu, taxa_are_rows = TRUE)
 TAX    <- tax_table(taxa)
 META   <- sample_data(metadata)
 
-if (!no_tree) {
+if (build_tree) {
   TREE   <- phy_tree(tree$tree)
   physeq <- phyloseq(OTU, TAX, META, TREE)
 } else {
   physeq <- phyloseq(OTU, TAX, META)
 }
 
-saveRDS(physeq, file = paste0(phyloseq_file))
+saveRDS(physeq, output_file)

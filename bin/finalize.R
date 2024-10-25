@@ -220,8 +220,6 @@ if (!is.null(lca) & !is.null(insect)) {
   stop("No taxonomy loaded, something went very wrong")
 }
 
-taxonomy_raw <- taxonomy
-
 # remap taxonomy if requested
 if (file_exists(remap_file)) {
   remap <- load_table(remap_file,col_select = c(rank=1,val=2,newrank=3,newval=4))
@@ -383,7 +381,7 @@ if (rarefy) {
 }
 
 write_tsv(zotu_table_raw,"zotu_table_raw.tsv",na="")
-write_tsv(taxonomy_raw,"taxonomy_raw.tsv",na="")
+write_tsv(taxonomy,"taxonomy.tsv",na="")
 
 final <- taxonomy %>%
   inner_join(zotu_table,by="zotu")

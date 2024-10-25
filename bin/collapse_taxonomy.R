@@ -266,7 +266,7 @@ opt <- parse_args(
     option_list=option_list,
     formatter=nice_formatter,
     prog="collapse_taxonomy.R",
-    usage="%prog [options] <blast_result> <taxonomic_lineage>`"
+    usage="%prog [options] <blast_result> <taxonomic_lineage>"
   ), 
   convert_hyphens_to_underscores = TRUE,
   positional_arguments = 2, 

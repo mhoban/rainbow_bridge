@@ -419,6 +419,8 @@ process dereplicate {
     """
     echo "denoiser: vsearch" > settings.txt
     echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
+    echo "alpha: ${params.alpha}" >> settings.txt
+    echo "fractional identity: ${params.zotuIdentity}" >> settings.txt
     # steps:
     # 1. get unique sequence variants
     # 2. run denoising algorithm
@@ -453,6 +455,8 @@ process dereplicate {
     """
     echo "denoiser: ${denoiser}" > settings.txt
     echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
+    echo "alpha: ${params.alpha}" >> settings.txt
+    echo "fractional identity: ${params.zotuIdentity}" >> settings.txt
     # steps:
     # 1. get unique sequences
     # 2. run denoising & chimera removal

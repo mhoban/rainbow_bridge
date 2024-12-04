@@ -266,6 +266,23 @@ process filter_ambiguous_indices {
   """
 }
 
+// replace I's with N's in barcode file primer sequences
+process fix_barcodes {
+  label 'shell'
+  
+  input:
+    path(barcodes)
+
+  output:
+    path(barcodes)
+
+  script:
+  """
+  fix_barcode.awk ${barcodes} > fixed_barcodes
+  mv fixed_barcodes ${barcodes} 
+  """
+}
+
 // split and properly modify barcode file if they're pooled
 process split_barcodes {
   label 'shell'
@@ -1158,7 +1175,10 @@ workflow {
       // throw an error if the file(s) are bad, but only if we're not skipping the step that needs them.
       // we don't check in check_params because params.barcode could be a wildcard, which is trickier to check cleanly
       // and is handled automatically by fromPath
-      barcodes = Channel.fromPath(params.barcode, checkIfExists: !params.noPcr)
+      // also, we run it through fix_barcodes, which replaces I's with N's in the primer sequences
+      Channel.fromPath(params.barcode, checkIfExists: !params.noPcr) |
+        fix_barcodes |
+        set { barcodes }
 
       // if the sequences are already demultiplexed by illumina, we'll
       // process them separately, including optionally attempting to remove ambiguous indices

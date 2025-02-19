@@ -416,6 +416,38 @@ process merge_relabeled {
   """
 }
 
+//JDS Addition 
+// Convert blast databases to single fasta file to be used in chimera identification
+process convert_blast_dbs_to_fasta {
+    label 'blast'
+    publishDir "${params.outDir}/blast", mode: params.publishMode
+
+    // The input is a value (a list of BLAST database names)
+    input:
+      val dbs
+
+    // The output is a single FASTA file containing all BLAST databases
+    output:
+      path "all_blast_dbs.fasta"
+
+    script:
+    // We convert the list into a space-separated string for the shell
+    """
+    dbs='${dbs.join(' ')}'
+    rm -f all_blast_dbs.fasta
+    if [ -z "\$dbs" ]; then
+      echo "No BLAST database provided; creating empty all_blast_dbs.fasta file."
+      touch all_blast_dbs.fasta
+    else
+      for db in \$dbs; do
+        echo "Processing \$db"
+        blastdbcmd -db \$db -entry all >> all_blast_dbs.fasta
+      done
+    fi
+    """
+}
+
+// JDS Modification
 // dereplication, chimera removal, zOTU table generation
 process dereplicate {
   label 'denoiser'
@@ -424,7 +456,7 @@ process dereplicate {
   publishDir "${params.outDir}/zotus", mode: params.publishMode
 
   input:
-    tuple val(id), path(relabeled_merged)
+    tuple val(id), path(relabeled_merged), path(blast_combined_fasta)
 
   output:
     tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tsv"), emit: result
@@ -441,8 +473,9 @@ process dereplicate {
     # steps:
     # 1. get unique sequence variants
     # 2. run denoising algorithm
-    # 3. get rid of chimeras
-    # 4. match original sequences to zotus by 97% identity
+    # 3. get rid of chimeras - de novo
+    # 4. get rid of chimeras - reference based JDS Addition
+    # 5. match original sequences to zotus by 97% identity
     if [ -s "${relabeled_merged}" ]; then 
       vsearch \
         --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
@@ -452,10 +485,20 @@ process dereplicate {
         --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
         --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" \
         --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
+
       vsearch \
-        --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
-        --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" \
-        --relabel Zotu 
+        --threads ${task.cpus} \
+        --fastq_qmax ${params.maxQuality} \
+        --uchime3_denovo "${id}_centroids.fasta" \
+        --nonchimeras - |\
+      vsearch \
+        --threads ${task.cpus} \
+        --fastq_qmax ${params.maxQuality} \
+        --uchime_ref - \
+        --db "${blast_combined_fasta}" \
+        --nonchimeras "${id}_zotus.fasta" \
+        --relabel Zotu
+
       vsearch \
         --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
         --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" \
@@ -1369,9 +1412,13 @@ workflow {
         set { to_dereplicate }
     }
 
-    // build the channel, run dereplication, and set to a channel we can use again
+    // JDS Addition - make blast databases into a fasta file
+    def blasts_v1 = params.blastDb instanceof List ? params.blastDb : [ params.blastDb ]
+    Channel.of(blasts_v1) | convert_blast_dbs_to_fasta | set { combined_blast_fasta }
+
     Channel.of(params.project) | 
       combine(to_dereplicate) | 
+      combine(combined_blast_fasta) | 
       dereplicate | 
       set { dereplicated }
 

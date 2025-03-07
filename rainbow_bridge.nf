@@ -274,14 +274,14 @@ process fix_barcodes {
     path(barcodes)
 
   output:
-    path("${barcodes.BaseName}_fixed.${barcodes.exension}")
+    path("${barcodes.BaseName}_fixed.${barcodes.Extension}")
 
   script:
   """
 	if [[ -e "${barcodes}" ]]; then
-		fix_barcode.awk "${barcodes}" > "${barcodes.BaseName}_fixed.${barcodes.exension}"
+		fix_barcode.awk "${barcodes}" > "${barcodes.BaseName}_fixed.${barcodes.Extension}"
 	else
-		mv "${barcodes}" "${barcodes.BaseName}_fixed.${barcodes.exension}"
+		touch "${barcodes.BaseName}_fixed.${barcodes.Extension}"
 	fi
   """
 }

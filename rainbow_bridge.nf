@@ -51,7 +51,7 @@ def check_params() {
       println(colors.red("Only one of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" may be passed"))
     }
     exit(1)
-  } 
+  }
 
   // check phyloseq params
   if (params.phyloseq) {
@@ -80,7 +80,7 @@ def check_params() {
         break
       default:
         if (!helper.file_exists(params.taxonomy)) {
-          println(colors.yellow("You passed --phyloseq with a user-supplied taxonomy table, but the file '${params.taxonomy}' does not exist"))              
+          println(colors.yellow("You passed --phyloseq with a user-supplied taxonomy table, but the file '${params.taxonomy}' does not exist"))
           /* exit(1) */
         }
         break
@@ -90,7 +90,7 @@ def check_params() {
   // check to make sure standalone taxonomy will work
   if (params.standaloneTaxonomy) {
     if (!helper.file_exists(params.blastFile)) {
-      println(colors.red("The supplied blast result table \"${params.blastFile}\" does not exist"))  
+      println(colors.red("The supplied blast result table \"${params.blastFile}\" does not exist"))
       exit(1)
     }
   }
@@ -126,7 +126,7 @@ def check_params() {
         if( file(params.blastTaxdb).list().findAll{it =~ /taxdb\.bt[id]/}.size() == 2) {
           ok = true
         }
-      } 
+      }
       // otherwise give an error message and bail
       if (!ok) {
         println(colors.bred("--blast-taxdb") + colors.red(" must be a directory containing the NCBI BLAST taxonomy files (taxdb.btd, taxdb.bti)"))
@@ -139,13 +139,13 @@ def check_params() {
 
     // make --blast-db param into a list, if it isn't
     def blasts = params.blastDb
-    if (!helper.is_list(blasts)) 
+    if (!helper.is_list(blasts))
       blasts = [blasts]
 
     // if $FLOW_BLAST was set and we're not ignoring it, add it to the front of the list
-    if (bdb != "" && !params.ignoreBlastEnv) 
+    if (bdb != "" && !params.ignoreBlastEnv)
       blasts = blasts.plus(0,bdb)
-    
+
     // get unique vals
     blasts = blasts.unique(false)
 
@@ -162,11 +162,11 @@ def check_params() {
             println(colors.yellow("The BLAST database '${it}' contains a '~' that was not expanded by the shell. Try entering an absolute path."))
           }
           exit(1)
-        }  
+        }
       }
     }
   } else {
-    if (params.collapseTaxonomy) { 
+    if (params.collapseTaxonomy) {
       println(colors.red("--collapse-taxonomy requires the --blast option."))
       exit(1)
     }
@@ -175,7 +175,7 @@ def check_params() {
   // check LCA options
   if (params.collapseTaxonomy) {
     if (params.lcaDiff <= 0) {
-      println(colors.red("--lca-diff argument must be a number greater than zero."))  
+      println(colors.red("--lca-diff argument must be a number greater than zero."))
       exit(1)
     }
   }
@@ -190,7 +190,7 @@ def check_params() {
         println(colors.red("See rainbow_bridge.nf ") + colors.bred("--help") + colors.red(" for supported builtin models"))
         exit(1)
       }
-    }    
+    }
   }
 }
 
@@ -221,7 +221,7 @@ process filter_merge {
     tuple val(key), path('*_trimmed_merged.fastq')
 
   script:
-  if( reads instanceof Path ) {   
+  if( reads instanceof Path ) {
     // single end
     """
     AdapterRemoval --threads ${task.cpus} --file1 ${reads} \
@@ -233,8 +233,8 @@ process filter_merge {
 
     mv ${key}.truncated ${key}_trimmed_merged.fastq
     """
-  } else {  
-    // if reads are paired-end then merge 
+  } else {
+    // if reads are paired-end then merge
     """
     AdapterRemoval --threads ${task.cpus} --file1 ${reads[0]} --file2 ${reads[1]} \
       --collapse --trimns --trimqualities \
@@ -244,7 +244,7 @@ process filter_merge {
       --mate-separator ${params.mateSeparator} \
       --basename ${key}
 
-    mv ${key}.collapsed ${key}_trimmed_merged.fastq  
+    mv ${key}.collapsed ${key}_trimmed_merged.fastq
     """
   }
 }
@@ -258,7 +258,7 @@ process filter_ambiguous_indices {
     tuple val(key), path(reads)
 
   output:
-    tuple val(key), path("*_valid_index.fastq") 
+    tuple val(key), path("*_valid_index.fastq")
 
   script:
   """
@@ -269,17 +269,20 @@ process filter_ambiguous_indices {
 // replace I's with N's in barcode file primer sequences
 process fix_barcodes {
   label 'shell'
-  
+
   input:
     path(barcodes)
 
   output:
-    path(barcodes)
+    path("${barcodes.BaseName}_fixed.${barcodes.Extension}")
 
   script:
   """
-  fix_barcode.awk ${barcodes} > fixed_barcodes
-  mv fixed_barcodes ${barcodes} 
+  if [[ -e "${barcodes}" ]]; then
+    fix_barcode.awk "${barcodes}" > "${barcodes.BaseName}_fixed.${barcodes.Extension}"
+  else
+    touch "${barcodes.BaseName}_fixed.${barcodes.Extension}"
+  fi
   """
 }
 
@@ -289,7 +292,7 @@ process split_barcodes {
 
   input:
     path(barcodes)
-  
+
   output:
     path('bc/*.tsv')
 
@@ -308,11 +311,11 @@ process ngsfilter {
   publishDir "${params.preDir}/ngsfilter", mode: params.publishMode
 
   input:
-    tuple val(key), path(read), path(barcode) 
+    tuple val(key), path(read), path(barcode)
 
 
   output:
-    tuple val(key), path("*_annotated.fastq"), val("${barcode.baseName}") 
+    tuple val(key), path("*_annotated.fastq"), val("${barcode.baseName}")
 
   script:
   """
@@ -326,9 +329,9 @@ process filter_length {
 
   publishDir "${params.preDir}/length_filtered", mode: params.publishMode
 
-  input: 
-    tuple val(key), path(fastq), val(barcode) 
-  
+  input:
+    tuple val(key), path(fastq), val(barcode)
+
   output:
     tuple val(key), path('*_length_filtered.fastq'), val(barcode)
 
@@ -348,7 +351,7 @@ process split_samples {
 
   input:
     tuple val(key), path(fastq), val(barcode)
-  
+
   output:
     path("__split__*.fastq"), optional: true
 
@@ -372,7 +375,7 @@ process relabel {
 
 
   script:
-  
+
   if (params.denoiser == "vsearch") {
     def combined = "<(cat input-*.fastq)"
     """
@@ -392,13 +395,13 @@ process relabel {
     # we have to convert everything to uppercase because obisplit --uppercase is broken
     ${denoiser} -fastx_relabel ${combined} -prefix "${key}." -fastaout /dev/stdout | \
       tail -n+7 | \
-      awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}"_relabeled.fasta 
+      awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}"_relabeled.fasta
     """
   }
 }
 
-// concatenate all relabeled files. we only do this in a process 
-// instead of using collectFile so we can see that it's happening 
+// concatenate all relabeled files. we only do this in a process
+// instead of using collectFile so we can see that it's happening
 // in the process list. also, the output from collectFile may not be cached and this will be
 process merge_relabeled {
   label 'shell'
@@ -406,7 +409,7 @@ process merge_relabeled {
 
   input:
     path('input-fastq?????.fastq')
-  
+
   output:
     path("${params.project}_relabeled_merged.fasta")
 
@@ -443,7 +446,7 @@ process dereplicate {
     # 2. run denoising algorithm
     # 3. get rid of chimeras
     # 4. match original sequences to zotus by 97% identity
-    if [ -s "${relabeled_merged}" ]; then 
+    if [ -s "${relabeled_merged}" ]; then
       vsearch \
         --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
         --derep_fulllength ${relabeled_merged} --sizeout \
@@ -455,7 +458,7 @@ process dereplicate {
       vsearch \
         --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
         --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" \
-        --relabel Zotu 
+        --relabel Zotu
       vsearch \
         --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
         --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" \
@@ -463,7 +466,7 @@ process dereplicate {
         --userout zotu_map.tsv --userfields "query+target" \
         --top_hits_only
     else
-      >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
+      >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"
       exit 1
     fi
     """
@@ -487,7 +490,7 @@ process dereplicate {
       ${denoiser} -otutab ${relabeled_merged} -id ${params.zotuIdentity} \
         -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zotu_map.tsv
     else
-      >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"  
+      >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"
       exit 1
     fi
     """
@@ -498,12 +501,12 @@ process dereplicate {
 process blast {
   label 'blast'
 
-  publishDir { 
+  publishDir {
     def pid = String.format("%d",(Integer)num(params.percentIdentity ))
     def evalue = String.format("%.3f",num(params.evalue))
     def qcov = String.format("%d",(Integer)num(params.qcov))
-    return "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}/${db_name}" 
-  }, mode: params.publishMode 
+    return "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}/${db_name}"
+  }, mode: params.publishMode
 
   input:
     tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb)
@@ -517,8 +520,8 @@ process blast {
   // format settings values
   def pid = String.format("%d",(Integer)num(params.percentIdentity))
   def evalue = String.format("%.3f",num(params.evalue))
-  def qcov = String.format("%d",(Integer)num(params.qcov))           
-  
+  def qcov = String.format("%d",(Integer)num(params.qcov))
+
   // setup and populate the "basic" blast options
   def blast_options = [:]
   blast_options['task'] = "blastn"
@@ -566,7 +569,7 @@ process lulu_blast {
 
   input:
     tuple val(key), path(zotus_fasta), path(zotu_table)
-  
+
   output:
     tuple val(key), path('match_list.txt'), path(zotu_table)
 
@@ -631,7 +634,7 @@ process collapse_taxonomy {
   script:
   def pf = []
   params.lcaFilterMaxQcov && pf << "--filter-max-qcov"
-  params.lcaCaseInsensitive && pf << "--case-insensitive" 
+  params.lcaCaseInsensitive && pf << "--case-insensitive"
   """
   # save settings
   echo "Minimum query coverage %: ${params.lcaQcov}" > lca_settings.txt
@@ -655,19 +658,19 @@ process collapse_taxonomy {
     --taxon-filter "${params.lcaTaxonFilter}" \
     ${blast_result} ${lineage}
   """
-}  
+}
 
 // run insect classifier model
 process insect {
   label 'insect'
 
-  publishDir { 
+  publishDir {
     def offs = String.format("%d",(Integer)num(params.insectOffset))
     def thresh = String.format("%.2f",num(params.insectThreshold))
     def minc = String.format("%d",(Integer)num(params.insectMinCount))
     def ping = String.format("%.2f",num(params.insectPing))
     return "${params.outDir}/taxonomy/insect/thresh${thresh}_offset${offs}_mincount${minc}_ping${ping}"
-  }, mode: params.publishMode 
+  }, mode: params.publishMode
 
   input:
     tuple path(classifier), path('*'), path(zotus)
@@ -716,7 +719,7 @@ process save_taxdump {
 
   output:
     path(taxdump)
-  
+
   script:
   """
   echo "linking taxdump to publish dir"
@@ -727,7 +730,7 @@ process save_taxdump {
 process remap_samples {
   input:
     tuple val(id), path(reads), path(sample_map)
-  output: 
+  output:
     tuple env(new_id), path(reads)
 
   script:
@@ -754,7 +757,7 @@ process unzip {
 
   input:
     tuple val(id), path(reads)
-  output: 
+  output:
     tuple val(id), path("*.fastq")
 
   script:
@@ -778,13 +781,13 @@ process phyloseq {
     path(taxonomy)
     path(metadata)
     path(sequences)
-  
+
   output:
     path("phyloseq.rds")
 
   script:
   def opt = []
-  params.tree && opt << "--tree"  
+  params.tree && opt << "--tree"
   params.tree && opt << "--sequences \"${sequences}\""
   params.optimizeTree && opt << "--optimize"
   // if (method == "insect") {
@@ -801,7 +804,7 @@ process phyloseq {
 
 process finalize {
   label 'r'
-  
+
   publishDir {
     def td = params.standaloneTaxonomy ? 'standalone_taxonomy/final' : 'final'
     "${params.outDir}/${td}"
@@ -878,9 +881,9 @@ workflow {
           println(colors.yellow("Taxonomy dump archive '${params.taxdump}' does not exist and will be downloaded"))
         }
 
-        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') | 
-          combine(Channel.fromPath('new_taxdump.zip')) | 
-          get_taxdump | 
+        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') |
+          combine(Channel.fromPath('new_taxdump.zip')) |
+          get_taxdump |
           set { taxdump }
 
         taxdump |
@@ -892,10 +895,10 @@ workflow {
           extract_ncbi | collect | toList |
           set { ncbi_dumps }
 
-        taxdump | 
+        taxdump |
           save_taxdump
       } else {
-        zip = Channel.fromPath(params.taxdump) 
+        zip = Channel.fromPath(params.taxdump)
         zip |
           combine(Channel.of('rankedlineage.dmp')) |
           extract_lineage | collect |
@@ -907,30 +910,30 @@ workflow {
       }
     } else {
       // if user has passed a custom ranked lineage dump, use it instead
-      lineage = Channel.fromPath(params.lcaLineage) 
+      lineage = Channel.fromPath(params.lcaLineage)
       ncbi_dumps = Channel.fromPath('nodumps')
     }
 
 
     // run taxonomy process
     blast_result |
-      combine(lineage) | 
+      combine(lineage) |
       combine(ncbi_dumps) |
-      collapse_taxonomy 
+      collapse_taxonomy
 
     // pull out lca table
-    collapse_taxonomy.out.taxonomy | 
+    collapse_taxonomy.out.taxonomy |
       set { lca_taxonomy }
-    
+
     // do this part if the zotu table exists
     if (helper.file_exists(params.zotuTable)) {
       zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
-      curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table", checkIfExists: false) 
-      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false) 
+      curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table", checkIfExists: false)
+      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false)
       // run it through finalize
       zotu_table |
-        combine(curated_zotu_table) | 
-        combine(lca_taxonomy) | 
+        combine(curated_zotu_table) |
+        combine(lca_taxonomy) |
         combine(insect_taxonomy) |
         finalize
     }
@@ -945,24 +948,24 @@ workflow {
         // here we load whatever was passed as the --reads option
         // if it's a glob, we get a list of files. if it's just one, we get just one
         // if it's a directory, it's made into a glob to find reads in that directory
-        // and we try to pull off something from the beginning to use as a sample ID. 
+        // and we try to pull off something from the beginning to use as a sample ID.
         // we also check to see if any of the files end with .gz and mark them as such if they are
         Channel.fromPath(reads_files, checkIfExists: true) |
           map { [it.baseName.tokenize('_')[0],it] } |
-          branch { 
+          branch {
             gz: it[1] =~ /\.gz$/
             regular: true
           } |
           set { reads }
-      } else if (params.paired) { 
+      } else if (params.paired) {
         // if fwd and rev point to files that exists, just load them directly
         if ( helper.file_exists(params.fwd) && helper.file_exists(params.rev) ) {
           directions = [params.fwd,params.rev]
           Channel.of(params.project) |
-            combine(Channel.fromPath(params.fwd,checkIfExists: true)) | 
-            combine(Channel.fromPath(params.rev,checkIfExists: true)) | 
+            combine(Channel.fromPath(params.fwd,checkIfExists: true)) |
+            combine(Channel.fromPath(params.rev,checkIfExists: true)) |
             map { a,b,c -> [a,[b,c]] } |
-            branch { 
+            branch {
               gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
               regular: true
             } |
@@ -972,7 +975,7 @@ workflow {
           def pattern = ""
           // if --fwd and --rev are both globs
           if ( params.fwd != "" && params.rev != "" && helper.is_list(file(params.fwd)) && helper.is_list(file(params.rev)) ) {
-            // get directory part of fwd and rev globs. 
+            // get directory part of fwd and rev globs.
             // file() resolves the glob's fully qualified path
             // and .Parent gets the directory part
             // file() will also get all matches to the glob, so we call unique()
@@ -1001,7 +1004,7 @@ workflow {
             if (fwd_path[fwd_path.size()-1] != '/') fwd_path += '/'
             if (rev_path[rev_path.size()-1] != '/') rev_path += '/'
 
-            // CEB: The strategy here is to idenitify identical and non-identical text in the --fwd and --rev globs to generate 
+            // CEB: The strategy here is to idenitify identical and non-identical text in the --fwd and --rev globs to generate
             // a single glob that is compatible with Channel.fromFilePairs
 
             // Extract the glob part from the provided paths
@@ -1036,11 +1039,11 @@ workflow {
               fwd_path_diff = fwd_path.substring(common_path_prefix.size(), fwd_path.size() - common_path_suffix.size())
               rev_path_diff = rev_path.substring(common_path_prefix.size(), rev_path.size() - common_path_suffix.size())
 
-            } 
+            }
             // CEB: Extract the common file prefix
             // for some weird reason, nextflow doesn't like having def and the assignment on the same line
             // when assigning the results of a call to a helper class method, so define it first
-            def common_file_prefix = "" 
+            def common_file_prefix = ""
             common_file_prefix = helper.common(fwd_file_pattern,rev_file_pattern)
 
             // CEB: Adjust common_file_prefix to remove the last character if it's where they start to differ
@@ -1062,11 +1065,11 @@ workflow {
             def rev_file_diff = ""
             if (common_file_prefix != common_file_suffix) {
               // MH: check for certain edge cases
-              if (common_file_suffix.size() >= fwd_file_pattern.size()) 
+              if (common_file_suffix.size() >= fwd_file_pattern.size())
                 fwd_file_diff == ""
-              else 
+              else
                 fwd_file_diff = fwd_file_pattern.substring(common_file_prefix.size(), fwd_file_pattern.size() - common_file_suffix.size())
-              if (common_file_suffix.size() >= rev_file_pattern.size()) 
+              if (common_file_suffix.size() >= rev_file_pattern.size())
                 rev_file_diff == ""
               else
                 rev_file_diff = rev_file_pattern.substring(common_file_prefix.size(), rev_file_pattern.size() - common_file_suffix.size())
@@ -1083,12 +1086,12 @@ workflow {
               : suf ? "${common_path_prefix}{${fwd_path_diff},${rev_path_diff}}${common_path_suffix}${common_file_suffix}"
                 : "${common_path_prefix}{${fwd_path_diff},${rev_path_diff}}${common_path_suffix}${common_file_prefix}${fd}${common_file_suffix}"
 
-          // CEB Add support for --reads glob.  Glob must follow rules for NextFlow Channel.fromFilePairs.  
+          // CEB Add support for --reads glob.  Glob must follow rules for NextFlow Channel.fromFilePairs.
           //    Basically, the glob should contain [12] or {R1,R2} or etc... based on my testing
           //    The only way to get away from this requirement is to tell fromFilePairs how many files to expect, or
           //    to write a script that generates a compatible glob from the files returned by --reads glob
           } else if (params.reads != "" && helper.is_list(file(params.reads))) {
-            if (file(params.reads).size() > 0) 
+            if (file(params.reads).size() > 0)
               pattern = "${params.reads}"
             else exit(1,"No files matched by --reads glob")
 
@@ -1110,7 +1113,7 @@ workflow {
             pattern = "${params.reads}/*{${params.r1},${params.r2}}*.f*q*"
           } else {
             exit(1,"Arguments passed to --reads, --fwd, and/or --rev point to directories and/or files that do not exist")
-          } 
+          }
 
           // Construct reads channel
           // Replace hyphens with underscores in the sample name, because some tools
@@ -1121,28 +1124,28 @@ workflow {
           // '/reads/{forwards,backwards}*.fastq', the initial result will look like
           // '[ backwards1.fastq, forwards1.fastq ], [ backwards2.fastq, forwards2.fastq ]'
           // Since we've ended up with a glob here, we try to parse the forward/reverse directions
-          // from the {f,r} section of the glob 
+          // from the {f,r} section of the glob
           directions = parse_directions(pattern)
           if (!directions.size()) {
             exit(1,"Unable to determine read direction patterns")
           }
 
-          Channel.fromFilePairs("${pattern}", checkIfExists: true) | 
-            map { key,f -> 
+          Channel.fromFilePairs("${pattern}", checkIfExists: true) |
+            map { key,f ->
               // enforce read order and make sure we have a key value
               if (key == "") key = params.project
-              [key.replaceAll("-","_"),f.sort{a,b -> a =~ /${directions[0]}/ ? -1 : 1}]  
-            } | 
+              [key.replaceAll("-","_"),f.sort{a,b -> a =~ /${directions[0]}/ ? -1 : 1}]
+            } |
             ifEmpty {
               // bail if we didn't find anything
               exit(1,"No paired reads matched by pattern '${pattern}'. Check command-line options.")
             } |
-            branch { 
+            branch {
               // separate gzipped reads for unzipping later
               gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
               regular: true
             } |
-            set { reads }   
+            set { reads }
         }
       } else {
         println(colors.red("Somehow neither ") + colors.bred("--single") + colors.red(" nor ") + colors.bred("--paired") + colors.red(" were passed and we got to this point"))
@@ -1150,24 +1153,24 @@ workflow {
         exit(1)
       }
 
-      // here we decompress any gzipped reads and concatenate 
-      // them back together with any that weren't gzipped in the first place 
-      reads.gz | 
+      // here we decompress any gzipped reads and concatenate
+      // them back together with any that weren't gzipped in the first place
+      reads.gz |
         // flatten paired-end reads to maximize parallelism in the unzip process
         // [ id, [f1, r2] ] -> [id, r1], [id, r2]
-        ( params.paired ? transpose : map { it } ) | 
+        ( params.paired ? transpose : map { it } ) |
         unzip |
         // regroup paired-end reads back to [ id, [r1, r2] ]
         // and enforce the read direction using groupTuple's sort parameter
-        ( params.paired ? groupTuple(sort: {a,b -> a =~ /${directions[0]}/ ? -1 : 1}) : map { it } ) | 
+        ( params.paired ? groupTuple(sort: {a,b -> a =~ /${directions[0]}/ ? -1 : 1}) : map { it } ) |
         concat ( reads.regular ) |
         set { reads }
 
       // remap sample IDs if a sample map is provided
       if (params.sampleMap != "") {
-        reads | 
+        reads |
           combine( Channel.fromPath(params.sampleMap,checkIfExists: true) ) |
-          remap_samples | 
+          remap_samples |
           set { reads }
       }
 
@@ -1187,12 +1190,12 @@ workflow {
 
         // do fastqc/multqc before filtering & merging
         if (params.fastqc) {
-          Channel.of("initial") | 
+          Channel.of("initial") |
             combine(reads) |
-            first_fastqc | 
-            collect(flat: true) | 
+            first_fastqc |
+            collect(flat: true) |
             toList |
-            combine(Channel.of("initial")) | 
+            combine(Channel.of("initial")) |
             first_multiqc
         }
 
@@ -1204,21 +1207,21 @@ workflow {
 
         // do fastqc/multiqc for filtered/merged
         if (params.fastqc) {
-          Channel.of("filtered") | 
-            combine(reads_filtered_merged) | 
-            second_fastqc | 
-            collect(flat: true) | 
+          Channel.of("filtered") |
+            combine(reads_filtered_merged) |
+            second_fastqc |
+            collect(flat: true) |
             toList |
-            combine(Channel.of("filtered")) | 
+            combine(Channel.of("filtered")) |
             second_multiqc
         }
 
         // remove ambiguous indices, if specified
         if (params.removeAmbiguousIndices) {
-          reads_filtered_merged | 
-            filter_ambiguous_indices | 
+          reads_filtered_merged |
+            filter_ambiguous_indices |
             set { reads_filtered_merged }
-        } 
+        }
 
         // with or without the primer mismatch check, do the
         // length filtering and smash results together into one file
@@ -1236,17 +1239,17 @@ workflow {
         // continue length filtering and whatnot
         rfm_barcodes |
           filter_length |
-          map { [it[0], it[1]]} | 
+          map { [it[0], it[1]]} |
           // group together different barcodes because they're
           // concatenated in relabel
-          groupTuple | 
+          groupTuple |
           // relabel to fasta
           relabel |
           set { relabeled }
 
-        relabeled.result | 
+        relabeled.result |
           toList | merge_relabeled |
-          set { to_dereplicate } 
+          set { to_dereplicate }
 
       } else {
         // here, reads are demultiplexed by barcodes, so they're either
@@ -1256,11 +1259,11 @@ workflow {
         // split the input fastqs to increase parallelism, if requested
         if (params.split) {
           if (params.paired) {
-            reads | 
+            reads |
               // flatten the reads tuple
-              map { key, reads -> [key,reads[0],reads[1]] } | 
+              map { key, reads -> [key,reads[0],reads[1]] } |
               // split fastq files
-              splitFastq(by: params.splitBy, file: true, pe: true) | 
+              splitFastq(by: params.splitBy, file: true, pe: true) |
               // rearrange reads tuple so it looks like [key, [R1,R2]]
               // and add the split number to the key
               map { key, read1, read2 -> ["${key}." + file(read1.BaseName).Extension, [read1,read2]] } |
@@ -1268,7 +1271,7 @@ workflow {
           } else {
             // in single-end mode we can just split directly
             reads |
-              splitFastq(by: params.splitBy, file: true) | 
+              splitFastq(by: params.splitBy, file: true) |
               map { key, readfile -> ["${key}." + file(readfile.BaseName).Extension, readfile] } |
               set { reads }
           }
@@ -1276,92 +1279,92 @@ workflow {
 
         // do initial fastqc step
         if (params.fastqc) {
-          Channel.of("initial") | 
-            combine(reads) | 
+          Channel.of("initial") |
+            combine(reads) |
             first_fastqc
           // if input files are split we'll run them through multiqc
           if (params.split || params.demultiplexedBy == "combined") {
-            first_fastqc.out | 
-              collect(flat: true) | 
+            first_fastqc.out |
+              collect(flat: true) |
               toList |
-              combine(Channel.of("initial")) | 
+              combine(Channel.of("initial")) |
               first_multiqc
           }
         }
 
         // do quality filtering and/or paired-end merge
-        reads | 
-          filter_merge | 
+        reads |
+          filter_merge |
           set { reads_filtered_merged }
 
 
         // post-filtering fastqc step
         if (params.fastqc) {
-          Channel.of("filtered") | 
+          Channel.of("filtered") |
             combine(reads_filtered_merged) |
             second_fastqc
           // again run multiqc if split
           if (params.split || params.demultiplexedBy == "combined") {
-            second_fastqc.out | 
-              collect(flat: true) | 
+            second_fastqc.out |
+              collect(flat: true) |
               toList |
-              combine(Channel.of("filtered")) | 
+              combine(Channel.of("filtered")) |
               second_multiqc
           }
         }
-        
+
         if (params.demultiplexedBy == "combined") {
-          barcodes | 
+          barcodes |
             // split barcode file into multiples by the first column (key value)
-            split_barcodes | flatten | 
+            split_barcodes | flatten |
             // and make it a list of [key, split barcode piece]
-            map { [it.baseName.split(/---/)[0], it] } | 
+            map { [it.baseName.split(/---/)[0], it] } |
             set { barcodes }
 
           // combines pooled reads with barcode files
-          reads_filtered_merged | 
+          reads_filtered_merged |
             // this gives us a huge mess of combinations and many of them are wrong
-            combine(barcodes) | 
+            combine(barcodes) |
             // so filter them down to the the ones where the key matches
-            filter { key1, f1, key2, f2 -> key1 == key2 } | 
+            filter { key1, f1, key2, f2 -> key1 == key2 } |
             // and make sure they're in a format we expect
-            map { key1, f1, key2, f2 -> [key1, f1, f2] } | 
+            map { key1, f1, key2, f2 -> [key1, f1, f2] } |
             set { reads_barcodes }
         } else {
           // combine reads with barcode file(s)
-          reads_filtered_merged | 
-            combine(barcodes) | 
+          reads_filtered_merged |
+            combine(barcodes) |
             set { reads_barcodes }
         }
 
         // run the rest of the pipeline, including demultiplexing, length filtering,
         // splitting, and recombination for dereplication
         reads_barcodes |
-          ngsfilter | 
+          ngsfilter |
           filter_length |
-          split_samples | 
+          split_samples |
           // we have to flatten here because we can get results that look like
           // [[sample1,sample2,sample3],[sample1,sample2,sample3]]
-          flatten | 
+          flatten |
           // this collectFile will merge all individual splits with the same name, so the
           // tuple above turns into [sample1,sample2,sample3]
-          collectFile | 
+          collectFile |
           // get rid of the '__split__' business in the filenames
-          map { [it.baseName.replaceFirst(/^__split__/,""), it] } | 
+          map { [it.baseName.replaceFirst(/^__split__/,""), it] } |
           // group together different barcodes because they're
           // concatenated in relabel
-          groupTuple | 
+          groupTuple |
           // relabel to fasta
-          relabel | 
+          relabel |
           set { relabeled }
 
         // collect to single relabeled fasta
-        relabeled.result | 
+        relabeled.result |
           toList | merge_relabeled |
           set { to_dereplicate }
       }
     } else {
-      // here we've already demultiplexed and relabeled sequences 
+      // here we've already demultiplexed and relabeled sequences
       // (presumably from an earlier run of the pipeline), so we can jump to here
 
       // load the fasta file in usearch/vsearch format
@@ -1370,29 +1373,29 @@ workflow {
     }
 
     // build the channel, run dereplication, and set to a channel we can use again
-    Channel.of(params.project) | 
-      combine(to_dereplicate) | 
-      dereplicate | 
+    Channel.of(params.project) |
+      combine(to_dereplicate) |
+      dereplicate |
       set { dereplicated }
 
-    dereplicated.result | 
+    dereplicated.result |
       set { dereplicated }
 
     // run blast query, unless skipped
     if (params.blast) {
       // def only works on its own line
       // possibly related to NF issue #804: https://github.com/nextflow-io/nextflow/issues/804
-      def bdb 
+      def bdb
       // get $FLOW_BLAST environment variable
       bdb = helper.get_env("FLOW_BLAST")
 
       // make --blast-db value a list, if it's not already
       def blasts = params.blastDb
-      if (!helper.is_list(blasts)) 
+      if (!helper.is_list(blasts))
         blasts = [blasts]
 
       // if $FLOW_BLAST was set and we're not ignoring it, add it to the front of the list
-      if (bdb != "" && !params.ignoreBlastEnv) 
+      if (bdb != "" && !params.ignoreBlastEnv)
         blasts = blasts.plus(0,bdb)
 
       // get unique blast dbs
@@ -1404,17 +1407,17 @@ workflow {
       // collect list of files within blast databases
       // and group them by blast db names
       blasts.inject(null,{ b,d ->
-        !b ? 
+        !b ?
           channel.of(file(d).Name) | combine(channel.fromPath("${d}${wildcard}")) :
           b | concat(channel.of(file(d).Name) | combine(channel.fromPath("${d}${wildcard}")))
-      }) | 
-        groupTuple | 
+      }) |
+        groupTuple |
         set { blastdb }
 
       if (!helper.file_exists(params.lcaLineage)) {
         // try to find taxdb files in any of the supplied blast databases
         def db = blasts.collect {
-          blastr -> 
+          blastr ->
             file(blastr).Parent.list().findAll {
               it =~ /taxdb\.bt[id]/
             }.collect {
@@ -1426,24 +1429,24 @@ workflow {
         if (params.blastTaxdb == "nofile-blast-taxdb") {
           if (db.size() > 0) {
             // if we found something and we don't want something else, use what we found
-            Channel.fromPath(db) | 
-              collect | 
-              toList | 
+            Channel.fromPath(db) |
+              collect |
+              toList |
               set { taxdb }
           } else {
             // download and extract taxdb from ncbi website
-            Channel.of('https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz') | 
-              combine(Channel.fromPath('taxdb.tar.gz')) | 
-              get_taxdb | 
+            Channel.of('https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz') |
+              combine(Channel.fromPath('taxdb.tar.gz')) |
+              get_taxdb |
               combine(Channel.of('taxdb.btd','taxdb.bti')) |
-              extract_taxdb | 
+              extract_taxdb |
               collect | toList |
               set { taxdb }
           }
         } else {
-          Channel.fromPath("${params.blastTaxdb}/taxdb.bt*", checkIfExists: true) | 
-            collect | 
-            toList | 
+          Channel.fromPath("${params.blastTaxdb}/taxdb.bt*", checkIfExists: true) |
+            collect |
+            toList |
             set { taxdb }
         }
       } else {
@@ -1452,36 +1455,36 @@ workflow {
       }
 
       // run the blast query
-      dereplicated | 
-        map { sid, uniques, zotus, zotutable -> zotus } | 
+      dereplicated |
+        map { sid, uniques, zotus, zotutable -> zotus } |
         combine(blastdb) |
-        combine(taxdb) | 
-        blast 
+        combine(taxdb) |
+        blast
 
       // format output directory name for merged blast results
       def pid = String.format("%d",(Integer)num(params.percentIdentity ))
       def evalue = String.format("%.3f",num(params.evalue))
       def qcov = String.format("%d",(Integer)num(params.qcov))
-      def blast_dir = "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}" 
+      def blast_dir = "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}"
 
       // since we're now doing blasts separately for each database, combine the results
       // and store it below each indiviudal database result
-      blast.out.result | 
-        collectFile(name: 'blast_result_merged.tsv', storeDir: blast_dir) | 
+      blast.out.result |
+        collectFile(name: 'blast_result_merged.tsv', storeDir: blast_dir) |
         set { blast_result }
     }
 
     // grab the zotu table from our dereplication step
-    dereplicated | 
-      map { sid, uniques, zotus, zotutable -> zotutable } | 
+    dereplicated |
+      map { sid, uniques, zotus, zotutable -> zotutable } |
       set { zotu_table }
 
     // make lulu blast database and do lulu curation
     if (params.lulu) {
-      dereplicated | 
+      dereplicated |
         // get zotus and sample id
-        map { sid, uniques, zotus, zotutable -> [sid,zotus,zotutable] } | 
-        lulu_blast | 
+        map { sid, uniques, zotus, zotutable -> [sid,zotus,zotutable] } |
+        lulu_blast |
         lulu
     }
 
@@ -1490,9 +1493,9 @@ workflow {
       // get the NCBI ranked taxonomic lineage dump
       if (!helper.file_exists(params.taxdump)) {
 
-        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') | 
-          combine(Channel.fromPath('new_taxdump.zip')) | 
-          get_taxdump | 
+        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') |
+          combine(Channel.fromPath('new_taxdump.zip')) |
+          get_taxdump |
           set { taxdump }
         taxdump |
           combine(Channel.of('rankedlineage.dmp')) |
@@ -1503,10 +1506,10 @@ workflow {
           extract_ncbi | collect | toList |
           set { ncbi_dumps }
 
-        taxdump | 
+        taxdump |
           save_taxdump
       } else {
-        zip = Channel.fromPath(params.taxdump) 
+        zip = Channel.fromPath(params.taxdump)
         zip |
           combine(Channel.of('rankedlineage.dmp')) |
           extract_lineage | collect |
@@ -1522,12 +1525,12 @@ workflow {
       // if user has passed a custom ranked lineage dump, use it instead
       lineage = Channel.fromPath(params.lcaLineage)
       ncbi_dumps = Channel.fromPath('nodumps')
-      
+
       // if we're doing an insect classification, we still need rankedlineage.dmp from NCBI
       if (params.insect) {
-        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') | 
-          combine(Channel.fromPath('new_taxdump.zip')) | 
-          get_taxdump | 
+        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') |
+          combine(Channel.fromPath('new_taxdump.zip')) |
+          get_taxdump |
           set { taxdump }
         taxdump |
           combine(Channel.of('rankedlineage.dmp')) |
@@ -1540,8 +1543,8 @@ workflow {
     // this should run in parallel with the blast & lulu processes
     if (params.insect) {
       // dereplicate returns a tuple, but we only need the zotus fasta
-      dereplicated | 
-        map { sid, uniques, zotus, zotutable -> [zotus] } | 
+      dereplicated |
+        map { sid, uniques, zotus, zotutable -> [zotus] } |
         set { zotus }
 
       // load the classifier model
@@ -1552,44 +1555,44 @@ workflow {
         // previous sanity checks ensure the model is in our helper map
         def m = params.insect.toLowerCase()
         def url = helper.insect_classifiers[m]
-        Channel.of(url) | 
+        Channel.of(url) |
           combine(Channel.fromPath('insect_model.rds')) |
-          get_model | 
+          get_model |
           set { classifier }
       }
 
       // run the insect classification
-      classifier | 
+      classifier |
         // join the correct lineage dump
-        ( helper.file_exists(params.lcaLineage) ? combine(ncbi_lineage) : combine(lineage) ) | 
-        combine(zotus) | 
-        insect | 
+        ( helper.file_exists(params.lcaLineage) ? combine(ncbi_lineage) : combine(lineage) ) |
+        combine(zotus) |
+        insect |
         set { insectized }
     }
 
     // run taxonomy assignment/collapse script if so requested
     if (params.collapseTaxonomy && params.blast) {
-      // then we smash it together with the blast results 
+      // then we smash it together with the blast results
       // and run the taxonomy assignment/collapser script
       blast_result |
-        combine(lineage) | 
+        combine(lineage) |
         combine(ncbi_dumps) |
         collapse_taxonomy
     }
 
     // prepare for final output
     if (params.collapseTaxonomy && params.blast) {
-      collapse_taxonomy.out.taxonomy | 
+      collapse_taxonomy.out.taxonomy |
         set { lca_taxonomy }
     } else {
-      Channel.fromPath("nofile-lca-taxonomy",checkIfExists: false) | 
-        set { lca_taxonomy } 
+      Channel.fromPath("nofile-lca-taxonomy",checkIfExists: false) |
+        set { lca_taxonomy }
     }
 
     if (params.insect) {
-      insect_taxonomy = insectized.taxonomy 
+      insect_taxonomy = insectized.taxonomy
     } else {
-      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false) 
+      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false)
     }
 
     if (params.lulu) {
@@ -1597,14 +1600,14 @@ workflow {
         map { it[0] } |
         set { curated_zotu_table }
     } else {
-      Channel.fromPath("nofile-curated-zotu-table", checkIfExists: false) | 
+      Channel.fromPath("nofile-curated-zotu-table", checkIfExists: false) |
         set { curated_zotu_table }
     }
 
     if (params.collapseTaxonomy || params.insect) {
       zotu_table |
-        combine(curated_zotu_table) | 
-        combine(lca_taxonomy) | 
+        combine(curated_zotu_table) |
+        combine(lca_taxonomy) |
         combine(insect_taxonomy) |
         finalize
     }
@@ -1622,7 +1625,7 @@ workflow {
           break
         case "insect":
           if (params.insect) {
-            ph_taxonomy = insectized.taxonomy 
+            ph_taxonomy = insectized.taxonomy
           } else {
             physeq = false
           }
@@ -1636,10 +1639,10 @@ workflow {
           break
         default:
           if (helper.file_exists(params.taxonomy)) {
-            ph_taxonomy = Channel.fromPath(params.taxonomy, checkIfExists: true) 
+            ph_taxonomy = Channel.fromPath(params.taxonomy, checkIfExists: true)
           } else {
             physeq = false
-          } 
+          }
           break
       }
       if (physeq) {

@@ -278,11 +278,11 @@ process fix_barcodes {
 
   script:
   """
-	if [[ -e "${barcodes}" ]]; then
-		fix_barcode.awk "${barcodes}" > "${barcodes.BaseName}_fixed.${barcodes.Extension}"
-	else
-		touch "${barcodes.BaseName}_fixed.${barcodes.Extension}"
-	fi
+  if [[ -e "${barcodes}" ]]; then
+    fix_barcode.awk "${barcodes}" > "${barcodes.BaseName}_fixed.${barcodes.Extension}"
+  else
+    touch "${barcodes.BaseName}_fixed.${barcodes.Extension}"
+  fi
   """
 }
 

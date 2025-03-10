@@ -336,10 +336,8 @@ process filter_length {
     tuple val(key), path('*_length_filtered.fastq'), val(barcode)
 
   script:
-  // if we're already demultiplexed we probably don't have the forward_tag and reverse_tag annotations
-  def p = params.demultiplexedBy in ['barcode','combined'] ? "-p 'forward_tag is not None and reverse_tag is not None'" : ''
   """
-  obigrep --uppercase -l ${params.minLen} ${p} "${fastq}" > "${key}_length_filtered.fastq"
+  obigrep --uppercase -l ${params.minLen} "${fastq}" > "${key}_length_filtered.fastq"
   """
 }
 

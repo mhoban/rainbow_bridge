@@ -1,6 +1,7 @@
 // run fastqc process
 process fastqc {
   label 'fastqc'
+  label 'process_single'
 
   publishDir "${params.outDir}/fastqc/${step}", mode: params.publishMode
 
@@ -28,6 +29,7 @@ process fastqc {
 // we do this for the non-demultiplexed samples
 process multiqc {
   label 'multiqc'
+  label 'process_single'
 
   publishDir "${params.outDir}/fastqc/${step}", mode: params.publishMode
 
@@ -44,6 +46,8 @@ process multiqc {
 
 // get a file from a URL
 process get_web {
+  label 'process_single'
+
   input:
     tuple val(location), path(localfile)
   output:
@@ -58,6 +62,7 @@ process get_web {
 // extract arbitrary files from a zip archive
 process extract_zip {
   label 'shell'
+  label 'process_single'
 
   input:
     tuple path(zipfile), val(f)
@@ -73,6 +78,7 @@ process extract_zip {
 // extract files from a .tar.gz archive
 process extract_targz {
   label 'shell'
+  label 'process_single'
 
   input:
     tuple path(archive), val(to_extract)

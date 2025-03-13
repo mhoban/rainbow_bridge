@@ -210,7 +210,7 @@ def parse_directions(reads) {
 // trim and (where relevant) merge paired-end reads
 process filter_merge {
   label 'adapterRemoval'
-  label 'demux_cpus'
+  label 'process_medium'
 
   publishDir "${params.preDir}/trim_merge", mode: params.publishMode
 
@@ -251,6 +251,7 @@ process filter_merge {
 
 process filter_ambiguous_indices {
   label 'obitools'
+  label 'process_single'
 
   publishDir "${params.preDir}/index_filtered", mode: params.publishMode
 
@@ -269,6 +270,7 @@ process filter_ambiguous_indices {
 // replace I's with N's in barcode file primer sequences
 process fix_barcodes {
   label 'shell'
+  label 'process_single'
 
   input:
     path(barcodes)
@@ -289,6 +291,7 @@ process fix_barcodes {
 // split and properly modify barcode file if they're pooled
 process split_barcodes {
   label 'shell'
+  label 'process_single'
 
   input:
     path(barcodes)
@@ -307,6 +310,8 @@ process split_barcodes {
 // multiple different barcode files are possible
 process ngsfilter {
   label 'obitools'
+  label 'process_single'
+  label 'process_more_memory'
 
   publishDir "${params.preDir}/ngsfilter", mode: params.publishMode
 
@@ -326,6 +331,7 @@ process ngsfilter {
 // combine outputs from (possible) multiple barcode files, filter by length
 process filter_length {
   label 'obitools'
+  label 'process_single'
 
   publishDir "${params.preDir}/length_filtered", mode: params.publishMode
 
@@ -344,6 +350,7 @@ process filter_length {
 // for non-demultiplexed runs, split the annotated reads file by samples
 process split_samples {
   label 'obitools'
+  label 'process_single'
 
   publishDir "${params.preDir}/split_samples", mode: params.publishMode
 
@@ -362,6 +369,7 @@ process split_samples {
 // relabel files for dereplication
 process relabel {
   label 'denoiser'
+  label 'process_low'
 
   publishDir "${params.preDir}/relabeled", mode: params.publishMode
 
@@ -403,6 +411,8 @@ process relabel {
 // in the process list. also, the output from collectFile may not be cached and this will be
 process merge_relabeled {
   label 'shell'
+  label 'process_single'
+
   publishDir "${params.preDir}/merged"
 
   input:
@@ -420,7 +430,7 @@ process merge_relabeled {
 // dereplication, chimera removal, zOTU table generation
 process dereplicate {
   label 'denoiser'
-  label 'all_cpus'
+  label 'process_high'
 
   publishDir "${params.outDir}/zotus", mode: params.publishMode
 
@@ -498,6 +508,7 @@ process dereplicate {
 // run blast query
 process blast {
   label 'blast'
+  label 'all_cpus'
 
   publishDir {
     def pid = String.format("%d",(Integer)num(params.percentIdentity ))
@@ -564,6 +575,7 @@ process blast {
 // make custom blast database for LULU curation
 process lulu_blast {
   label 'blast'
+  label 'process_medium'
 
   input:
     tuple val(key), path(zotus_fasta), path(zotu_table)
@@ -586,6 +598,8 @@ process lulu_blast {
 // LULU curation
 process lulu {
   label 'r'
+  label 'process_single'
+  lable 'process_more_memory'
 
   publishDir "${params.outDir}/lulu", mode: params.publishMode
 
@@ -614,6 +628,8 @@ process lulu {
 // assign/collapse taxonomy using the R port of the original python script
 process collapse_taxonomy {
   label 'r'
+  label 'process_single'
+  label 'process_more_memory'
 
   publishDir {
     def td = params.standaloneTaxonomy ? 'standalone_taxonomy' : 'taxonomy'
@@ -661,6 +677,7 @@ process collapse_taxonomy {
 // run insect classifier model
 process insect {
   label 'insect'
+  label 'all_cpus'
 
   publishDir {
     def offs = String.format("%d",(Integer)num(params.insectOffset))
@@ -709,6 +726,7 @@ process insect {
 // dummy process to generate published file
 process save_taxdump {
   label 'shell'
+  label 'process_single'
 
   publishDir 'output/taxonomy/ncbi_taxdump'
 
@@ -726,6 +744,9 @@ process save_taxdump {
 
 // use tab-separated sample map to remap sample IDs
 process remap_samples {
+  label 'shell'
+  label 'process_single'
+
   input:
     tuple val(id), path(reads), path(sample_map)
   output:
@@ -752,6 +773,7 @@ process remap_samples {
 // un-gzip gzipped files
 process unzip {
   label 'shell'
+  label 'process_single'
 
   input:
     tuple val(id), path(reads)
@@ -771,6 +793,8 @@ process unzip {
 // produce a phyloseq object from pipeline output
 process phyloseq {
   label 'r'
+  label 'process_single'
+  label 'process_more_memory'
 
   publishDir "${params.outDir}/phyloseq", mode: params.publishMode
 
@@ -802,6 +826,8 @@ process phyloseq {
 
 process finalize {
   label 'r'
+  label 'process_single'
+  label 'process_more_memory'
 
   publishDir {
     def td = params.standaloneTaxonomy ? 'standalone_taxonomy/final' : 'final'

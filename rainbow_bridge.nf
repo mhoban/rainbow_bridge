@@ -598,7 +598,7 @@ process lulu_blast {
 process lulu {
   label 'r'
   label 'process_single'
-  lable 'process_more_memory'
+  label 'process_more_memory'
 
   publishDir "${params.outDir}/lulu", mode: params.publishMode
 

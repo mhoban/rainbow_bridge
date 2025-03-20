@@ -388,7 +388,7 @@ process relabel {
     echo "denoiser: vsearch" > settings.txt
     # this may or may not be necessary anymore, but it seems like a good sanity check
     # since this will fail on empty files
-    vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --fastx_filter ${combined} --relabel "${key}." --fastaout - | \
+    vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --fastx_filter ${combined} --relabel "${key}." --label_suffix ";sample=${key}" --fastaout - | \
       awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}_relabeled.fasta"
     """
   } else {
@@ -456,19 +456,18 @@ process dereplicate {
     # 4. match original sequences to zotus by 97% identity
     if [ -s "${relabeled_merged}" ]; then
       vsearch \
-        --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
         --derep_fulllength ${relabeled_merged} --sizeout \
         --output "${id}_unique.fasta"
       vsearch \
-        --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
+        --threads ${task.cpus} \
         --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" \
         --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
       vsearch \
-        --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
+        --threads ${task.cpus} \
         --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" \
         --relabel Zotu
       vsearch \
-        --threads ${task.cpus} --fastq_qmax ${params.maxQuality} \
+        --threads ${task.cpus} \
         --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" \
         --id ${params.zotuIdentity} --otutabout zotu_table.tsv \
         --userout zotu_map.tsv --userfields "query+target" \

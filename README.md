@@ -167,7 +167,7 @@ flowchart TB
          - [Barcode file ](#barcode-file)
          - [BLAST settings ](#blast-settings)
    * [Sample IDs](#sample-ids)
-      + [Mapping of custom sample IDs](#mapping-of-custom-sample-ids)
+      + [Re-mapping custom sample IDs](#re-mapping-custom-sample-ids)
    * [Other options](#other-options)
       + [General ](#general)
       + [Splitting input](#splitting-input)

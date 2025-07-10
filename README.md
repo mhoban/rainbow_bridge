@@ -167,7 +167,7 @@ flowchart TB
          - [Barcode file ](#barcode-file)
          - [BLAST settings ](#blast-settings)
    * [Sample IDs](#sample-ids)
-      + [Mapping of custom sample IDs](#mapping-of-custom-sample-ids)
+      + [Re-mapping custom sample IDs](#re-mapping-custom-sample-ids)
    * [Other options](#other-options)
       + [General ](#general)
       + [Splitting input](#splitting-input)
@@ -600,13 +600,13 @@ Note: a barcode file is optional for demultiplexed runs where PCR primers have a
 For pipeline runs in which BLAST queries are performed, you must identify the database(s) being used. This can be done using the `--blast-db` option and/or the `$FLOW_BLAST` environment variable. See [below](#blast-settings-1) for more details on how to do this. 
 
 ## Sample IDs
-For non-demultiplexed sequencing runs, samples will be named based on the sample IDs specified in the `sample` column of the barcode file. For demultiplexed runs, samples will by default be named based on the first part of the filename before the fwd/rev (R1/R2) pattern. For example, the following read files:
+For non-demultiplexed sequencing runs (`--demultipexed-by barcode`), sample IDs are designated using the `sample` column of the barcode file. For demultiplexed runs (`--demultipexed-by index`), sample IDs are generated using the first (shared) part of the read filename(s) before the fwd/rev (R1/R2) pattern (if applicable). For example, the following read pairs:
 
 ```
-B1_S7_L001_R1_001.fastq, B1_S7_L001_R2_001.fastq
-B2_S8_L001_R1_001.fastq, B2_S8_L001_R2_001.fastq
-CL1_S2_L001_R1_001.fastq, CL1_S2_L001_R2_001.fastq
-CL2_S3_L001_R1_001.fastq, CL2_S3_L001_R2_001.fastq
+B1_S7_L001_R1_001.fastq     B1_S7_L001_R2_001.fastq
+B2_S8_L001_R1_001.fastq     B2_S8_L001_R2_001.fastq
+CL1_S2_L001_R1_001.fastq    CL1_S2_L001_R2_001.fastq
+CL2_S3_L001_R1_001.fastq    CL2_S3_L001_R2_001.fastq
 ```
 
 Will result in the following sample IDs:
@@ -618,12 +618,12 @@ CL1_S2_L001
 CL2_S3_L001
 ```
 
-### Mapping of custom sample IDs
-By default for previously-demultiplexed runs, rainbow_bridge will interpret sample IDs from filenames. However, since this sometimes results in screwy sample IDs, it's possible to specify a mapping file that will translate filenames into custom IDs.
+### Re-mapping custom sample IDs
+By default for previously-demultiplexed runs, rainbow_bridge will interpret sample IDs from sequence read filenames as outlined above. However, you may also specify a mapping file to translate read filenames into custom sample IDs.
 
 <small>**`--sample-map [mapfile]`**</small>: A headerless tab-delimited file that maps sample names to sequence-read filenames.  
 
-The specified map file should be a tab-delimited table (*without* headers) where the first column contains the sample ID, the second column contains the read filename (forward read for paired-end reads), and the third column (for paired-end reads only) contains the reverse read filename. Using the filenames from the example given [above](#sample-ids), a map file would contain the following (columns are tab-separated, file has no header): 
+The specified map file should be a tab-delimited table (*without* headers) where the first column contains the desired sample ID, the second column contains the read filename (forward read for paired-end reads), and the third column (for paired-end reads only) contains the reverse read filename. To map custom IDs to the read files in the example [above](#sample-ids), construct a map file as follows (columns are tab-separated, file has no header): 
 
 ```
 sample_B1   B1_S7_L001_R1_001.fastq   B1_S7_L001_R2_001.fastq
@@ -632,7 +632,16 @@ sample_CL1  CL1_S2_L001_R1_001.fastq  CL1_S2_L001_R2_001.fastq
 sample_CL2  CL2_S3_L001_R1_001.fastq  CL2_S3_L001_R2_001.fastq 
 ```
 
-**NOTE: If your fastq files were gzipped, DO NOT include the .gz extension in your sample map file, because the files are unzipped (and .gz extension stripped) BEFORE sample IDs are remapped.**
+This would result in the following sample IDs:
+
+```
+sample_B1 
+sample_B2 
+sample_CL1
+sample_CL2
+```
+
+**NOTE: Make sure the filenames in your sample map match the complete filenames (base names) as they exist on-disk (e.g., if they are gzipped, be sure to include the '.gz' extension in your sample map). This differs from previous versions of the pipeline in which the .gz extension needed to be stripped.**
 
 ## Other options
 

@@ -61,7 +61,7 @@ process get_web {
 
 // extract arbitrary files from a zip archive
 process extract_zip {
-  label 'shell'
+  container 'quay.io/biocontainers/unzip:6.0'
   label 'process_single'
 
   input:

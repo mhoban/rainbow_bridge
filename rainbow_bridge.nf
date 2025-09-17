@@ -194,19 +194,6 @@ def check_params() {
   }
 }
 
-// parse read directions from a glob
-// e.g., file*{R1,R2} -> [R1,R2]
-def parse_directions(reads) {
-  if (m = reads =~ /\{([^,]+),([^}]+)\}/) {
-    return [m.group(1),m.group(2)]
-  } else if (m = reads =~ /\[(\w)(\w)\]/) {
-    return [m.group(1),m.group(2)]
-  } else {
-    return []
-  }
-}
-
-
 // trim and (where relevant) merge paired-end reads
 process filter_merge {
   label 'adapterRemoval'
@@ -1086,23 +1073,10 @@ workflow {
           // Replace hyphens with underscores in the sample name, because some tools
           // (notably vsearch) will cut on hyphens as a delimiter and potentially cause havok as a result.
 
-          // Also, try to enforce the order of r1/r2 reads because fromFilePairs (really, the system)
-          // returns the files in alphabetical order, so that if you have a glob like
-          // '/reads/{forwards,backwards}*.fastq', the initial result will look like
-          // '[ backwards1.fastq, forwards1.fastq ], [ backwards2.fastq, forwards2.fastq ]'
-          // Since we've ended up with a glob here, we try to parse the forward/reverse directions
-          // from the {f,r} section of the glob
-          directions = parse_directions(pattern)
-          if (!directions.size()) {
-            exit(1,"Unable to determine read direction patterns")
-          }
-
           Channel.fromFilePairs(pattern, checkIfExists: true) |
-            map { key,f ->
-              // enforce read order and make sure we have a key value
-              if (key == "") key = params.project
-              [key.replaceAll("-","_"),f.sort{a,b -> a =~ /${directions[0]}/ ? -1 : 1}]
-            } |
+            // make sure we have a key value and replace dashes with underscores 
+            // (although this may be a problem sometimes! see #138)
+            map { key,reads -> [ (key ?: params.project).replaceAll(/-/,'_'), reads ] } |
             ifEmpty {
               // bail if we didn't find anything
               exit(1,"No paired reads matched by pattern '${pattern}'. Check command-line options.")
@@ -1115,7 +1089,23 @@ workflow {
         exit(1)
       }
 
-      // remap sample IDs if a sample map is provided
+      // Attempt to enforce proper read order of read pairs, since
+      // Channnel.fromFilePairs will load them alphabetically
+      // and they might show up in the wrong order
+      if (params.r1 != "" && params.r2 != "") {
+        reads |
+          map { id, reads -> [ 
+            id,
+            reads.sort{ a,b ->
+              a.baseName =~ /${params.r1}/ && b.baseName =~ /${params.r2}/ ? -1 :
+                a.baseName =~ /${params.r2}/ && b.baseName =~ /${params.r1}/ ? 1 : 
+                  exit(1,"Unable to determine correct order of sequence read files.")
+            } 
+          ] } |
+          set { reads }
+      }
+
+      // remap sample IDs if a sample map was provided
       if (helper.file_exists(params.sampleMap)) {
         Channel.fromPath(params.sampleMap) |
           splitCsv(sep: "\t") |

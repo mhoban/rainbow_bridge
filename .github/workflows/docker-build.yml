@@ -36,7 +36,7 @@ jobs:
       - name: Build and push R container to quay.io
         uses: Raghul-M/quay-push-action@main
         with:
-          quay_username: ${{ secrets.QUAY_USERNAME }}
+          quay_username: ${{ secrets.QUAY_LOGIN }}
           quay_password: ${{ secrets.QUAY_PASSWORD }}
           repository_name: fishbotherer/r-tools
           image_tag: latest  

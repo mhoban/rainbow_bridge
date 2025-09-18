@@ -443,6 +443,7 @@ process dereplicate {
     # 4. match original sequences to zotus by 97% identity
     if [ -s "${relabeled_merged}" ]; then
       vsearch \
+        --threads ${task.cpus} \
         --derep_fulllength ${relabeled_merged} --sizeout \
         --output "${id}_unique.fasta"
       vsearch \

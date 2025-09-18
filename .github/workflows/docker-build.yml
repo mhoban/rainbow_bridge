@@ -32,12 +32,3 @@ jobs:
           directory: containers/r
           username: ${{ secrets.DOCKER_LOGIN }}
           password: ${{ secrets.DOCKER_TOKEN }}
-          
-      - name: Build and push R container to quay.io
-        uses: Raghul-M/quay-push-action@main
-        with:
-          quay_username: ${{ secrets.QUAY_LOGIN }}
-          quay_password: ${{ secrets.QUAY_PASSWORD }}
-          repository_name: fishbotherer/r-tools
-          image_tag: latest  
-          context: containers/r/Dockerfile 

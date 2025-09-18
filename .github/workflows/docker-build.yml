@@ -21,7 +21,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Build and push R container
+      - name: Build and push R container to docker hub
         uses: mr-smithers-excellent/docker-build-push@v6.4
         with:
           image: fishbotherer/r-tools
@@ -33,3 +33,11 @@ jobs:
           username: ${{ secrets.DOCKER_LOGIN }}
           password: ${{ secrets.DOCKER_TOKEN }}
           
+      - name: Build and push R container to quay.io
+        uses: Raghul-M/quay-push-action@main
+        with:
+          quay_username: ${{ secrets.QUAY_USERNAME }}
+          quay_password: ${{ secrets.QUAY_PASSWORD }}
+          repository_name: fishbotherer/r-tools
+          image_tag: latest  
+          context: containers/r/Dockerfile 

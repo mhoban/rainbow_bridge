@@ -530,8 +530,8 @@ process blast {
 
   // get extra blast options passed on the command line as --blastn-*
   def extra_options = params
-    .findAll { it.key =~ /^blastn-/ }
-    .collectEntries { k, v -> [k.tokenize('-')[1],v] }
+    .findAll { it.key =~ /^blastn[A-Z].+/ }
+    .collectEntries { k, v -> [k.replaceAll(/^blastn/,'').toLowerCase(),v] }
 
   // merge blast options with any extra options
   blast_options = blast_options << extra_options

@@ -194,19 +194,6 @@ def check_params() {
   }
 }
 
-// parse read directions from a glob
-// e.g., file*{R1,R2} -> [R1,R2]
-def parse_directions(reads) {
-  if (m = reads =~ /\{([^,]+),([^}]+)\}/) {
-    return [m.group(1),m.group(2)]
-  } else if (m = reads =~ /\[(\w)(\w)\]/) {
-    return [m.group(1),m.group(2)]
-  } else {
-    return []
-  }
-}
-
-
 // trim and (where relevant) merge paired-end reads
 process filter_merge {
   label 'adapterRemoval'
@@ -221,7 +208,7 @@ process filter_merge {
     tuple val(key), path('*_trimmed_merged.fastq')
 
   script:
-  if( reads instanceof Path ) {
+  if( params.single ) {
     // single end
     """
     AdapterRemoval --threads ${task.cpus} --file1 ${reads} \
@@ -233,7 +220,7 @@ process filter_merge {
 
     mv ${key}.truncated ${key}_trimmed_merged.fastq
     """
-  } else {
+  } else if ( params.paired ) {
     // if reads are paired-end then merge
     """
     AdapterRemoval --threads ${task.cpus} --file1 ${reads[0]} --file2 ${reads[1]} \
@@ -741,54 +728,6 @@ process save_taxdump {
   """
 }
 
-// use tab-separated sample map to remap sample IDs
-process remap_samples {
-  label 'shell'
-  label 'process_single'
-
-  input:
-    tuple val(id), path(reads), path(sample_map)
-  output:
-    tuple env(new_id), path(reads)
-
-  script:
-  if (reads instanceof Path) {
-    """
-    new_id=\$(awk -F \$'\\t' '\$2 == "${reads}" {print \$1}' ${sample_map})
-    if [ -z "\$new_id" ]; then
-      new_id="${id}"
-    fi
-    """
-  } else {
-    """
-    new_id=\$(awk -F \$'\\t' '\$2 == "${reads[0]}" && \$3 == "${reads[1]}" {print \$1}' ${sample_map})
-    if [ -z "\$new_id" ]; then
-      new_id="${id}"
-    fi
-    """
-  }
-}
-
-// un-gzip gzipped files
-process unzip {
-  label 'shell'
-  label 'process_single'
-
-  input:
-    tuple val(id), path(reads)
-  output:
-    tuple val(id), path("*.fastq")
-
-  script:
-  """
-  z="${reads}"
-  # change extension to .fastq regardless of what it currently is
-  fn=\$(basename \$z .gz) # get rid of .gz
-  fn="\${fn%.*}.fastq"    # get rid of next extension and add .fastq
-  gunzip -c \$z > "\$fn"
-  """
-}
-
 // produce a phyloseq object from pipeline output
 process phyloseq {
   label 'r'
@@ -971,14 +910,9 @@ workflow {
         // here we load whatever was passed as the --reads option
         // if it's a glob, we get a list of files. if it's just one, we get just one
         // if it's a directory, it's made into a glob to find reads in that directory
-        // and we try to pull off something from the beginning to use as a sample ID.
-        // we also check to see if any of the files end with .gz and mark them as such if they are
+        // and we use the basename of the file as a sample ID.
         Channel.fromPath(reads_files, checkIfExists: true) |
-          map { [it.baseName.tokenize('_')[0],it] } |
-          branch {
-            gz: it[1] =~ /\.gz$/
-            regular: true
-          } |
+          map { [ it.baseName, [it] ] } |
           set { reads }
       } else if (params.paired) {
         // if fwd and rev point to files that exists, just load them directly
@@ -988,12 +922,8 @@ workflow {
             combine(Channel.fromPath(params.fwd,checkIfExists: true)) |
             combine(Channel.fromPath(params.rev,checkIfExists: true)) |
             map { a,b,c -> [a,[b,c]] } |
-            branch {
-              gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
-              regular: true
-            } |
             set { reads }
-        } else {
+         } else {
           // figure out how the reads are to be found and find them
           def pattern = ""
           // if --fwd and --rev are both globs
@@ -1024,8 +954,8 @@ workflow {
             rev_path = rev_path[0].toString()
 
             // make sure the directory part ends in '/'
-            if (fwd_path[fwd_path.size()-1] != '/') fwd_path += '/'
-            if (rev_path[rev_path.size()-1] != '/') rev_path += '/'
+            if (fwd_path[-1] != '/') fwd_path += '/'
+            if (rev_path[-1] != '/') rev_path += '/'
 
             // CEB: The strategy here is to idenitify identical and non-identical text in the --fwd and --rev globs to generate
             // a single glob that is compatible with Channel.fromFilePairs
@@ -1142,31 +1072,13 @@ workflow {
           // Replace hyphens with underscores in the sample name, because some tools
           // (notably vsearch) will cut on hyphens as a delimiter and potentially cause havok as a result.
 
-          // Also, try to enforce the order of r1/r2 reads because fromFilePairs (really, the system)
-          // returns the files in alphabetical order, so that if you have a glob like
-          // '/reads/{forwards,backwards}*.fastq', the initial result will look like
-          // '[ backwards1.fastq, forwards1.fastq ], [ backwards2.fastq, forwards2.fastq ]'
-          // Since we've ended up with a glob here, we try to parse the forward/reverse directions
-          // from the {f,r} section of the glob
-          directions = parse_directions(pattern)
-          if (!directions.size()) {
-            exit(1,"Unable to determine read direction patterns")
-          }
-
-          Channel.fromFilePairs("${pattern}", checkIfExists: true) |
-            map { key,f ->
-              // enforce read order and make sure we have a key value
-              if (key == "") key = params.project
-              [key.replaceAll("-","_"),f.sort{a,b -> a =~ /${directions[0]}/ ? -1 : 1}]
-            } |
+          Channel.fromFilePairs(pattern, checkIfExists: true) |
+            // make sure we have a key value and replace dashes with underscores 
+            // (although this may be a problem sometimes! see #138)
+            map { key,reads -> [ (key ?: params.project).replaceAll(/-/,'_'), reads ] } |
             ifEmpty {
               // bail if we didn't find anything
               exit(1,"No paired reads matched by pattern '${pattern}'. Check command-line options.")
-            } |
-            branch {
-              // separate gzipped reads for unzipping later
-              gz: it[1][0] =~ /\.gz$/ && it[1][1] =~ /\.gz$/
-              regular: true
             } |
             set { reads }
         }
@@ -1176,24 +1088,32 @@ workflow {
         exit(1)
       }
 
-      // here we decompress any gzipped reads and concatenate
-      // them back together with any that weren't gzipped in the first place
-      reads.gz |
-        // flatten paired-end reads to maximize parallelism in the unzip process
-        // [ id, [f1, r2] ] -> [id, r1], [id, r2]
-        ( params.paired ? transpose : map { it } ) |
-        unzip |
-        // regroup paired-end reads back to [ id, [r1, r2] ]
-        // and enforce the read direction using groupTuple's sort parameter
-        ( params.paired ? groupTuple(sort: {a,b -> a =~ /${directions[0]}/ ? -1 : 1}) : map { it } ) |
-        concat ( reads.regular ) |
-        set { reads }
-
-      // remap sample IDs if a sample map is provided
-      if (params.sampleMap != "") {
+      // Attempt to enforce proper read order of read pairs, since
+      // Channnel.fromFilePairs will load them alphabetically
+      // and they might show up in the wrong order
+      if (params.r1 != "" && params.r2 != "") {
         reads |
-          combine( Channel.fromPath(params.sampleMap,checkIfExists: true) ) |
-          remap_samples |
+          map { id, reads -> [ 
+            id,
+            reads.sort{ a,b ->
+              a.baseName =~ /${params.r1}/ && b.baseName =~ /${params.r2}/ ? -1 :
+                a.baseName =~ /${params.r2}/ && b.baseName =~ /${params.r1}/ ? 1 : 
+                  exit(1,"Unable to determine correct order of sequence read files.")
+            } 
+          ] } |
+          set { reads }
+      }
+
+      // remap sample IDs if a sample map was provided
+      if (helper.file_exists(params.sampleMap)) {
+        Channel.fromPath(params.sampleMap) |
+          splitCsv(sep: "\t") |
+          map{ [ it[1..-1].collect{ file(it).BaseName }.join("-"), it[0] ] } | 
+          set { sample_map }
+        reads |
+          map{ id, pair -> [ pair.collect{ file(it).BaseName }.join("-"), pair ] } |
+          join( sample_map ) |
+          map{ oldid, pair, newid -> [ newid, pair ] } |
           set { reads }
       }
 

@@ -15,6 +15,8 @@
 
 rainbow_bridge is a fully automated pipeline that employs a number of state-of-the-art applications to process eDNA and other metabarcoding data from raw sequences (single- or paired-end) to the generation of (optionally curated) zero-radius operational taxonomic units (zOTUs) and their abundance tables. The pipeline will also collapse assigned taxonomy (via BLAST and/or insect) to lowest common ancestor (LCA) based on user-supplied threshold values as well as perform other finalization steps (e.g., taxon filtering/remapping, decontamination, rarefaction, etc.). 
 
+A flowchart of the rainbow_bridge workflow can be found [at the bottom of this document](#workflow).
+
 This pipeline uses [nextflow](https://www.nextflow.io/) and a containerized subsystem (e.g., [singularity](https://docs.sylabs.io/guides/3.5/user-guide/introduction.html), [podman](https://podman.io/), etc.) to enable a scalable, portable and reproducible workflow on a local computer, cloud (eventually) or high-performance computing (HPC) clusters.
 
 ## About this version
@@ -22,118 +24,6 @@ This pipeline uses [nextflow](https://www.nextflow.io/) and a containerized subs
 This project is a fork of [`eDNAFlow`](https://github.com/mahsa-mousavi/eDNAFlow), rewritten to support the newest version of nextflow and DSL2. It also better supports parallel processing, both through splitting and simultaneously processing large files and the ability to process already-demultiplexed sequence files. In addition, it adds several processing options, such as the ability to classify taxonomy using [insect](https://github.com/shaunpwilkinson/insect) and to produce a [phyloseq](https://joey711.github.io/phyloseq/) object as output, among others.
 
 For more information on the original eDNAFlow pipeline and other software used as part of the workflow, please read "eDNAFlow, an automated, reproducible and scalable workflow for analysis of environmental DNA (eDNA) sequences exploiting Nextflow and Singularity" in Molecular Ecology Resources (DOI: <https://doi.org/10.1111/1755-0998.13356>). If you use rainbow_bridge, we appreciate if you could cite the eDNAFlow paper, the DOI for this project, and the papers describing the underlying software.
-
-# Workflow
-This flowchart illustrates the general workflow of the rainbow_bridge pipeline (if your browser doesn't support javascript or [mermaid](https://mermaid.js.org/) or some other necessary thing, you'll just see the code describing the flowchart rather than the flowchart itself).
-```mermaid
-flowchart TB
-  raw[/"Raw fastq reads<br>(single/paired-end)"/]
-  %% samplemap[/"Filename --> sample ID map"/]
-  demuxed{Sequences demultiplexed?}
-  fastqc("QA/QC report<br>(FastQC/MultiQC)")
-  fasta[/"Demultiplexed FASTA file in usearch format<br>(from previous pipeline run)"/]
-  barcode1[/"Barcode file"/]
-  barcode2[/"Barcode file"/]
-  pooledbarcode[/"Split (pooled) barcode file"/]
-
-  subgraph filtering["Quality filtering/merging (AdapterRemoval)"]
-    qa[Quality filtering]
-    pe["Paired-end merging (if applicable)"]
-  end
-
-  subgraph demuxing["Demultiplexing (OBITools)"]
-    dm1["Assign sequences to samples (ngsfilter)"]
-    dm2["Primer mismatch filtering (ngsfilter)"]
-    dm3["Filter by minimum length (obigrep)<br>Retain only sequences with both tags"]
-  end
-
-  subgraph primer["Primer match/length filter (OBITools)"]
-    pm1["Primer mismatch filtering (ngsfilter)"]
-    pm2["Filter by minimum length (obigrep)"]
-  end
-
-  subgraph pooled["Pooled barcode/index demultiplexing"]
-    pp1["Assign sequences to samples (ngsfilter)"]
-    pp2["Primer mismatch filtering (ngsfilter)"]
-    pp3["Filter by minimum length (obigrep)<br>Retain only sequences with both tags"]
-  end
-
-  subgraph prepare["Prepare for denoising"]
-    p1["Relabel to USEARCH/vsearch format (u/vsearch)"]
-    p2["Convert fastq to FASTA"]
-  end
-
-  subgraph denoising["Denoising via UNOISE3 (u/vsearch)"]
-    dn1["Dereplicate & 'cluster'"]
-    dn2["Filter minimum abundance"]
-    dn3["Filter chimeras"]
-    dn4["Generate zOTU tables"]
-  end
-
-  %% blast("Taxonomy assignment via BLAST (blastn)")
-  nt[/"NCBI nt BLAST database"/]
-  customblast[/"Custom BLAST database(s)"/]
-  subgraph blast["Taxonomy assignment via BLAST"]
-    b1["Assign taxonomy to zOTU sequences (blastn)"]
-  end
-
-  insect("Taxonomy assignment via insect<br>(R/insect)")
-
-  taxdb[/"NCBI taxonomy database"/]
-
-  subgraph taxonomy["Collapse taxonomy (R)"]
-    tax1["Collapse taxonomy to<br>lowest-common ancestor (LCA)"]
-  end
-
-  subgraph lulu["Table curation (R/lulu)"]
-    l1["Generate match list (blastn)"]
-    l2["LULU curation (lulu)"]
-    l3["Curated zOTU table"]
-  end
-
-  subgraph finalization["Finalization (R)"]
-    f1["Taxonomy filtering"]
-    f2["Taxonomic re-mapping"]
-    f3["Decontamination"]
-    f4["Relative abundance filtering"]
-    f5["Rarefaction (vegan/EcolUtils)"]
-  end
-
-  subgraph phyloseq["Prepare phyloseq object (R/phyloseq)"]
-  end
-
-  barcode1 --> demuxing:::sg 
-  barcode2 --> primer:::sg   
-  pooledbarcode --> pooled:::sg
-  raw -. "Initial QA/QC<br>(if specified)" .-> fastqc
-  raw -->|"(un-gzip if necessary)"| filtering:::sg
-  filtering -. "Filtered/merged QA/QC<br>(if specified)" .-> fastqc
-  filtering --> demuxed
-  demuxed --->|No| demuxing:::sg
-  demuxed --->|Yes| primer:::sg  
-  demuxed --->|Pooled| pooled:::sg
-  %% demuxed -->|"Yes<br>(via previous pipeline run)"| x((".")) ---> denoising
-  fasta --------> denoising
-  demuxing --> split("Split sequences by sample (obisplit)")
-  split --> prepare:::sg
-  primer ---> prepare
-  pooled --> split
-  prepare --> denoising:::sg
-  denoising -. "(if specified)" .-> blast:::sg & insect & lulu:::sg
-  taxdb --> taxonomy:::sg
-  blast -. "(if specified)" .-> taxonomy
-  denoising & lulu & insect & blast & taxonomy --> finalization
-  metadata[/"Sample metadata"/] --> phyloseq
-  finalization -.-> phyloseq
-  nt --> blast
-  customblast -. "(if specified)" .-> blast
-  model[/"insect classifier model"/] --> insect
-
-
-  classDef hidden display: none, height: 0px, width: 0px, margi?worn: 0px;
-  classDef sg rx:10,ry:10,margin:10px
-
-```
 
 # Table of contents
 
@@ -167,7 +57,7 @@ flowchart TB
          - [Barcode file ](#barcode-file)
          - [BLAST settings ](#blast-settings)
    * [Sample IDs](#sample-ids)
-      + [Mapping of custom sample IDs](#mapping-of-custom-sample-ids)
+      + [Re-mapping custom sample IDs](#re-mapping-custom-sample-ids)
    * [Other options](#other-options)
       + [General ](#general)
       + [Splitting input](#splitting-input)
@@ -199,6 +89,7 @@ flowchart TB
    * [Specifying parameters in a parameter file](#specifying-parameters-in-a-parameter-file)
       + [Setting multiple values for the same option](#setting-multiple-values-for-the-same-option)
    * [Notification](#notification)
+- [Workflow](#workflow)
 
 <!-- TOC end -->
 
@@ -266,7 +157,7 @@ The [rainbow_bridge-test](https://github.com/mhoban/rainbow_bridge-test) github 
   * Demultiplexed
   * Undemultiplexed
 
-To test the pipeline, clone the repository from <https://github.com/mhoban/rainbow_bridge-test.git> and see the README there file for more information.
+To test the pipeline, clone the repository from <https://github.com/mhoban/rainbow_bridge-test.git> and see the README file there for more information.
 
 # Basic usage
 
@@ -354,7 +245,12 @@ Details about the input formats the pipeline supports:
 ### Specifying fastq files
 In all cases, if you're processing fastq runs, you must specify the location of your sequence reads. Generally, if you're processing runs that have *not* been demultiplexed by the sequencer, you will have either one (single-end) or two (paired-end) fastq files. If your runs *have* been demultiplexed or are pooled, you will have one fastq file per individual sample/pool per read direction. If fastq files are gzipped (i.e., they have a .gz extension), they will be uncompressed automatically and the .gz extension will be stripped during processing.
 
-**Note: unless you are specifying forward/reverse reads directly (i.e. passing individual filenames), it is best practice to keep reads (fastq files) from different sequencing runs in separate directories. If you do not, because of the way the pipeline uses [globs](#a-note-on-globswildcards) to find files, you could end up with unexpected behavior (e.g., accidentally combining sequences from different sequencing runs in one analysis).**
+<a name="shared-dirs"></a>In general, it is best practice to separate your sequence read files into separate directories by sequencing run and to keep forward/reverse reads from the same sequencing run within the same directory. If you find it necessary to put forward/reverse reads in separate directories, then those directories should lie within the same parent directory. It may still work otherwise, but things might also go haywire and I won't be responsible. The exception to this is for non-demultiplexed runs where you're specifying indivual forward/reverse files directly.
+
+For paired-end sequencing runs, sequence read filenames must be identical apart from the pattern delineating read direction and all read pairs within a sequencing run must use the same read direction pattern (e.g., 'R1', 'R2'). Thus the following read pairs are supported: `sample1_R1.fastq/sample1_R2.fastq`, `sample1.F.fastq/sample1.R.fastq`, `sample1.1.fastq/sample1.2.fastq`, but the following pairs will fail: `sample1.1.15_R1.fastq/sample1.1.17_R2.fastq`, `sample1.R1.fastq/sample1_R2.fastq`. There are no filename restrictions for single-end sequencing runs.
+
+**Note: when passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--reads '/storage/sequences/run1/*{R1,R2}*.fastq.gz'`). If you don't, the glob will be expanded by the shell rather than rainbow_bridge and parameter values will be incorrect.**
+
 
 There are a few ways you can tell rainbow_bridge where your reads are:
 
@@ -369,38 +265,45 @@ There are a few ways you can tell rainbow_bridge where your reads are:
   - Demultiplexed/pooled  
     Demultiplexed/pooled sequence reads can be located directly using [globs](#a-note-on-globswildcards) or by specifying directories and (optionally) search patterns.  
 
-    <a name="globbo"></a>When using globs, the following options are available:  
-    <small>**`--reads [glob]`**</small>: A [glob](#a-note-on-globswildcards) directly indicating where all forward/reverse reads can be found. Typically, this will look something like '/dir/\*{R1,R2}\*.fastq'. This can be as simple or as complicated as you like, but it must be able to find all forward and reverse reads (whose filenames must match apart from their direction). Note that the shell will return these in alphabetical order so that if you have something like '/dir/\*{forward,backward}\*.fastq', the 'backward' reads will be erroneously treated as forward (since backward comes before forward alphabetically). If you encounter this issue, you can use the `--r1` and `--r2` options to specify the patterns delineating sequencing direction.  
-    <small>**`--fwd [glob]`**</small>, <small>**`--rev [glob]`**</small> In lieu of passing a single glob to locate all reads, you may use separate globs for each read direction, e.g., "--fwd '/dir/r1/\*R1\*.fastq' --rev '/dir/r2/\*R2\*.fastq'". The same caveat regarding alphabetical order applies to these options.
-    
-    When using directories, the following options apply:  
-    Demultiplexed sequence reads are found using a [glob](#a-note-on-globswildcards) built internally with the values of  `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2`. This method assumes files with an extension of either .fq or .fastq (with an optional .gz). If your files have other extensions, sue the glob method [above](#globbo).   
-    
-    <small>**`--reads [dir]`**</small>: This parameter optionally specifies the base-directory where forward and reverse reads may be found. If no other option is specified,  the glob is built using the default values of `--fwd`, `--rev`, `--r1`, and `--r2` (see below)  
-    <small>**`--fwd [dir]`**</small> (default: empty), <small>**`--rev [dir]`**</small> (default: empty): these parameters optionally specify subdirectories where forward and reverse reads are stored. If `--reads` is omitted, the search path is constructed using the values of `--fwd` and `--rev` as base directories. If `--reads` is included, these subdirectories must be *within* the directory specified with `--reads`.  
-    <small>**`--r1 [pattern]`**</small> (default: 'R1'), <small>**`--r2 [pattern]`**</small> (default: 'R2'): these parameters specify the pattern that distinguishes forward from reverse reads. The default values ('R1' and 'R2') are typical of most files you will receive from the sequencer.  
-    
-    Using the above parameters, the following [glob](#a-note-on-globswildcards) is constructed:  
+    - <a name="globbo"></a>Using globs (preferred)
 
-    If `reads`, `fwd`, and `rev` are included:  
-    ```
-    <reads>/{<fwd>,<rev>}/*{<r1>,<r2>}*.f*q*  
-    ```
-    If only `fwd` and `rev` are included:  
-    ```
-    {<fwd>,<rev>}/*{<r1>,<r2>}*.f*q*  
-    ```
-    If only `reads` is included:  
-    ```
-    <reads>/*{<r1>,<r2>}*.f*q*  
-    ```
-    
-    <small>**The file exension glob is designed to capture .fastq, .fastq.gz, .fq, and .fq.gz**</small>  
-    
-    For example, if rainbow_bridge is invoked with the following options:   
-    `--reads ../fastq --fwd forward --rev reverse`  
+      <small>**`--reads [glob]`**</small>: A [glob](#a-note-on-globswildcards) directly indicating where all forward/reverse reads can be found. Typically, this will look something like `/dir/*{R1,R2}*.fastq`. This can be as simple or as complicated as you like, but it needs to be able to resolve all forward and reverse reads.  
 
-    fastq files will be located using the [glob](#a-note-on-globswildcards) "../fastq/{forward,reverse}/\*{R1,R2}\*.f\*q\*"
+      <a name="alphabet"></a>Note that nextflow assembles reads in alphabetical order so that if you pass a glob like `/dir/*{forward,backward}*.fastq`, read files matching the 'backward' part of the glob will be erroneously treated as forward reads (since 'backward' comes before 'forward' alphabetically). rainbow_bridge will throw an error if the read order can't be determined based on the parameter values given. If you encounter this issue, you can use the `--r1` and `--r2` options to specify patterns that delineate the sequencing directions (`--r1` indicates the forward directrion, `--r2` the reverse). Thus, for the 'forward'/'backward' example above, the following options would resolve the issue and return read files in the correct order: `--reads 'dir/*{forward,backward}*.fastq' --r1 forward --r2 backward`.  
+
+      <small>**`--fwd [glob]`**</small>, <small>**`--rev [glob]`**</small> In lieu of passing a single glob to locate all reads, you may use separate globs for each read direction, e.g., `--fwd '/dir/r1/\*R1\*.fastq' --rev '/dir/r2/\*R2\*.fastq'`. The caveats mentioned above regarding [alphabetical order](#alphabet) and [directory structure](#shared-dirs) apply to these options as well.
+    
+    - Using directories
+    
+      It's possible to specify the read file location(s) using various combinations of `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2`. Internally, rainbow_bridge will use the values passed to these options to construct a [glob](#a-note-on-globswildcards) that will enable nextflow to locate the files. Note that this method assumes that files will match the pattern '\*.f\*q\*', which includes files having the extensions .fq and .fastq (with an optional .gz). If your read files have other extensions, it is advisable to use the glob method outlined [above](#globbo). Read file order will not be an issue here, since the glob is explicitly constructed using the values of `--r1` and `--r2`, but pay attention to [directory structure](#shared-dirs), as above.  
+
+      The internal search glob is constructed using the following options:  
+      
+      <small>**`--reads [dir]`**</small>: This parameter specifies the base-directory where forward and reverse reads may be found.   
+      <small>**`--fwd [dir]`**</small> (default: empty), <small>**`--rev [dir]`**</small> (default: empty): these parameters optionally specify subdirectories where forward and reverse reads are stored. If `--reads` is omitted, the search path is constructed using the values of `--fwd` and `--rev` as base directories. If `--reads` is included, these subdirectories must be *within* the directory specified by `--reads`.   
+      <small>**`--r1 [pattern]`**</small> (default: 'R1'), <small>**`--r2 [pattern]`**</small> (default: 'R2'): these parameters specify the pattern that distinguishes forward from reverse reads. The default values ('R1' and 'R2') are common to many sequencers.  
+    
+      Using the above parameters, the following [glob(s)](#a-note-on-globswildcards) are constructed:  
+
+      If `reads`, `fwd`, and `rev` are included:  
+      ```
+      <reads>/{<fwd>,<rev>}/*{<r1>,<r2>}*.f*q*  
+      ```
+      If only `fwd` and `rev` are included:  
+      ```
+      {<fwd>,<rev>}/*{<r1>,<r2>}*.f*q*  
+      ```
+      If only `reads` is included:  
+      ```
+      <reads>/*{<r1>,<r2>}*.f*q*  
+      ```
+      
+      <small>**The file exension glob is designed to capture .fastq, .fastq.gz, .fq, and .fq.gz**</small>  
+      
+      For example, if rainbow_bridge is invoked with the following options:   
+      `--reads ../fastq --fwd forward --rev reverse`  
+
+      read files will be located using the [glob](#a-note-on-globswildcards) '../fastq/{forward,reverse}/\*{R1,R2}\*.f\*q\*'
 
 
 ## Usage examples
@@ -466,7 +369,7 @@ $ rainbow_bridge.nf \
 ```
 ## Contents of output directories
 
-When the pipeline finishes, output from each step can be found in directories corresponding to each process in the analysis. All output will fall under one of two directories: `output` or `preprocess`. `output` will contain things like QA/QC results, zOTU tables, and taxonomic assignment. `preprocess` contains the results of the various filtering, trimming, and merging steps (among others). The contents of output directories will by symlinked to files contained within the nextflow-generated internal `work` directory hierarchy (which you shouldn't have to access directly, except maybe in some case of error). Here is an exhaustive list of all the possible output directories:
+When the pipeline finishes, output from each step can be found in directories corresponding to each process in the analysis. All output will fall under one of two directories: `output` or `preprocess`. `output` will contain things like QA/QC results, zOTU tables, and taxonomic assignments. `preprocess` contains the results of the various filtering, trimming, and merging steps (among others). The contents of output directories will by symlinked to files contained within the nextflow-generated internal `work` directory hierarchy (which you shouldn't have to access directly, except maybe in case of error). Here is an exhaustive list of all the possible output directories:
 
 
 | Directory   | Subdirectory                        | Description                                                  | Condition                                                |
@@ -511,7 +414,7 @@ In the example above, there was error output but nothing in the `.command.out` f
 
 A number of rainbow_bridge command-line options accept file globs (wildcards). These are used when you want to indicate more than one file using a matching pattern. For an in-depth treatment of globs in the bash shell environment, have a look [here](https://www.baeldung.com/linux/bash-globbing). For the purposes of this pipeline though, you'll mostly use the following things:
 
-**Note: when passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--barcode 'bc*.tab'`). If you don't, the glob will be interpreted by the shell rather than rainbow_bridge and parameter values will be incorrect.**
+**Note: when passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--reads '/storage/sequences/run1/*{R1,R2}*.fastq.gz'`). If you don't, the glob will be expanded by the shell rather than rainbow_bridge and parameter values will be incorrect.**
 
 **\***: a star means 'match any string of characters of any length'  
 For example, the glob 'bc\*.tab' will match any filename that begins with 'bc', followed by a sequence of any characters, and finally ending with '.tab'  
@@ -526,7 +429,7 @@ This pattern will match 'seq\_R1.fastq', 'seq\_001\_002\_R2.fastq', and 'seq\_12
 
 rainbow_bridge allows for a good deal of customization with regard to which and how various elements of the pipeline are run. All command-line options can be either be passed as-is or saved in a parameters file. For details on saving options in a parameters file, see [below](#specifying-parameters-in-a-parameter-file).
 
-To see a detailed list of available command-line options run:
+To see a detailed list of available command-line options, run:
 ```console
 $ rainbow_bridge.nf --help
 ```
@@ -600,13 +503,13 @@ Note: a barcode file is optional for demultiplexed runs where PCR primers have a
 For pipeline runs in which BLAST queries are performed, you must identify the database(s) being used. This can be done using the `--blast-db` option and/or the `$FLOW_BLAST` environment variable. See [below](#blast-settings-1) for more details on how to do this. 
 
 ## Sample IDs
-For non-demultiplexed sequencing runs, samples will be named based on the sample IDs specified in the `sample` column of the barcode file. For demultiplexed runs, samples will by default be named based on the first part of the filename before the fwd/rev (R1/R2) pattern. For example, the following read files:
+For non-demultiplexed sequencing runs (`--demultipexed-by barcode`), sample IDs are designated using the `sample` column of the barcode file. For demultiplexed runs (`--demultipexed-by index`), sample IDs are generated using the first (shared) part of the read filename(s) before the fwd/rev (R1/R2) pattern (if applicable). For example, the following read pairs:
 
 ```
-B1_S7_L001_R1_001.fastq, B1_S7_L001_R2_001.fastq
-B2_S8_L001_R1_001.fastq, B2_S8_L001_R2_001.fastq
-CL1_S2_L001_R1_001.fastq, CL1_S2_L001_R2_001.fastq
-CL2_S3_L001_R1_001.fastq, CL2_S3_L001_R2_001.fastq
+B1_S7_L001_R1_001.fastq     B1_S7_L001_R2_001.fastq
+B2_S8_L001_R1_001.fastq     B2_S8_L001_R2_001.fastq
+CL1_S2_L001_R1_001.fastq    CL1_S2_L001_R2_001.fastq
+CL2_S3_L001_R1_001.fastq    CL2_S3_L001_R2_001.fastq
 ```
 
 Will result in the following sample IDs:
@@ -618,12 +521,12 @@ CL1_S2_L001
 CL2_S3_L001
 ```
 
-### Mapping of custom sample IDs
-By default for previously-demultiplexed runs, rainbow_bridge will interpret sample IDs from filenames. However, since this sometimes results in screwy sample IDs, it's possible to specify a mapping file that will translate filenames into custom IDs.
+### Re-mapping custom sample IDs
+By default for previously-demultiplexed runs, rainbow_bridge will interpret sample IDs from sequence read filenames as outlined above. However, you may also specify a mapping file to translate read filenames into custom sample IDs.
 
 <small>**`--sample-map [mapfile]`**</small>: A headerless tab-delimited file that maps sample names to sequence-read filenames.  
 
-The specified map file should be a tab-delimited table (*without* headers) where the first column contains the sample ID, the second column contains the read filename (forward read for paired-end reads), and the third column (for paired-end reads only) contains the reverse read filename. Using the filenames from the example given [above](#sample-ids), a map file would contain the following (columns are tab-separated, file has no header): 
+The specified map file should be a tab-delimited table (*without* headers) where the first column contains the desired sample ID, the second column contains the read filename (forward read for paired-end reads), and the third column (for paired-end reads only) contains the reverse read filename. To map custom IDs to the read files in the example [above](#sample-ids), construct a map file as follows (columns are tab-separated, file has no header): 
 
 ```
 sample_B1   B1_S7_L001_R1_001.fastq   B1_S7_L001_R2_001.fastq
@@ -632,7 +535,16 @@ sample_CL1  CL1_S2_L001_R1_001.fastq  CL1_S2_L001_R2_001.fastq
 sample_CL2  CL2_S3_L001_R1_001.fastq  CL2_S3_L001_R2_001.fastq 
 ```
 
-**NOTE: If your fastq files were gzipped, DO NOT include the .gz extension in your sample map file, because the files are unzipped (and .gz extension stripped) BEFORE sample IDs are remapped.**
+This would result in the following sample IDs:
+
+```
+sample_B1 
+sample_B2 
+sample_CL1
+sample_CL2
+```
+
+**NOTE: Make sure the filenames in your sample map match the complete filenames (base names) as they exist on-disk (e.g., if they are gzipped, be sure to include the '.gz' extension in your sample map). This differs from previous versions of the pipeline in which the .gz extension needed to be stripped.**
 
 ## Other options
 
@@ -1141,4 +1053,116 @@ Nextflow allows the user to be notified upon completion or failure of the pipeli
 
 ```console
 $ rainbow_bridge.nf -params-file options.yml -N someguy@nobody.com
+```
+
+# Workflow
+This flowchart illustrates the general workflow of the rainbow_bridge pipeline (if your browser doesn't support javascript or [mermaid](https://mermaid.js.org/) or some other necessary thing, you'll just see the code describing the flowchart rather than the flowchart itself).
+```mermaid
+flowchart TB
+  raw[/"Raw fastq reads<br>(single/paired-end)"/]
+  %% samplemap[/"Filename --> sample ID map"/]
+  demuxed{Sequences demultiplexed?}
+  fastqc("QA/QC report<br>(FastQC/MultiQC)")
+  fasta[/"Demultiplexed FASTA file in usearch format<br>(from previous pipeline run)"/]
+  barcode1[/"Barcode file"/]
+  barcode2[/"Barcode file"/]
+  pooledbarcode[/"Split (pooled) barcode file"/]
+
+  subgraph filtering["Quality filtering/merging (AdapterRemoval)"]
+    qa[Quality filtering]
+    pe["Paired-end merging (if applicable)"]
+  end
+
+  subgraph demuxing["Demultiplexing (OBITools)"]
+    dm1["Assign sequences to samples (ngsfilter)"]
+    dm2["Primer mismatch filtering (ngsfilter)"]
+    dm3["Filter by minimum length (obigrep)<br>Retain only sequences with both tags"]
+  end
+
+  subgraph primer["Primer match/length filter (OBITools)"]
+    pm1["Primer mismatch filtering (ngsfilter)"]
+    pm2["Filter by minimum length (obigrep)"]
+  end
+
+  subgraph pooled["Pooled barcode/index demultiplexing"]
+    pp1["Assign sequences to samples (ngsfilter)"]
+    pp2["Primer mismatch filtering (ngsfilter)"]
+    pp3["Filter by minimum length (obigrep)<br>Retain only sequences with both tags"]
+  end
+
+  subgraph prepare["Prepare for denoising"]
+    p1["Relabel to USEARCH/vsearch format (u/vsearch)"]
+    p2["Convert fastq to FASTA"]
+  end
+
+  subgraph denoising["Denoising via UNOISE3 (u/vsearch)"]
+    dn1["Dereplicate & 'cluster'"]
+    dn2["Filter minimum abundance"]
+    dn3["Filter chimeras"]
+    dn4["Generate zOTU tables"]
+  end
+
+  %% blast("Taxonomy assignment via BLAST (blastn)")
+  nt[/"NCBI nt BLAST database"/]
+  customblast[/"Custom BLAST database(s)"/]
+  subgraph blast["Taxonomy assignment via BLAST"]
+    b1["Assign taxonomy to zOTU sequences (blastn)"]
+  end
+
+  insect("Taxonomy assignment via insect<br>(R/insect)")
+
+  taxdb[/"NCBI taxonomy database"/]
+
+  subgraph taxonomy["Collapse taxonomy (R)"]
+    tax1["Collapse taxonomy to<br>lowest-common ancestor (LCA)"]
+  end
+
+  subgraph lulu["Table curation (R/lulu)"]
+    l1["Generate match list (blastn)"]
+    l2["LULU curation (lulu)"]
+    l3["Curated zOTU table"]
+  end
+
+  subgraph finalization["Finalization (R)"]
+    f1["Taxonomy filtering"]
+    f2["Taxonomic re-mapping"]
+    f3["Decontamination"]
+    f4["Relative abundance filtering"]
+    f5["Rarefaction (vegan/EcolUtils)"]
+  end
+
+  subgraph phyloseq["Prepare phyloseq object (R/phyloseq)"]
+  end
+
+  barcode1 --> demuxing:::sg 
+  barcode2 --> primer:::sg   
+  pooledbarcode --> pooled:::sg
+  raw -. "Initial QA/QC<br>(if specified)" .-> fastqc
+  raw -->|"(un-gzip if necessary)"| filtering:::sg
+  filtering -. "Filtered/merged QA/QC<br>(if specified)" .-> fastqc
+  filtering --> demuxed
+  demuxed --->|No| demuxing:::sg
+  demuxed --->|Yes| primer:::sg  
+  demuxed --->|Pooled| pooled:::sg
+  %% demuxed -->|"Yes<br>(via previous pipeline run)"| x((".")) ---> denoising
+  fasta --------> denoising
+  demuxing --> split("Split sequences by sample (obisplit)")
+  split --> prepare:::sg
+  primer ---> prepare
+  pooled --> split
+  prepare --> denoising:::sg
+  denoising -. "(if specified)" .-> blast:::sg & insect & lulu:::sg
+  taxdb --> taxonomy:::sg
+  blast -. "(if specified)" .-> taxonomy
+  denoising & lulu & insect & blast & taxonomy --> finalization
+  metadata[/"Sample metadata"/] --> phyloseq
+  finalization -.-> phyloseq
+  nt --> blast
+  customblast -. "(if specified)" .-> blast
+  model[/"insect classifier model"/] --> insect
+
+
+  classDef hidden display: none, height: 0px, width: 0px, margi?worn: 0px;
+  classDef sg rx:10,ry:10,margin:10px
+
 ```

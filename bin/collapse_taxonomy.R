@@ -274,7 +274,8 @@ opt <- parse_args(
 )
 
 # check that files in positional args all exist and bail on failure
-if (any(!file_exists(opt$args))) {
+fe <- file_exists(opt$args)
+if (any(!fe)) {
   bad <- fe[!fe]
   msg <- str_c(str_glue("Missing/bad filename: {names(bad)}"),collapse="\n")
   stop(msg)

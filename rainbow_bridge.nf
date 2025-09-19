@@ -263,14 +263,14 @@ process fix_barcodes {
     path(barcodes)
 
   output:
-    path("${barcodes.BaseName}_fixed.${barcodes.Extension}")
+    path("${barcodes.baseName}_fixed.${barcodes.extension}")
 
   script:
   """
   if [[ -e "${barcodes}" ]]; then
-    fix_barcode.awk "${barcodes}" > "${barcodes.BaseName}_fixed.${barcodes.Extension}"
+    fix_barcode.awk "${barcodes}" > "${barcodes.baseName}_fixed.${barcodes.extension}"
   else
-    touch "${barcodes.BaseName}_fixed.${barcodes.Extension}"
+    touch "${barcodes.baseName}_fixed.${barcodes.extension}"
   fi
   """
 }
@@ -1109,10 +1109,10 @@ workflow {
       if (helper.file_exists(params.sampleMap)) {
         Channel.fromPath(params.sampleMap) |
           splitCsv(sep: "\t") |
-          map{ [ it[1..-1].collect{ file(it).BaseName }.join("-"), it[0] ] } | 
+          map{ [ it[1..-1].collect{ file(it).baseName }.join("-"), it[0] ] } | 
           set { sample_map }
         reads |
-          map{ id, pair -> [ pair.collect{ file(it).BaseName }.join("-"), pair ] } |
+          map{ id, pair -> [ pair.collect{ file(it).baseName }.join("-"), pair ] } |
           join( sample_map ) |
           map{ oldid, pair, newid -> [ newid, pair ] } |
           set { reads }
@@ -1210,13 +1210,13 @@ workflow {
               splitFastq(by: params.splitBy, file: true, pe: true) |
               // rearrange reads tuple so it looks like [key, [R1,R2]]
               // and add the split number to the key
-              map { key, read1, read2 -> ["${key}." + file(read1.BaseName).Extension, [read1,read2]] } |
+              map { key, read1, read2 -> ["${key}." + file(read1.baseName).extension, [read1,read2]] } |
               set { reads }
           } else {
             // in single-end mode we can just split directly
             reads |
               splitFastq(by: params.splitBy, file: true) |
-              map { key, readfile -> ["${key}." + file(readfile.BaseName).Extension, readfile] } |
+              map { key, readfile -> ["${key}." + file(readfile.baseName).extension, readfile] } |
               set { reads }
           }
         }

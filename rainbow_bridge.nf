@@ -663,7 +663,7 @@ process collapse_taxonomy {
 
 // run insect classifier model
 process insect {
-  label 'insect'
+  label 'r'
   label 'all_cpus'
 
   publishDir {

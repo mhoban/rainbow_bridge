@@ -196,7 +196,6 @@ def check_params() {
 
 // trim and (where relevant) merge paired-end reads
 process filter_merge {
-  label 'adapterRemoval'
   label 'process_medium'
 
   publishDir "${params.preDir}/trim_merge", mode: params.publishMode
@@ -1074,9 +1073,8 @@ workflow {
           // (notably vsearch) will cut on hyphens as a delimiter and potentially cause havok as a result.
 
           Channel.fromFilePairs(pattern, checkIfExists: true) |
-            // make sure we have a key value and replace dashes with underscores 
-            // (although this may be a problem sometimes! see #138)
-            map { key,reads -> [ (key ?: params.project).replaceAll(/-/,'_'), reads ] } |
+            // make sure we have a key value (project ID)
+            map { key,reads -> [ key ?: params.project, reads ] } |
             ifEmpty {
               // bail if we didn't find anything
               exit(1,"No paired reads matched by pattern '${pattern}'. Check command-line options.")

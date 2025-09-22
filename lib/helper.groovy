@@ -91,6 +91,7 @@ class helper {
                                    must match the underscore-delimited prefix of your sequence read files.
                                    (See README for more details).
       --project [project]          Project name, applied to various output filenames (default: ${params.project}) 
+      --save-config [file]         Save current command-line options to YAML file (default: options.yml)
       --publish-mode [mode]        Specify how nextflow places files in output directories 
                                    (default: symlink)
       --fastqc                     Output FastQC reports for pre and post filter/merge steps 
@@ -120,14 +121,14 @@ class helper {
 
     Resolve paired-end reads locations directly using globs:
       --reads [glob]               If --reads is a glob, attempt to resolve paired-end reads directly
-                                   e.g., '/data/run1/*{R1,R2}*.fastq.gz'
+                                   e.g., "--reads '/data/run1/*{R1,R2}*.fastq.gz'"
       --fwd [glob], --rev [glob]   Resolve forward and reverse reads directly using globs
                                    e.g., --fwd 'r1/*R1*.fastq' --rev 'r2/*R2*.fastq'
 
     Specify location of paired-end reads with directories, using the following patterns:
-      <reads>/*<r1>|<r2>*.f*q*
-      <reads>/<fwd>|<rev>/*<r1>|<r2>*.f*q*
-      <fwd>|<rev>/*<r1>|<r2>*.f*q*
+      <reads>/*{<r1>,<r2>}*.f*q*
+      <reads>/{<fwd>,<rev>}/*{<r1>,<r2>}*.f*q*
+      {<fwd>,<rev>}/*{<r1>,<r2>}*.f*q*
 
       --reads [dir]                 Location (directory) where sequence reads can be found (default: .) 
       --fwd [dir]                   (Optional) forward reads directory (default: ${params.fwd})
@@ -206,10 +207,10 @@ class helper {
     Generating phyloseq objects:
       --phyloseq                    Create phyloseq object (requires --collapse-taxonomy)
       --metadata [file]             Comma or tab-separated sample metadata file (required)
-      --taxonomy [tax]                Taxonomic classifaction scheme. May be pipeline-generated or user supplied
-                                    (acceptable options: lca, insect, <filename>; default: ${params.taxonomy})
-      --no-tree                     Do not include a phylogenetic tree
-      --optimize-tree               Attempt to optimize generation of the tree (may take a long time)
+      --taxonomy [tax]              Taxonomic classifaction scheme. May be pipeline-generated or user supplied
+                                    (acceptable options: lca, insect, combined, <filename>; default: ${params.taxonomy})
+      --tree                        Generate a phylogenetic tree (default: false)
+      --optimize-tree               Attempt to optimize generation of the tree (may take a long time) (default: false)
 
     Data cleanup & rarefaction:
       --abundance-filter            Filter reads by minimum relative abundance

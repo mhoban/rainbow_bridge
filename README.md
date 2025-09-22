@@ -550,6 +550,7 @@ sample_CL2
 
 ### General 
 <small>**`--project [project]`**</small>:    Project name, applied as a prefix to various output filenames. (default: project directory name)  
+<small>**`--save-config [file (optional)]`**</small>:    Save current command-line options to a YAML file. With no argument, saves to `options.yml`, otherwise pass filename.  
 <small>**`--publish-mode [mode]`**</small>:  Specify how nextflow places files in output directories. See [nextflow documentation](https://www.nextflow.io/docs/latest/process.html#publishdir) for supported values (default: symlink)  
 <small>**`--fastqc`**</small>:               Output FastQC reports for pre and post filter/merge steps. MultiQC is used for demultiplexed or split runs.  
 
@@ -872,8 +873,8 @@ rainbow_bridge supports generation of [phyloseq](https://joey711.github.io/phylo
 
 <small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--collapse-taxonomy` option).  
 <small>**`--metadata [file]`**</small>: A comma- or tab-separated sample metadata table (required). This can contain any arbitrary sample information, but it must have a header and the first column (preferably called 'sample') must contain sample IDs.  
-<small>**`--taxonomy [taxonomy]`**</small>: Taxonomic classification scheme. This can be one of either `lca` (to use LCA taxonomy, the default), `insect` (for insect taxonomy), or the filename of a comma/tab-separated taxonomy table. If user-supplied, the first column of the taxonomy table must be named "OTU" (case-sensitive) and contain zOTU IDs. It may have any number of arbitrary columns of taxonomic classification (e.g., domain, kingdom, phylum, etc.) after that.  
-<small>**`--no-tree`**</small>: Skip creation of phylogenetic tree.  
+<small>**`--taxonomy [taxonomy]`**</small>: Taxonomic classification scheme. This can be one of either `lca` (to use LCA taxonomy, the default), `insect` (for insect taxonomy), `combined` (for the finalized combined taxonomy table), or the filename of a comma/tab-separated taxonomy table. If user-supplied, the taxonomy table must consist of a column containing zOTU IDs (e.g., 'Zotu1', 'Zotu2', etc.) followed by any number of arbitrary columns of taxonomic classification (e.g., domain, kingdom, phylum, etc.). The column headers can have any name you'd like, but the first column has to be zOTU IDs.  
+<small>**`--tree`**</small>: Generate a phylogenetic tree to include in the phyloseq object.  
 <small>**`--optimize-tree`**</small>: Attempt to optimize tree inference. This may take a long time, particularly if there are many zOTU sequences.
 
 # Useful examples and tips

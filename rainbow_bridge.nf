@@ -1577,4 +1577,27 @@ workflow {
       }
     }
   }
+
+  // save the config file in yaml format
+  // TODO: saving the config file to a new file seems to break caching for the blast process?
+  // but downstream things that rely on blast are still cached. it makes no sense
+  if (params.saveConfig) {
+    // default to 'options.yml' in the launch directory
+    def config_file = launchDir / "options.yml"
+    // if it's a string, use that as the location
+    if (params.saveConfig instanceof String) {
+      config_file = params.saveConfig
+    }
+
+    // make sure the yaml is dumped in block format
+    def opts = new org.yaml.snakeyaml.DumperOptions()
+    opts.setDefaultFlowStyle(org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK)
+    opts.setPrettyFlow(true)
+    def y = new org.yaml.snakeyaml.Yaml(opts)
+
+    // dump the yaml file
+    new File(config_file.toString()).withWriter { w -> 
+      y.dump(new LinkedHashMap(params).collectEntries{ [it.key.toString(), it.value instanceof nextflow.util.Duration ? it.value.toString() : it.value ]}, w) 
+    }
+  }
 }

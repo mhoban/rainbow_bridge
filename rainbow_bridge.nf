@@ -363,7 +363,6 @@ process relabel {
     tuple val(key), path(fastq, name: 'input-????.fastq')
   output:
     path('*_relabeled.fasta'), optional: true, emit: result
-    path 'settings.txt'
 
 
   script:
@@ -371,7 +370,6 @@ process relabel {
   if (params.denoiser == "vsearch") {
     def combined = "<(cat input-*.fastq)"
     """
-    echo "denoiser: vsearch" > settings.txt
     # this may or may not be necessary anymore, but it seems like a good sanity check
     # since this will fail on empty files
     vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --fastx_filter ${combined} --relabel "${key}." --label_suffix ";sample=${key}" --fastaout - | \
@@ -382,7 +380,6 @@ process relabel {
     def combined = "combined.fastq"
     def denoiser = params.execDenoiser ? params.denoiser : 'usearch'
     """
-    echo "denoiser: ${params.denoiser}" > settings.txt
     cat input-*.fastq > ${combined}
     # we have to convert everything to uppercase because obisplit --uppercase is broken
     ${denoiser} -fastx_relabel ${combined} -prefix "${key}." -fastaout /dev/stdout | \
@@ -425,16 +422,11 @@ process dereplicate {
 
   output:
     tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tsv"), emit: result
-    path 'settings.txt'
     path 'zotu_map.tsv'
 
   script:
   if (params.denoiser == "vsearch") {
     """
-    echo "denoiser: vsearch" > settings.txt
-    echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
-    echo "alpha: ${params.alpha}" >> settings.txt
-    echo "fractional identity: ${params.zotuIdentity}" >> settings.txt
     # steps:
     # 1. get unique sequence variants
     # 2. run denoising algorithm
@@ -467,10 +459,6 @@ process dereplicate {
   } else {
     def denoiser = params.execDenoiser ? params.denoiser : 'usearch'
     """
-    echo "denoiser: ${denoiser}" > settings.txt
-    echo "minimum sequence abundance: ${params.minAbundance}" >> settings.txt
-    echo "alpha: ${params.alpha}" >> settings.txt
-    echo "fractional identity: ${params.zotuIdentity}" >> settings.txt
     # steps:
     # 1. get unique sequences
     # 2. run denoising & chimera removal
@@ -508,7 +496,7 @@ process blast {
 
   output:
     path("blast_result.tsv"), emit: result
-    path 'blast_settings.txt'
+    path 'settings.yml'
 
   script:
 
@@ -540,10 +528,10 @@ process blast {
     .join(" ")
   """
   # record blast settings
-  echo "Percent identity: ${pid}" > blast_settings.txt
-  echo "e-value: ${evalue}" >> blast_settings.txt
-  echo "Query qoverage: ${qcov}" >> blast_settings.txt
-  echo "Max. target sequences: ${params.maxQueryResults}" >> blast_settings.txt
+  echo "percent_identity: ${pid}" > settings.yml
+  echo "e_value: ${evalue}" >> settings.yml
+  echo "query_coverage: ${qcov}" >> settings.yml
+  echo "max_sequences: ${params.maxQueryResults}" >> settings.yml
 
   # set BLASTDB to local working directory
   export BLASTDB=.
@@ -594,14 +582,9 @@ process lulu {
 
   output:
     tuple path("lulu_zotu_table.tsv"), path("lulu_zotu_map.tsv"), path("lulu_result_object.rds"), emit: result
-    path 'settings.txt'
 
   script:
   """
-  echo "minimum ratio: ${params.luluMinRatio}" > settings.txt
-  echo "minimum ratio type: ${params.luluMinRatioType}" >> settings.txt
-  echo "minimum match: ${params.luluMinMatch}" >> settings.txt
-  echo "minimum RC: ${params.luluMinRc}" >> settings.txt
   lulu.R \
     -m ${params.luluMinRatio} \
     -t ${params.luluMinRatioType} \
@@ -628,7 +611,7 @@ process collapse_taxonomy {
   output:
     path("lca_taxonomy.tsv"), emit: taxonomy
     path("lca_intermediate.tsv")
-    path 'lca_settings.txt'
+    path 'settings.yml'
 
 
   script:
@@ -637,12 +620,12 @@ process collapse_taxonomy {
   params.lcaCaseInsensitive && pf << "--case-insensitive"
   """
   # save settings
-  echo "Minimum query coverage %: ${params.lcaQcov}" > lca_settings.txt
-  echo "Minimum percent identity: ${params.lcaPid}" >> lca_settings.txt
-  echo "Minium percent identity difference: ${params.lcaDiff}" >> lca_settings.txt
-  echo "Filter to maximum query coverage: ${params.lcaFilterMaxQcov ? 'yes' : 'no'}" >> lca_settings.txt
-  echo "Filter taxa by regex: ${params.lcaTaxonFilter}" >> lca_settings.txt
-  echo "Taxon filter case sensitive: ${!params.lcaCaseInsensitive ? 'yes' : 'no'}" >> lca_settings.txt
+  echo "min_query_coverage: ${params.lcaQcov}" > settings.yml
+  echo "min_percent_identity: ${params.lcaPid}" >> settings.yml
+  echo "pid_diff: ${params.lcaDiff}" >> settings.yml
+  echo "filter_max_query_coverage: ${params.lcaFilterMaxQcov ? 'yes' : 'no'}" >> settings.yml
+  echo "taxon_filter: ${params.lcaTaxonFilter}" >> settings.yml
+  echo "taxon_filter_case_sensitive: ${!params.lcaCaseInsensitive ? 'yes' : 'no'}" >> settings.yml
 
   collapse_taxonomy.R \
     --qcov ${params.lcaQcov} \
@@ -679,7 +662,7 @@ process insect {
   output:
     path('insect_taxonomy.tsv'), emit: taxonomy
     path('insect_model.rds')
-    path('insect_settings.txt')
+    path('settings.yml')
 
   script:
   def offs = String.format("%d",(Integer)num(params.insectOffset))
@@ -689,10 +672,10 @@ process insect {
 
   """
   # record insect settings
-  echo "Offset: ${offs}" > insect_settings.txt
-  echo "Threshold: ${thresh}" >> insect_settings.txt
-  echo "Minimum count: ${minc}" >> insect_settings.txt
-  echo "Ping: ${ping}" >> insect_settings.txt
+  echo "offset: ${offs}" > settings.yml
+  echo "threshold: ${thresh}" >> settings.yml
+  echo "minimum_count: ${minc}" >> settings.yml
+  echo "ping: ${ping}" >> settings.yml
 
   if [ "${classifier}" != "insect_model.rds" ]; then
     mv ${classifier} insect_model.rds

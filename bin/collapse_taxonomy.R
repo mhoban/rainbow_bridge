@@ -238,6 +238,7 @@ check_ncbi_lineage <- function(f) {
 # set up option list
 option_list <- list(
   make_option(c("-q", "--qcov"), action="store", default=NA, type='double', help="Minimum query coverage threshold"),
+  make_option(c("-e", "--evalue"), action="store", default=NA, type='double', help="Maximum e-value threshold"),
   make_option(c("-p", "--pid"), action="store", default=NA, type='double', help="Minimum percent match ID threshold"),
   make_option(c("-d", "--diff"), action="store", default=NA, type='double', help="Percent ID difference threshold for matching query coverage"),
   make_option(c("-f", "--filter-max-qcov"), action="store_true", default=FALSE, type='logical', help="Retain only records with the highest query coverage"),
@@ -289,6 +290,7 @@ taxid_lineage_dump <- opt$options$taxid_lineage
 nodes_dump <- opt$options$nodes
 merged_dump <- opt$options$merged
 qcov_thresh <- opt$options$qcov
+eval_thresh <- opt$options$evalue
 pid_thresh <- opt$options$pid
 diff_thresh <- opt$options$diff
 taxon_filter <- opt$options$taxon_filter
@@ -339,8 +341,9 @@ filtered <- blast %>%
   # keep only best zotu/taxid combinations
   best_score(zotu,taxid) %>%
   # filter by percent id and query coverage thresholds
-  filter(pident >= pid_thresh) %>%
-  filter(qcov >= qcov_thresh) %>%
+  { if (!is.na(pid_thresh)) filter(.,pident >= pid_thresh) else . } %>%
+  { if (!is.na(qcov_thresh)) filter(.,qcov >= qcov_thresh) else . } %>%
+  { if (!is.na(eval_thresh)) filter(.,evalue <= eval_thresh) else . } %>%
   mutate(taxid = as.numeric(taxid))
 
 if (semicolon) {

@@ -631,6 +631,7 @@ process collapse_taxonomy {
     --qcov ${params.lcaQcov} \
     --pid ${params.lcaPid} \
     --diff ${params.lcaDiff} \
+    --evalue ${params.lcaEvalue} \
     --merged merged.dmp \
     --nodes nodes.dmp \
     --taxid-lineage taxidlineage.dmp \

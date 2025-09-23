@@ -177,6 +177,7 @@ class helper {
       --lca-lineage [file]          Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage 
       --taxdump [file]              Previously downloaded NCBI taxonomy dump zip archive (new_taxdump) (leave blank to download)
       --lca-qcov [num]              Minimum query coverage for LCA taxonomy assignment (default: 100)
+      --lca-evalue [num]            Maximum e-value for LCA taxonomy refinement (default: 0.001)
       --lca-pid [num]               Minimum percent identity for LCA taxonomy assignment (default: 97)
       --lca-diff [num]              The difference between percent identities (when query coverage is
                                     identical) where species-level taxonomy is retained (default: 1)

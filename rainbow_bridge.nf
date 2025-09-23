@@ -6,6 +6,21 @@ nextflow.enable.dsl=2
 import helper
 import colors
 
+// save params to config file
+def save_config(config_file) {
+  // make sure the yaml is dumped in block format
+  def opts = new org.yaml.snakeyaml.DumperOptions()
+  opts.setDefaultFlowStyle(org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK)
+  opts.setPrettyFlow(true)
+  def y = new org.yaml.snakeyaml.Yaml(opts)
+
+  // dump the yaml file, converting durations to strings
+  // because otherwise they get dumped weird
+  new File(config_file).withWriter { w -> 
+    y.dump(new LinkedHashMap(params).collectEntries{ [it.key.toString(), it.value instanceof nextflow.util.Duration ? it.value.toString() : it.value ]}, w) 
+  }
+}
+
 // quick check if variable is numeric
 def is_num(x) {
   return x instanceof Number
@@ -884,6 +899,19 @@ workflow {
         finalize
     }
   } else {
+    // save the config file in yaml format
+    // TODO: saving the config file to a new file seems to break caching for the blast process?
+    // but downstream things that rely on blast are still cached. it makes no sense
+    if (params.saveConfig) {
+      // default to 'options.yml' in the launch directory
+      def config_file = launchDir / "options.yml"
+      // if it's a string, use that as the location
+      if (params.saveConfig instanceof String) {
+        config_file = params.saveConfig
+      }
+      save_config(config_file.toString())
+    }
+
     if (!helper.file_exists(params.demuxedFasta)) {
       if (params.single) {
         // if params.reads is a directory, make it a glob
@@ -1576,29 +1604,6 @@ workflow {
         seqs = dereplicated.map { sid, uniques, zotus, zotutable -> zotus }
         phyloseq(zotu_table,ph_taxonomy,metadata,seqs)
       }
-    }
-  }
-
-  // save the config file in yaml format
-  // TODO: saving the config file to a new file seems to break caching for the blast process?
-  // but downstream things that rely on blast are still cached. it makes no sense
-  if (params.saveConfig) {
-    // default to 'options.yml' in the launch directory
-    def config_file = launchDir / "options.yml"
-    // if it's a string, use that as the location
-    if (params.saveConfig instanceof String) {
-      config_file = params.saveConfig
-    }
-
-    // make sure the yaml is dumped in block format
-    def opts = new org.yaml.snakeyaml.DumperOptions()
-    opts.setDefaultFlowStyle(org.yaml.snakeyaml.DumperOptions.FlowStyle.BLOCK)
-    opts.setPrettyFlow(true)
-    def y = new org.yaml.snakeyaml.Yaml(opts)
-
-    // dump the yaml file
-    new File(config_file.toString()).withWriter { w -> 
-      y.dump(new LinkedHashMap(params).collectEntries{ [it.key.toString(), it.value instanceof nextflow.util.Duration ? it.value.toString() : it.value ]}, w) 
     }
   }
 }

@@ -68,9 +68,9 @@ For more information on the original eDNAFlow pipeline and other software used a
          - [Classification using insect](#classification-using-insect)
          - [LCA collapse](#lca-collapse)
             * [LCA options](#lca-options)
-            * [Standalone LCA](#standalone-lca)
             * [LCA worked example](#lca-worked-example)
             * [Using LCA with custom taxonomy and/or BLAST databases](#using-lca-with-custom-taxonomy-andor-blast-databases)
+         - [Standalone taxonomic assignment/collapse](#standalone-taxonomic-assignmentcollapse)
       + [Denoising/dereplication and zOTU inference](#denoisingdereplication-and-zotu-inference)
       + [zOTU curation using LULU](#zotu-curation-using-lulu)
       + [Resource allocation](#resource-allocation)
@@ -385,7 +385,7 @@ When the pipeline finishes, output from each step can be found in directories co
 |             | zotus/                               | Dereplicated/denoised sequence results<br />(unique sequences, zOTU sequences, zOTU table) |                                                          |
 |             | blast/\*                              | BLAST results. Directory names will reflect the options passed to the blast process as well as the names of the individual databases queried against. | --blast |
 |             | lulu/                                | LULU curation results                                        | --lulu |
-|             | taxonomy/lca/\*                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --collapse-taxonomy                                      |
+|             | taxonomy/lca/\*                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --lca                                      |
 |             | taxonomy/insect/\*                    | Insect classification results. Directory name will reflect the options passed to the insect process. | --insect                                                 |
 |             | phyloseq/                            | Phyloseq object                                              | --phyloseq and associated options                        |
 | work/       | A bunch of nonsense                 | All internal and intermediate files processed by nextflow    |                                                          |
@@ -455,7 +455,7 @@ You must also specify the [demultiplexing strategy](#input-requirements) used wh
 #### Barcode file 
 Note: a barcode file is optional for demultiplexed runs where PCR primers have already been stripped.
 
-<small>**`--barcode [file/glob]`**</small>: Aside from specifying how to find your sequence reads, you must specify barcode file(s) using the `--barcode` option. If the value passed to `--barcode` is a glob (enclosed in quotes!), rainbow_bridge will use all matching barcode files for demultiplexing/primer matching. Barcode files should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to specify sample barcodes and amplicon primers. It will vary slightly based on whether your runs have been demultiplexed by the sequencer or not. Note that the pipeline can perform a few standalone tasks that do not require barcode files (e.g. collapsing taxonomy to LCA).
+<small>**`--barcode [file/glob]`**</small>: Aside from specifying how to find your sequence reads, you must specify barcode file(s) using the `--barcode` option. If the value passed to `--barcode` is a glob (enclosed in quotes!), rainbow_bridge will use all matching barcode files for demultiplexing/primer matching. Barcode files should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to specify sample barcodes and amplicon primers. It will vary slightly based on whether your runs have been demultiplexed by the sequencer or not. Note that the pipeline can perform a few standalone tasks that do not require barcode files (e.g. collapsing taxonomy to LCA or taxonomic classification via insect).
 
 <small>**The barcode file does not require a header line (i.e., column names), but if one is included it must be prefaced with a '#' (i.e., commented out).**</small>
 
@@ -601,9 +601,9 @@ Taxonomic name resolution:
 BLAST databases use numerical NCBI taxonomy IDs (taxids) to assign taxonomy to sequences. In order for your results to contain the actual scientific names associated with those taxids, the NCBI BLAST taxonomy database (taxdb) must be available to the pipeline. This can be achieved in several ways:   
 
   - If the taxdb files (`taxdb.btd` and `taxdb.bti`) are present in any of the databases passed through `--blast-db` or `$FLOW_BLAST`, they will be used for all of the supplied databases. 
-    * If you are using the NCBI `nt` database, you most likely already have these files present and won't have to worry about any of this.
-  - Taxonomy files can be explicitly specified using the `--blast-taxdb` option. The option value must point to the *directory* containaining the two taxdb files.
-  - If the taxdb files are missing, they will be automatically downloaded from the NCBI website.
+    * If you're using one of the NCBI nucleotide databases (e.g., `nt`, `nt_core`, etc.), you most likely already have these files present and won't have to worry about any of this.
+  - If the taxdb files are not found locally, the taxdb archive will be downloaded from the NCBI severs.
+  - Taxonomy files can be explicitly specified using the `--blast-taxdb` option. The option value must point to the `taxdb.tar.gz` archive file containing the relevant files.
 
 Multiple BLAST databases:  
 It is possible to query your sequences agains multiple BLAST databases. As mentioned, the pipeline will, by default, use the value of the `$FLOW_BLAST` environment variable as its first BLAST database. If that variable is set, any value(s) passed to `--blast-db` will be added as additional databases. Nextflow does not support multiple values for the same option on the command line (e.g., `workflow.nf --opt val1 --opt val2`), but it *does* support them when using [parameter files](#specifying-parameters-in-a-parameter-file). Thus, if you're not using the `$FLOW_BLAST` variable and/or you want to use multiple custom databases, you'll need to pass them as a list in your parameter file ([see here](#setting-multiple-values-for-the-same-option) for an example). The pipeline will run BLAST queries agains each database separately and merge the results into a common output file.    
@@ -611,7 +611,7 @@ It is possible to query your sequences agains multiple BLAST databases. As menti
 All BLAST options:  
 <small>**`--blast`**</small>: Query zOTU sequences against a provided BLAST database.  
 <small>**`--blast-db [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db. If the environment variable `$FLOW_BLAST` is set, its value will be added to the list of databases being searched.   
-<small>**`--blast-taxdb [dir]`**</small>: Specify the location of the NCBI BLAST taxonomy database files (`taxdb.btd` and `taxdb.bti`). The value of this option must be the directory where these two files can be found. If these files already occur alongside any of the databases passed to `--blast-db`, they will be reused for all databases. If they are missing entirely, they will be downloaded from the NCBI servers.  
+<small>**`--blast-taxdb [archive]`**</small>: Specify a local taxdb archive. The file passed to this argument must be a .tar.gz archive containing the NCBI taxdb files (`taxdb.btd`, `taxdb.bti`). If these files already occur alongside any of the databases passed to `--blast-db`, they will be reused for all databases. If they are missing entirely, they will be downloaded from the NCBI servers.  
 <small>**`--ignore-blast-env`**</small>: Ignore the value of the `$FLOW_BLAST` environment variable set on the host system when running the pipeline.   
 
 BLAST options passed to the NCBI `blastn` tool:  
@@ -657,6 +657,9 @@ These options control taxonomy assignment using the [insect](https://github.com/
 
 (see [here](https://github.com/shaunpwilkinson/insect#classifying-sequences) for more information on classifiers)  
 
+<small>**`--standalone-taxonomy`**</small>: Run standalone insect classification/LCA (requires `--insect` or `--lca` option)  
+<small>**`--insect-sequences [file]`**</small>: (Only with --standalone-taxonomy) FASTA file containing sequences to be classified  
+<small>**`--zotu-table [file]`**</small>: (Only with --standalone-taxonomy) zOTU table file (e.g., output from the denoising process)  
 <small>**`--insect-threshold [num]`**</small>:  Minimum Akaike weight for the recursive classification procedure to continue toward the leaves of the tree (default: 0.8)  
 <small>**`--insect-offset [num]`**</small>: Log-odds score offset parameter governing whether the minimum score is met at each node (default: 0)  
 <small>**`--insect-min-count [num]`**</small>:  Minimum number of training sequences belonging to a selected child node for the classification to progress (default: 5)  
@@ -672,12 +675,11 @@ The LCA method will selectively collapse BLAST assignments to their lowest commo
 
 The following command-line options are available for the LCA collapse method:
 
-<small>**`--collapse-taxonomy`**</small>: Collapse assigned BLAST results by lowest common ancestor (LCA)  
-<small>**`--standalone-taxonomy`**</small>: Run LCA script standalone (i.e., separate from the pipeline) against user-supplied data  
+<small>**`--lca`**</small>: Collapse assigned BLAST results by lowest common ancestor (LCA)  
+<small>**`--standalone-taxonomy`**</small>: Run standalone LCA / insect classification (requires `--insect` or `--lca` option)  
 <small>**`--blast-file [file]`**</small>: (Only with --standalone-taxonomy) BLAST result table (e.g., output from the blast process)  
 <small>**`--zotu-table [file]`**</small>: (Only with --standalone-taxonomy) zOTU table file (e.g., output from the denoising process)  
 <small>**`--lca-lineage [file]`**</small>: Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage (for use with custom BLAST db)  
-<small>**`--taxdump [file]`**</small>: Previously-downloaded NCBI taxonomy dump zip archive ([new_taxdump.zip](https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/taxdump_readme.txt))  
 <small>**`--dropped [str]`**</small>: Placeholder string for dropped taxonomic levels (default: 'dropped'). Pass "NA" for blank/NA  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy refinement (default: 100)  
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy refinement (default: 97)  
@@ -686,12 +688,6 @@ The following command-line options are available for the LCA collapse method:
 <small>**`--lca-taxon-filter [regex]`**</small>:  A regular expression with which to remove unwanted taxa from BLAST results. Defaults to filtering uncultured/environmental/synthetic sequences ('uncultured|environmental sample|clone|synthetic').  
 <small>**`--lca-case-insensitive`**</small>: Ignore case when applying the regex in `--lca-taxon-filter` (default: false).  
 <small>**`--lca-filter-max-qcov`**</small>: During LCA collapse, retain only BLAST records having the highest query coverage (default: false).  
-
-##### Standalone LCA
-rainbow_bridge can run the LCA collapse process independent of the rest of the pipeline. This is useful for experimenting with different values of percent ID and difference threshold, among other things. To run LCA in standalone mode, the pipeline must be run with the `--standalone-taxonomy` option. In addition to `--standalone-taxonomy`, you must supply a BLAST results file with the `--blast-file` option. You may also optionally provide a zOTU table using the `--zotu-table` option. When running LCA in standalone mode, the output files will be placed in the following directories:
-
-LCA taxonomy file: `output/standalone_taxonomy/lca/<settings>`  
-Merged zOTU table (if `--zotu-table` was present): `output/standalone_taxonomy/final`
 
 ##### LCA worked example
 
@@ -764,6 +760,16 @@ By default, rainbow_bridge assumes that taxonomy IDs (taxids) returned from BLAS
 
 
 To use a custom taxonomic lineage, pass this tabular lineage file to rainbow_bridge using the `--lca-lineage` option.
+
+#### Standalone taxonomic assignment/collapse
+rainbow_bridge can run the LCA collapse and/or insect classification processes independent of the rest of the pipeline (either or both processes may be run). This is useful for experimenting with different parameter valuess without having to re-run the entire pipeline. This can be done using the `--standalone-taxonomy` option alongside `--lca` and/or `--insect [option]` and any specific options you wish to pass to [LCA](#lca-collapse) or [insect](#classification-using-insect). 
+
+When running LCA in standalone mode, in addition to `--standalone-taxonomy`, you must supply a BLAST result file with the `--blast-file` option. You may also optionally provide a zOTU table using the `--zotu-table` option. 
+
+When running insect in standalone mode, in addition to `--standalone-taxonomy` you must supply a FASTA file with the `--insect-sequences` option. This file contains the sequences to classified using insect. As for standalone LCA, a zOTU table is also accepted using the `--zotu-table` option. 
+
+In both cases, the output from the assignment/LCA operations can be found in the usual place (`output/taxonomy/<insect|lca>/<settings>`). If a zOTU table is supplied, the finalized (combined) output can be found in `output/final/standalone`.
+
 
 ### Denoising/dereplication and zOTU inference
 These options control how (and by what tool) sequences are denoised and zOTUs are inferred By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch), which does not suffer from the 4GB memory limit of the free version of [usearch](https://www.drive5.com/usearch/). You still retain the option of using either the free (32 bit) or commercial (64 bit) versions of usearch, if you really want to. 
@@ -872,7 +878,7 @@ These options provide the ability to filter output by absolute and relative sequ
 
 rainbow_bridge supports generation of [phyloseq](https://joey711.github.io/phyloseq/) objects from pipeline output or user-supplied data. This will produce an RDS file that you can load directly into R and use for downstream analyses. There are a few options that can be specified for this process. Pipeline-generated (i.e., [insect](#classification-using-insect) or [LCA](#lca-collapse)) or user-supplied taxonomic classifications can be used along with the required user-supplied sample metadata.
 
-<small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--collapse-taxonomy` option).  
+<small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--lca` option).  
 <small>**`--metadata [file]`**</small>: A comma- or tab-separated sample metadata table (required). This can contain any arbitrary sample information, but it must have a header and the first column (preferably called 'sample') must contain sample IDs.  
 <small>**`--taxonomy [taxonomy]`**</small>: Taxonomic classification scheme. This can be one of either `lca` (to use LCA taxonomy, the default), `insect` (for insect taxonomy), `combined` (for the finalized combined taxonomy table), or the filename of a comma/tab-separated taxonomy table. If user-supplied, the taxonomy table must consist of a column containing zOTU IDs (e.g., 'Zotu1', 'Zotu2', etc.) followed by any number of arbitrary columns of taxonomic classification (e.g., domain, kingdom, phylum, etc.). The column headers can have any name you'd like, but the first column has to be zOTU IDs.  
 <small>**`--tree`**</small>: Generate a phylogenetic tree to include in the phyloseq object.  
@@ -985,7 +991,7 @@ fwd: forward
 rev: reverse
 demultiplexed-by: index
 remove-ambiguous-indices: true
-collapse-taxonomy: true
+lca: true
 primer-mismatch: 3
 ```
 
@@ -999,7 +1005,7 @@ and in json format:
   "rev": "reverse",
   "demultiplexed-by": "index",
   "remove-ambiguous-indices": true,
-  "collapse-taxonomy": true,
+  "lca": true,
   "primer-mismatch": 3
 }
 ```
@@ -1021,7 +1027,7 @@ $ rainbow_bridge.nf \
   --rev reverse \
   --demultiplexed-by index \
   --remove-ambiguous-indices \
-  --collapse-taxonomy \
+  --lca \
   --primer-mismatch 3
 ```
 

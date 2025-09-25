@@ -44,37 +44,21 @@ process multiqc {
   """
 }
 
-// get a file from a URL
-process get_web {
-  label 'process_single'
-
-  input:
-    tuple val(location), path(localfile)
-  output:
-    path(localfile)
-
-  exec:
-    def classifier = task.workDir / localfile 
-    def url = new URL(location)
-    url.withInputStream { stream -> classifier << stream }
-}
-
 // extract arbitrary files from a zip archive
 process extract_zip {
-  container 'quay.io/biocontainers/unzip:6.0'
   label 'process_single'
 
   input:
     tuple path(zipfile), val(f)
   output:
-    path(f)
+    path(f), emit: file
+    path(zipfile), emit: zip
   
   script:
   """
   unzip -p ${zipfile} ${f} > ${f}
   """
 }
-
 // extract files from a .tar.gz archive
 process extract_targz {
   label 'shell'
@@ -84,7 +68,8 @@ process extract_targz {
     tuple path(archive), val(to_extract)
   
   output:
-    path(to_extract)
+    path(to_extract), emit: file
+    path(archive), emit: zip
 
   script:
   """

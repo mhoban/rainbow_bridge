@@ -72,7 +72,8 @@ option_list = list(
   ),
   make_option(c("-z","--zotu-table"),action="store",default=NA,type="character",help="Optional (tab-separated) OTU table to merge with results (first column must be OTU ID)"),
   make_option(c("-l","--lineage"),action="store",default=NA,type="character",help="NCBI ranked lineage file to fill in domain"),
-  make_option(c("-m","--merged"),action="store",default=NA,type="character",help="NCBI merged taxid table")
+  make_option(c("-m","--merged"),action="store",default=NA,type="character",help="NCBI merged taxid table"),
+  make_option(c("-O","--output"),action="store",default="insect_taxonomy.tsv",type="character",help="Output filename")
 )
 
 # use debug arguments if we have 'em
@@ -88,10 +89,10 @@ opt = parse_args(
     option_list=option_list,
     formatter=nice_formatter,
     prog="insect.R",
-    usage="%prog [options] <zotus> <model> <output>"
+    usage="%prog [options] <zotus> <model>"
   ), 
   convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 3,
+  positional_arguments = 2,
   args = opt_args
 )
 
@@ -106,9 +107,9 @@ if (any(!fe)) {
 # pull out positional arguments
 zotu_file <- opt$args[1]
 model_file <- opt$args[2]
-output_file <- opt$args[3]
 
 # pull out options
+output_file <- opt$options$output
 cores <- opt$options$cores
 thresh <- opt$options$threshold
 offs <- opt$options$offset

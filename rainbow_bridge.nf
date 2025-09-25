@@ -77,9 +77,9 @@ def check_params() {
 
     switch(params.taxonomy) {
       case 'lca':
-        if (!params.collapseTaxonomy) {
+        if (!params.lca) {
           println(colors.yellow("You passed --phyloseq with 'lca' as the taxonomy option, but LCA has not been run."))
-          println(colors.yellow("Did you forget the --collapse-taxonomy option?"))
+          println(colors.yellow("Did you forget the --lca option?"))
         }
         break
       case 'insect':
@@ -89,8 +89,8 @@ def check_params() {
         }
         break
       case 'combined':
-        if (!params.collapseTaxonomy && !params.insect) {
-          println(colors.yellow("Note: phyloseq generation requires one of --insect, --collapse-taxonomy, or a custom taxonomy table."))
+        if (!params.lca && !params.insect) {
+          println(colors.yellow("Note: phyloseq generation requires one of --insect, --lca, or a custom taxonomy table."))
         }
         break
       default:
@@ -104,9 +104,21 @@ def check_params() {
 
   // check to make sure standalone taxonomy will work
   if (params.standaloneTaxonomy) {
-    if (!helper.file_exists(params.blastFile)) {
-      println(colors.red("The supplied blast result table \"${params.blastFile}\" does not exist"))
-      exit(1)
+    if (!params.lca && !params.insect) {
+      exit(1,colors.bred("--standalone-taxonomy") + colors.red(" requires ") + colors.bred("--insect") + colors.red(" and/or ") + colors.bred("--lca"))
+    }
+
+    if (params.lca) { 
+      if (!helper.file_exists(params.blastFile)) {
+        println(colors.red("The supplied blast result table \"${params.blastFile}\" does not exist"))
+        exit(1)
+      }
+    }
+
+    if (params.insect) {
+      if (!helper.file_exists(params.insectSequences)) {
+        exit(1,colors.red("The supplied FASTA file \"${params.insectSequences}\" does not exist"))
+      }
     }
   }
 
@@ -133,20 +145,9 @@ def check_params() {
   if (params.blast) {
 
     // if --blast-taxdb is passed, check that it's a directory and that files exist
-    if (params.blastTaxdb != "nofile-blast-taxdb") {
-      def ok = false
-      // check for directory
-      if (helper.is_dir(params.blastTaxdb)) {
-        // make sure we have two files matching our search pattern
-        if( file(params.blastTaxdb).list().findAll{it =~ /taxdb\.bt[id]/}.size() == 2) {
-          ok = true
-        }
-      }
-      // otherwise give an error message and bail
-      if (!ok) {
-        println(colors.bred("--blast-taxdb") + colors.red(" must be a directory containing the NCBI BLAST taxonomy files (taxdb.btd, taxdb.bti)"))
-        exit(1)
-      }
+    if (!(params.blastTaxdb =~ /(?i)\.tar\.gz$/)) {
+      println(colors.bred("--blast-taxdb") + colors.red(" must be a .tar.gz archive"))
+      exit(1)
     }
 
     // get blast environment variable
@@ -181,20 +182,22 @@ def check_params() {
       }
     }
   } else {
-    if (params.collapseTaxonomy) {
-      println(colors.red("--collapse-taxonomy requires the --blast option."))
+    if (params.lca && !params.standaloneTaxonomy) {
+      println(colors.red("--lca requires the --blast option."))
       exit(1)
     }
   }
 
   // check LCA options
-  if (params.collapseTaxonomy) {
+  if (params.lca) {
     if (params.lcaDiff <= 0) {
       println(colors.red("--lca-diff argument must be a number greater than zero."))
       exit(1)
     }
+    if (params.lcaLineage && !helper.file_exists(params.lcaLineage)) {
+      exit(1,colors.red("The supplied lineage file \"${params.lcaLineage}\" does not exist"))
+    }
   }
-
 
   // make sure insect parameter is valid: either a file or one of the pretrained models
   if (params.insect) {
@@ -616,12 +619,11 @@ process collapse_taxonomy {
   label 'process_more_memory'
 
   publishDir {
-    def td = params.standaloneTaxonomy ? 'standalone_taxonomy' : 'taxonomy'
-    "${params.outDir}/${td}/lca/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}"
+    "${params.outDir}/taxonomy/lca/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}"
   }, mode: params.publishMode
 
   input:
-    tuple path(blast_result), path(lineage), path('*')
+    tuple path(blast_result), path(dmp)
 
   output:
     path("lca_taxonomy.tsv"), emit: taxonomy
@@ -633,6 +635,7 @@ process collapse_taxonomy {
   def pf = []
   params.lcaFilterMaxQcov && pf << "--filter-max-qcov"
   params.lcaCaseInsensitive && pf << "--case-insensitive"
+  def lineage = params.lcaLineage ?: 'rankedlineage.dmp'
   """
   # save settings
   echo "min_query_coverage: ${params.lcaQcov}" > settings.yml
@@ -673,7 +676,7 @@ process insect {
   }, mode: params.publishMode
 
   input:
-    tuple path(classifier), path('*'), path(zotus)
+    tuple path(classifier), path(zotus), path(dmp)
 
   output:
     path('insect_taxonomy.tsv'), emit: taxonomy
@@ -703,8 +706,9 @@ process insect {
      --min-count ${params.insectMinCount} \
      --ping ${params.insectPing} \
      --lineage rankedlineage.dmp \
+     --output insect_taxonomy.tsv \
      --merged merged.dmp \
-     ${zotus} insect_model.rds "insect_taxonomy.tsv"
+     ${zotus} insect_model.rds
   """
 }
 
@@ -749,10 +753,6 @@ process phyloseq {
   params.tree && opt << "--tree"
   params.tree && opt << "--sequences \"${sequences}\""
   params.optimizeTree && opt << "--optimize"
-  // if (method == "insect") {
-  //   otu = "representative"
-  //   c = "--tax-columns \"kingdom,phylum,class,order,family,genus,species,taxon,NNtaxon,NNrank\""
-  // }
   """
   phyloseq.R \
     --out phyloseq.rds \
@@ -767,7 +767,7 @@ process finalize {
   label 'process_more_memory'
 
   publishDir {
-    def td = params.standaloneTaxonomy ? 'standalone_taxonomy/final' : 'final'
+    def td = params.standaloneTaxonomy ? 'final/standalone' : 'final'
     "${params.outDir}/${td}"
   }, mode: params.publishMode
 
@@ -818,12 +818,8 @@ include { fastqc as first_fastqc }    from './modules/modules.nf'
 include { fastqc as second_fastqc }   from './modules/modules.nf'
 include { multiqc as first_multiqc }  from './modules/modules.nf'
 include { multiqc as second_multiqc } from './modules/modules.nf'
-include { get_web as get_model } from './modules/modules.nf'
-include { get_web as get_taxdb } from './modules/modules.nf'
-include { get_web as get_taxdump } from './modules/modules.nf'
-include { extract_zip as extract_lineage } from './modules/modules.nf'
-include { extract_zip as extract_ncbi } from './modules/modules.nf'
-include { extract_targz as extract_taxdb } from './modules/modules.nf'
+include { extract_zip as extract_ncbi_taxonomy } from './modules/modules.nf'
+include { extract_targz as extract_ncbi_taxdb } from './modules/modules.nf'
 
 workflow {
   // make sure our arguments are all in order
@@ -833,64 +829,65 @@ workflow {
 
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
-    // build input channels and get appropriate process
-    blast_result = Channel.fromPath(params.blastFile, checkIfExists: true)
-    // load lineage and (optionally) other taxonomy dump files
-    if (!helper.file_exists(params.lcaLineage)) {
-      if (!helper.file_exists(params.taxdump)) {
-        if (params.taxdump != "") {
-          println(colors.yellow("Taxonomy dump archive '${params.taxdump}' does not exist and will be downloaded"))
-        }
 
-        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') |
-          combine(Channel.fromPath('new_taxdump.zip')) |
-          get_taxdump |
-          set { taxdump }
+    // load and extract NCBI taxonomy
+    Channel.fromPath(params.ncbiTaxdump,glob:false) |
+      combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp','rankedlineage.dmp')) |
+      extract_ncbi_taxonomy 
 
-        taxdump |
-          combine(Channel.of('rankedlineage.dmp')) |
-          extract_lineage | collect |
-          set { lineage }
-        taxdump |
-          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
-          extract_ncbi | collect | toList |
-          set { ncbi_dumps }
+    // collate extracted files into a list channel
+    ncbi_dumps = extract_ncbi_taxonomy.out.file |
+      collect | 
+      toList
 
-        taxdump |
-          save_taxdump
-      } else {
-        zip = Channel.fromPath(params.taxdump)
-        zip |
-          combine(Channel.of('rankedlineage.dmp')) |
-          extract_lineage | collect |
-          set { lineage }
-        zip |
-          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
-          extract_ncbi | collect | toList |
-          set { ncbi_dumps }
-      }
+    // do lca
+    if (params.lca) {
+      // build blast result channel
+      blast_result = Channel.fromPath(params.blastFile, checkIfExists: true)
+
+      blast_result | 
+        combine(ncbi_dumps) | 
+        collapse_taxonomy
+
+      // pull out lca table
+      collapse_taxonomy.out.taxonomy |
+        set { lca_taxonomy }
     } else {
-      // if user has passed a custom ranked lineage dump, use it instead
-      lineage = Channel.fromPath(params.lcaLineage)
-      ncbi_dumps = Channel.fromPath('nodumps')
+      lca_taxonomy = Channel.fromPath('nofile-lca-taxonomy')
     }
 
+    // do insect
+    if (params.insect) {
+      // load sequences fasta
+      zotus = Channel.fromPath(params.insectSequences, checkIfExists: true)
 
-    // run taxonomy process
-    blast_result |
-      combine(lineage) |
-      combine(ncbi_dumps) |
-      collapse_taxonomy
+      // load the classifier model
+      if (helper.file_exists(params.insect)) {
+        classifier = Channel.fromPath(params.insect)
+      } else {
+        // download the classifier model if it's one of the supported ones
+        // previous sanity checks ensure the model is in our helper map
+        def m = params.insect.toLowerCase()
+        def url = helper.insect_classifiers[m]
+        // glob:false is necessary because the urls have question marks in them
+        classifier = Channel.fromPath(url, glob:false)
+      }
 
-    // pull out lca table
-    collapse_taxonomy.out.taxonomy |
-      set { lca_taxonomy }
+      // run the insect classification
+      classifier |
+        combine(zotus) |
+        combine(ncbi_dumps) |
+        insect 
+      insect_taxonomy = insect.out.taxonomy
+    } else {
+      insect_taxonomy = Channel.fromPath('nofile-insect-taxonomy')
+    }
 
     // do this part if the zotu table exists
     if (helper.file_exists(params.zotuTable)) {
       zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
       curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table", checkIfExists: false)
-      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false)
+
       // run it through finalize
       zotu_table |
         combine(curated_zotu_table) |
@@ -1380,28 +1377,21 @@ workflow {
         }.getAt(0)
 
         // get taxdb files (either download or from command line)
-        if (params.blastTaxdb == "nofile-blast-taxdb") {
-          if (db.size() > 0) {
-            // if we found something and we don't want something else, use what we found
-            Channel.fromPath(db) |
-              collect |
-              toList |
-              set { taxdb }
-          } else {
-            // download and extract taxdb from ncbi website
-            Channel.of('https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz') |
-              combine(Channel.fromPath('taxdb.tar.gz')) |
-              get_taxdb |
-              combine(Channel.of('taxdb.btd','taxdb.bti')) |
-              extract_taxdb |
-              collect | toList |
-              set { taxdb }
-          }
-        } else {
-          Channel.fromPath("${params.blastTaxdb}/taxdb.bt*", checkIfExists: true) |
+        if (db.size() > 0) {
+          // if we found something and we don't want something else, use what we found
+          Channel.fromPath(db) |
             collect |
             toList |
             set { taxdb }
+        } else {
+          // download and extract taxdb from ncbi website
+          Channel.fromPath(params.blastTaxdb,glob:false) |
+            combine(Channel.of('taxdb.btd','taxdb.bti')) |
+            extract_ncbi_taxdb
+          extract_ncbi_taxdb.out.file |
+            collect |
+            toList | 
+            set { taxdb }  
         }
       } else {
         Channel.value([[file("taxdb.bti"),file("taxdb.btd")]]) |
@@ -1442,59 +1432,17 @@ workflow {
         lulu
     }
 
-    // get NCBI lineage dump if needed
-    if ((params.collapseTaxonomy && params.blast && !helper.file_exists(params.lcaLineage)) || params.insect != false) {
-      // get the NCBI ranked taxonomic lineage dump
-      if (!helper.file_exists(params.taxdump)) {
+    // load and extract NCBI taxonomy
+    Channel.fromPath(params.ncbiTaxdump,glob:false) |
+      combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp','rankedlineage.dmp')) |
+      extract_ncbi_taxonomy 
 
-        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') |
-          combine(Channel.fromPath('new_taxdump.zip')) |
-          get_taxdump |
-          set { taxdump }
-        taxdump |
-          combine(Channel.of('rankedlineage.dmp')) |
-          extract_lineage | collect |
-          set { lineage }
-        taxdump |
-          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
-          extract_ncbi | collect | toList |
-          set { ncbi_dumps }
-
-        taxdump |
-          save_taxdump
-      } else {
-        zip = Channel.fromPath(params.taxdump)
-        zip |
-          combine(Channel.of('rankedlineage.dmp')) |
-          extract_lineage | collect |
-          set { lineage }
-        zip |
-          combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp')) |
-          extract_ncbi | collect | toList |
-          set { ncbi_dumps }
-      }
-    }
-
-    if (helper.file_exists(params.lcaLineage)) {
-      // if user has passed a custom ranked lineage dump, use it instead
-      lineage = Channel.fromPath(params.lcaLineage)
-      ncbi_dumps = Channel.fromPath('nodumps')
-
-      // if we're doing an insect classification, we still need rankedlineage.dmp from NCBI
-      if (params.insect) {
-        Channel.of('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip') |
-          combine(Channel.fromPath('new_taxdump.zip')) |
-          get_taxdump |
-          set { taxdump }
-        taxdump |
-          combine(Channel.of('rankedlineage.dmp')) |
-          extract_lineage | collect |
-          set { ncbi_lineage }
-      }
-    }
+    // collate extracted files into a list channel
+    ncbi_dumps = extract_ncbi_taxonomy.out.file |
+      collect | 
+      toList
 
     // run the insect classifier, if so desired
-    // this should run in parallel with the blast & lulu processes
     if (params.insect) {
       // dereplicate returns a tuple, but we only need the zotus fasta
       dereplicated |
@@ -1509,44 +1457,30 @@ workflow {
         // previous sanity checks ensure the model is in our helper map
         def m = params.insect.toLowerCase()
         def url = helper.insect_classifiers[m]
-        Channel.of(url) |
-          combine(Channel.fromPath('insect_model.rds')) |
-          get_model |
-          set { classifier }
+        // glob:false is necessary because the urls have question marks in them
+        classifier = Channel.fromPath(url, glob:false)
       }
 
       // run the insect classification
       classifier |
-        // join the correct lineage dump
-        ( helper.file_exists(params.lcaLineage) ? combine(ncbi_lineage) : combine(lineage) ) |
         combine(zotus) |
-        insect |
-        set { insectized }
+        combine(ncbi_dumps) |
+        insect
+      insect_taxonomy = insect.out.taxonomy
+    } else {
+      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false)
     }
 
     // run taxonomy assignment/collapse script if so requested
-    if (params.collapseTaxonomy && params.blast) {
+    if (params.lca && params.blast) {
       // then we smash it together with the blast results
-      // and run the taxonomy assignment/collapser script
+      // and run the LCA process
       blast_result |
-        combine(lineage) |
         combine(ncbi_dumps) |
         collapse_taxonomy
-    }
-
-    // prepare for final output
-    if (params.collapseTaxonomy && params.blast) {
-      collapse_taxonomy.out.taxonomy |
-        set { lca_taxonomy }
+      lca_taxonomy = collapse_taxonomy.out.taxonomy
     } else {
-      Channel.fromPath("nofile-lca-taxonomy",checkIfExists: false) |
-        set { lca_taxonomy }
-    }
-
-    if (params.insect) {
-      insect_taxonomy = insectized.taxonomy
-    } else {
-      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false)
+      lca_taxonomy = Channel.fromPath("nofile-lca-taxonomy")
     }
 
     if (params.lulu) {
@@ -1554,11 +1488,11 @@ workflow {
         map { it[0] } |
         set { curated_zotu_table }
     } else {
-      Channel.fromPath("nofile-curated-zotu-table", checkIfExists: false) |
-        set { curated_zotu_table }
+      curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table")
     }
 
-    if (params.collapseTaxonomy || params.insect) {
+    // combine and finalize outputs
+    if (params.lca || params.insect) {
       zotu_table |
         combine(curated_zotu_table) |
         combine(lca_taxonomy) |
@@ -1566,26 +1500,26 @@ workflow {
         finalize
     }
 
-    /* put all the phyloseq stuff down here */
-    if (params.phyloseq && helper.file_exists(params.metadata)) {
+    // create phyloseq output
+    if (params.phyloseq) {
       def physeq = true
       switch (params.taxonomy) {
         case "lca":
-          if (params.collapseTaxonomy) {
-            ph_taxonomy = collapse_taxonomy.out.taxonomy
+          if (params.lca) {
+            ph_taxonomy = lca_taxonomy
           } else {
             physeq = false
           }
           break
         case "insect":
           if (params.insect) {
-            ph_taxonomy = insectized.taxonomy
+            ph_taxonomy = insect_taxonomy
           } else {
             physeq = false
           }
           break
         case "combined":
-          if (params.insect || params.collapseTaxonomy) {
+          if (params.insect || params.lca) {
             ph_taxonomy = finalize.out.taxonomy
           } else {
             physeq = false
@@ -1593,14 +1527,15 @@ workflow {
           break
         default:
           if (helper.file_exists(params.taxonomy)) {
-            ph_taxonomy = Channel.fromPath(params.taxonomy, checkIfExists: true)
+            ph_taxonomy = Channel.fromPath(params.taxonomy)
           } else {
             physeq = false
           }
           break
       }
       if (physeq) {
-        metadata = Channel.fromPath(params.metadata, checkIfExists: true)
+        // construct the phyloseq output
+        metadata = Channel.fromPath(params.metadata)
         seqs = dereplicated.map { sid, uniques, zotus, zotutable -> zotus }
         phyloseq(zotu_table,ph_taxonomy,metadata,seqs)
       }

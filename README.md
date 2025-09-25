@@ -385,7 +385,7 @@ When the pipeline finishes, output from each step can be found in directories co
 |             | zotus/                               | Dereplicated/denoised sequence results<br />(unique sequences, zOTU sequences, zOTU table) |                                                          |
 |             | blast/\*                              | BLAST results. Directory names will reflect the options passed to the blast process as well as the names of the individual databases queried against. | --blast |
 |             | lulu/                                | LULU curation results                                        | --lulu |
-|             | taxonomy/lca/\*                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --collapse-taxonomy                                      |
+|             | taxonomy/lca/\*                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --lca                                      |
 |             | taxonomy/insect/\*                    | Insect classification results. Directory name will reflect the options passed to the insect process. | --insect                                                 |
 |             | phyloseq/                            | Phyloseq object                                              | --phyloseq and associated options                        |
 | work/       | A bunch of nonsense                 | All internal and intermediate files processed by nextflow    |                                                          |
@@ -672,12 +672,11 @@ The LCA method will selectively collapse BLAST assignments to their lowest commo
 
 The following command-line options are available for the LCA collapse method:
 
-<small>**`--collapse-taxonomy`**</small>: Collapse assigned BLAST results by lowest common ancestor (LCA)  
+<small>**`--lca`**</small>: Collapse assigned BLAST results by lowest common ancestor (LCA)  
 <small>**`--standalone-taxonomy`**</small>: Run LCA script standalone (i.e., separate from the pipeline) against user-supplied data  
 <small>**`--blast-file [file]`**</small>: (Only with --standalone-taxonomy) BLAST result table (e.g., output from the blast process)  
 <small>**`--zotu-table [file]`**</small>: (Only with --standalone-taxonomy) zOTU table file (e.g., output from the denoising process)  
 <small>**`--lca-lineage [file]`**</small>: Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage (for use with custom BLAST db)  
-<small>**`--taxdump [file]`**</small>: Previously-downloaded NCBI taxonomy dump zip archive ([new_taxdump.zip](https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/taxdump_readme.txt))  
 <small>**`--dropped [str]`**</small>: Placeholder string for dropped taxonomic levels (default: 'dropped'). Pass "NA" for blank/NA  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy refinement (default: 100)  
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy refinement (default: 97)  
@@ -872,7 +871,7 @@ These options provide the ability to filter output by absolute and relative sequ
 
 rainbow_bridge supports generation of [phyloseq](https://joey711.github.io/phyloseq/) objects from pipeline output or user-supplied data. This will produce an RDS file that you can load directly into R and use for downstream analyses. There are a few options that can be specified for this process. Pipeline-generated (i.e., [insect](#classification-using-insect) or [LCA](#lca-collapse)) or user-supplied taxonomic classifications can be used along with the required user-supplied sample metadata.
 
-<small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--collapse-taxonomy` option).  
+<small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--lca` option).  
 <small>**`--metadata [file]`**</small>: A comma- or tab-separated sample metadata table (required). This can contain any arbitrary sample information, but it must have a header and the first column (preferably called 'sample') must contain sample IDs.  
 <small>**`--taxonomy [taxonomy]`**</small>: Taxonomic classification scheme. This can be one of either `lca` (to use LCA taxonomy, the default), `insect` (for insect taxonomy), `combined` (for the finalized combined taxonomy table), or the filename of a comma/tab-separated taxonomy table. If user-supplied, the taxonomy table must consist of a column containing zOTU IDs (e.g., 'Zotu1', 'Zotu2', etc.) followed by any number of arbitrary columns of taxonomic classification (e.g., domain, kingdom, phylum, etc.). The column headers can have any name you'd like, but the first column has to be zOTU IDs.  
 <small>**`--tree`**</small>: Generate a phylogenetic tree to include in the phyloseq object.  
@@ -985,7 +984,7 @@ fwd: forward
 rev: reverse
 demultiplexed-by: index
 remove-ambiguous-indices: true
-collapse-taxonomy: true
+lca: true
 primer-mismatch: 3
 ```
 
@@ -999,7 +998,7 @@ and in json format:
   "rev": "reverse",
   "demultiplexed-by": "index",
   "remove-ambiguous-indices": true,
-  "collapse-taxonomy": true,
+  "lca": true,
   "primer-mismatch": 3
 }
 ```
@@ -1021,7 +1020,7 @@ $ rainbow_bridge.nf \
   --rev reverse \
   --demultiplexed-by index \
   --remove-ambiguous-indices \
-  --collapse-taxonomy \
+  --lca \
   --primer-mismatch 3
 ```
 

@@ -170,7 +170,7 @@ class helper {
       --blastn-<option> [arg?]      Pass <option> to blastn with optional argument
 
     LCA taxonomy collapse:
-      --collapse-taxonomy           Collapse assigned BLAST results by least common ancestor (LCA)
+      --lca           Collapse assigned BLAST results by least common ancestor (LCA)
       --standalone-taxonomy         Run LCA script as standalone
       --blast-file [file]           Blast result table (only for standalone LCA assignment)
       --zotu-table [file]           zOTU table file (only for standalone LCA assignment)
@@ -206,7 +206,7 @@ class helper {
                                     should be for the the recursive classification algorithm to be skipped (default: ${params.insectPing})
 
     Generating phyloseq objects:
-      --phyloseq                    Create phyloseq object (requires --collapse-taxonomy)
+      --phyloseq                    Create phyloseq object (requires --lca)
       --metadata [file]             Comma or tab-separated sample metadata file (required)
       --taxonomy [tax]              Taxonomic classifaction scheme. May be pipeline-generated or user supplied
                                     (acceptable options: lca, insect, combined, <filename>; default: ${params.taxonomy})

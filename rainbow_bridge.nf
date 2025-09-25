@@ -886,7 +886,7 @@ workflow {
     // do this part if the zotu table exists
     if (helper.file_exists(params.zotuTable)) {
       zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
-      curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table", checkIfExists: false)
+      curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table")
 
       // run it through finalize
       zotu_table |
@@ -1468,7 +1468,7 @@ workflow {
         insect
       insect_taxonomy = insect.out.taxonomy
     } else {
-      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy", checkIfExists: false)
+      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy")
     }
 
     // run taxonomy assignment/collapse script if so requested

@@ -43,3 +43,36 @@ process multiqc {
   multiqc .
   """
 }
+
+// extract arbitrary files from a zip archive
+process extract_zip {
+  label 'process_single'
+
+  input:
+    tuple path(zipfile), val(f)
+  output:
+    path(f), emit: file
+    path(zipfile), emit: zip
+  
+  script:
+  """
+  unzip -p ${zipfile} ${f} > ${f}
+  """
+}
+// extract files from a .tar.gz archive
+process extract_targz {
+  label 'shell'
+  label 'process_single'
+
+  input:
+    tuple path(archive), val(to_extract)
+  
+  output:
+    path(to_extract), emit: file
+    path(archive), emit: zip
+
+  script:
+  """
+  gunzip -c ${archive} | tar x ${to_extract}
+  """
+}

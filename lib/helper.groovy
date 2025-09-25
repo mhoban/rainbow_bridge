@@ -158,7 +158,7 @@ class helper {
                                     the pipeline will include it in the list of databases to search.
                                     To specify multiple BLAST databases, pass them as a list in the
                                     parameters file (see README for more information).
-      --blast-taxdb [dir]           Specify the location of the taxdb.* files, for BLAST taxon name assignment.
+      --blast-taxdb [file]          Specify local NCBI taxdb.tar.gz file. 
                                     If unspecified or missing from the --blast-db directory, the pipeline 
                                     will download these files from the NCBI server.
       --ignore-blast-env            Ignore the value of the \$FLOW_BLAST environment variable
@@ -169,13 +169,15 @@ class helper {
       --qcov [num]                  Percent query coverage per hsp (default: 100)
       --blastn-<option> [arg?]      Pass <option> to blastn with optional argument
 
+    General taxonomy operations:
+      --standalone-taxonomy         Run LCA and/or insect in standalone mode (independent of pipeline)
+      --ncbi-taxdump [file]         Local copy of the NCBI new_taxdump.zip archive (leave blank to download)
+
     LCA taxonomy collapse:
-      --lca           Collapse assigned BLAST results by least common ancestor (LCA)
-      --standalone-taxonomy         Run LCA script as standalone
+      --lca                         Collapse assigned BLAST results by least common ancestor (LCA)
       --blast-file [file]           Blast result table (only for standalone LCA assignment)
       --zotu-table [file]           zOTU table file (only for standalone LCA assignment)
       --lca-lineage [file]          Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage 
-      --taxdump [file]              Previously downloaded NCBI taxonomy dump zip archive (new_taxdump) (leave blank to download)
       --lca-qcov [num]              Minimum query coverage for LCA taxonomy assignment (default: 100)
       --lca-evalue [num]            Maximum e-value for LCA taxonomy refinement (default: 0.001)
       --lca-pid [num]               Minimum percent identity for LCA taxonomy assignment (default: 97)
@@ -195,6 +197,7 @@ class helper {
                                     - One of the following (case-insensitive) primer names: 
                                       MiFish, Crust16S, Fish16S, 18SUni, 18SV4, p23S, mlCOIint, SCL5.8S
                                       (see https://github.com/shaunpwilkinson/insect#classifying-sequences)
+      --insect-sequences [file]     FASTA file containing sequences to be classified (only for standalone insect clasification)
       --insect-threshold [num]      Minimum Akaike weight for the recursive classification procedure to continue 
                                     toward the leaves of the tree (default: ${params.insectThreshold})
       --insect-offset [num]         Log-odds score offset parameter governing whether the minimum score is 

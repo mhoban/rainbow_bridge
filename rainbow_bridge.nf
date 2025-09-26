@@ -228,11 +228,11 @@ process filter_merge {
   if( params.single ) {
     // single end
     """
-    AdapterRemoval --threads ${task.cpus} --file1 ${reads} \
-      --trimns --trimqualities \
-      --minquality ${params.minQuality} \
-      --qualitymax ${params.maxQuality} \
-      --mate-separator ${params.mateSeparator} \
+    AdapterRemoval --threads ${task.cpus} --file1 ${reads} \\
+      --trimns --trimqualities \\
+      --minquality ${params.minQuality} \\
+      --qualitymax ${params.maxQuality} \\
+      --mate-separator ${params.mateSeparator} \\
       --basename ${key}
 
     mv ${key}.truncated ${key}_trimmed_merged.fastq
@@ -240,12 +240,12 @@ process filter_merge {
   } else if ( params.paired ) {
     // if reads are paired-end then merge
     """
-    AdapterRemoval --threads ${task.cpus} --file1 ${reads[0]} --file2 ${reads[1]} \
-      --collapse --trimns --trimqualities \
-      --minquality $params.minQuality \
-      --qualitymax ${params.maxQuality} \
-      --minalignmentlength ${params.minAlignLen} \
-      --mate-separator ${params.mateSeparator} \
+    AdapterRemoval --threads ${task.cpus} --file1 ${reads[0]} --file2 ${reads[1]} \\
+      --collapse --trimns --trimqualities \\
+      --minquality $params.minQuality \\
+      --qualitymax ${params.maxQuality} \\
+      --minalignmentlength ${params.minAlignLen} \\
+      --mate-separator ${params.mateSeparator} \\
       --basename ${key}
 
     mv ${key}.collapsed ${key}_trimmed_merged.fastq
@@ -390,7 +390,7 @@ process relabel {
     """
     # this may or may not be necessary anymore, but it seems like a good sanity check
     # since this will fail on empty files
-    vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --fastx_filter ${combined} --relabel "${key}." --label_suffix ";sample=${key}" --fastaout - | \
+    vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --fastx_filter ${combined} --relabel "${key}." --label_suffix ";sample=${key}" --fastaout - | \\
       awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}_relabeled.fasta"
     """
   } else {
@@ -400,8 +400,8 @@ process relabel {
     """
     cat input-*.fastq > ${combined}
     # we have to convert everything to uppercase because obisplit --uppercase is broken
-    ${denoiser} -fastx_relabel ${combined} -prefix "${key}." -fastaout /dev/stdout | \
-      tail -n+7 | \
+    ${denoiser} -fastx_relabel ${combined} -prefix "${key}." -fastaout /dev/stdout | \\
+      tail -n+7 | \\
       awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}"_relabeled.fasta
     """
   }
@@ -451,23 +451,23 @@ process dereplicate {
     # 3. get rid of chimeras
     # 4. match original sequences to zotus by 97% identity
     if [ -s "${relabeled_merged}" ]; then
-      vsearch \
-        --threads ${task.cpus} \
-        --derep_fulllength ${relabeled_merged} --sizeout \
+      vsearch \\
+        --threads ${task.cpus} \\
+        --derep_fulllength ${relabeled_merged} --sizeout \\
         --output "${id}_unique.fasta"
-      vsearch \
-        --threads ${task.cpus} \
-        --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" \
+      vsearch \\
+        --threads ${task.cpus} \\
+        --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" \\
         --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
-      vsearch \
-        --threads ${task.cpus} \
-        --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" \
+      vsearch \\
+        --threads ${task.cpus} \\
+        --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" \\
         --relabel Zotu
-      vsearch \
-        --threads ${task.cpus} \
-        --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" \
-        --id ${params.zotuIdentity} --otutabout zotu_table.tsv \
-        --userout zotu_map.tsv --userfields "query+target" \
+      vsearch \\
+        --threads ${task.cpus} \\
+        --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" \\
+        --id ${params.zotuIdentity} --otutabout zotu_table.tsv \\
+        --userout zotu_map.tsv --userfields "query+target" \\
         --top_hits_only
     else
       >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"
@@ -482,12 +482,12 @@ process dereplicate {
     # 2. run denoising & chimera removal
     # 3. generate zotu table
     if [ -s "${relabeled_merged}" ]; then
-      ${denoiser} -fastx_uniques ${relabeled_merged} \
+      ${denoiser} -fastx_uniques ${relabeled_merged} \\
         -sizeout -fastaout "${id}_unique.fasta"
-      ${denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" \
-        -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} \
+      ${denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" \\
+        -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} \\
         -unoise_alpha ${params.alpha}
-      ${denoiser} -otutab ${relabeled_merged} -id ${params.zotuIdentity} \
+      ${denoiser} -otutab ${relabeled_merged} -id ${params.zotuIdentity} \\
         -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zotu_map.tsv
     else
       >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"
@@ -548,12 +548,12 @@ process blast {
   export BLASTDB=.
 
   # blast our zotus
-  blastn \
-    -db "${db_name}" \
-    -outfmt "6 qseqid sseqid staxid ssciname scomname sskingdom pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \
-    ${blast_opt_str} \
-    ${task.ext.blastn_args} \
-    -query ${zotus_fasta} -num_threads ${task.cpus} \
+  blastn \\
+    -db "${db_name}" \\
+    -outfmt "6 qseqid sseqid staxid ssciname scomname sskingdom pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \\
+    ${blast_opt_str} \\
+    ${task.ext.blastn_args} \\
+    -query ${zotus_fasta} -num_threads ${task.cpus} \\
     > blast_result.tsv
   """
 }
@@ -573,10 +573,10 @@ process lulu_blast {
   """
   # blast zotus against themselves to create the match list LULU needs
   makeblastdb -in ${zotus_fasta} -parse_seqids -dbtype nucl -out ${key}_zotus
-  blastn -db ${key}_zotus \
-    -outfmt "6 qseqid sseqid pident" \
-    -out match_list.txt -qcov_hsp_perc 80 \
-    -perc_identity 84 -query ${zotus_fasta} \
+  blastn -db ${key}_zotus \\
+    -outfmt "6 qseqid sseqid pident" \\
+    -out match_list.txt -qcov_hsp_perc 80 \\
+    -perc_identity 84 -query ${zotus_fasta} \\
     -num_threads ${task.cpus}
   """
 }
@@ -597,11 +597,11 @@ process lulu {
 
   script:
   """
-  lulu.R \
-    -m ${params.luluMinRatio} \
-    -t ${params.luluMinRatioType} \
-    -a ${params.luluMinMatch} \
-    -r ${params.luluMinRc} \
+  lulu.R \\
+    -m ${params.luluMinRatio} \\
+    -t ${params.luluMinRatioType} \\
+    -a ${params.luluMinMatch} \\
+    -r ${params.luluMinRc} \\
     ${zotu_table} ${match_list} "lulu_zotu_table.tsv" "lulu_zotu_map.tsv" "lulu_result_object.rds"
   """
 }
@@ -639,19 +639,19 @@ process collapse_taxonomy {
   echo "taxon_filter: ${params.lcaTaxonFilter}" >> settings.yml
   echo "taxon_filter_case_sensitive: ${!params.lcaCaseInsensitive ? 'yes' : 'no'}" >> settings.yml
 
-  collapse_taxonomy.R \
-    --qcov ${params.lcaQcov} \
-    --pid ${params.lcaPid} \
-    --diff ${params.lcaDiff} \
-    --evalue ${params.lcaEvalue} \
-    --merged merged.dmp \
-    --nodes nodes.dmp \
-    --taxid-lineage taxidlineage.dmp \
-    --output lca_taxonomy.tsv \
-    --dropped "${params.dropped}" \
-    --intermediate "lca_intermediate.tsv" \
-    ${pf.join(" ")} \
-    --taxon-filter "${params.lcaTaxonFilter}" \
+  collapse_taxonomy.R \\
+    --qcov ${params.lcaQcov} \\
+    --pid ${params.lcaPid} \\
+    --diff ${params.lcaDiff} \\
+    --evalue ${params.lcaEvalue} \\
+    --merged merged.dmp \\
+    --nodes nodes.dmp \\
+    --taxid-lineage taxidlineage.dmp \\
+    --output lca_taxonomy.tsv \\
+    --dropped "${params.dropped}" \\
+    --intermediate "lca_intermediate.tsv" \\
+    ${pf.join(" ")} \\
+    --taxon-filter "${params.lcaTaxonFilter}" \\
     ${blast_result} ${lineage}
   """
 }
@@ -693,15 +693,15 @@ process insect {
   if [ "${classifier}" != "insect_model.rds" ]; then
     mv ${classifier} insect_model.rds
   fi
-  insect.R \
-     --cores ${task.cpus} \
-     --threshold ${params.insectThreshold} \
-     --offset ${params.insectOffset} \
-     --min-count ${params.insectMinCount} \
-     --ping ${params.insectPing} \
-     --lineage rankedlineage.dmp \
-     --output insect_taxonomy.tsv \
-     --merged merged.dmp \
+  insect.R \\
+     --cores ${task.cpus} \\
+     --threshold ${params.insectThreshold} \\
+     --offset ${params.insectOffset} \\
+     --min-count ${params.insectMinCount} \\
+     --ping ${params.insectPing} \\
+     --lineage rankedlineage.dmp \\
+     --output insect_taxonomy.tsv \\
+     --merged merged.dmp \\
      ${zotus} insect_model.rds
   """
 }
@@ -748,9 +748,9 @@ process phyloseq {
   params.tree && opt << "--sequences \"${sequences}\""
   params.optimizeTree && opt << "--optimize"
   """
-  phyloseq.R \
-    --out phyloseq.rds \
-    ${opt.join(" ")} \
+  phyloseq.R \\
+    --out phyloseq.rds \\
+    ${opt.join(" ")} \\
     "${zotu_table}" "${taxonomy}" "${metadata}"
   """
 }
@@ -784,23 +784,23 @@ process finalize {
   params.insectTable && opt << "--insect-table"
 
   """
-  finalize.R \
-    --filter "${params.taxonFilter}" \
-    --remap "${params.taxonRemap}" \
-    --insect "${insect_taxonomy}" \
-    --lca "${lca_taxonomy}" \
-    --dropped "${params.dropped}" \
-    --controls "${params.controls}" \
-    --control-action "${params.controlAction}" \
-    --control-threshold "${params.controlThreshold}" \
-    --decontam-method "${params.decontamMethod}" \
-    --concentration "${params.dnaConcentration}" \
-    --abundance-threshold "${params.abundanceThreshold}" \
-    --rarefaction-method "${params.rarefactionMethod}" \
-    --permutations "${params.permutations}" \
-    --taxon-priority "${params.taxonPriority}" \
-    --curated "${curated_zotu_table}" \
-    ${opt.join(" ")} \
+  finalize.R \\
+    --filter "${params.taxonFilter}" \\
+    --remap "${params.taxonRemap}" \\
+    --insect "${insect_taxonomy}" \\
+    --lca "${lca_taxonomy}" \\
+    --dropped "${params.dropped}" \\
+    --controls "${params.controls}" \\
+    --control-action "${params.controlAction}" \\
+    --control-threshold "${params.controlThreshold}" \\
+    --decontam-method "${params.decontamMethod}" \\
+    --concentration "${params.dnaConcentration}" \\
+    --abundance-threshold "${params.abundanceThreshold}" \\
+    --rarefaction-method "${params.rarefactionMethod}" \\
+    --permutations "${params.permutations}" \\
+    --taxon-priority "${params.taxonPriority}" \\
+    --curated "${curated_zotu_table}" \\
+    ${opt.join(" ")} \\
     ${zotu_table}
   """
 }

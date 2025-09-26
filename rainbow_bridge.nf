@@ -127,18 +127,9 @@ def check_params() {
     exit(1)
   }
 
-  // the --vsearch param is no longer supported, but try to catch if someone still uses it
-  if (params.containsKey('vsearch')) {
-    println(colors.yellow("FYI: vsearch is now used as the default denoiser and the ") + colors.byellow("--vsearch") + colors.yellow(" option is ignored.\nIf you want to use usearch, pass --denoiser usearch."))
-  }
-
-  // if denoiser is an executable, treat it as such
-  // otherwise check to make sure it's a valid input
-  if (!params.execDenoiser) {
-    if (!(params.denoiser in ['usearch','usearch32','vsearch'])) {
-      println(colors.bred("--denoiser") + colors.red(" must be either 'usearch', 'usearch32', 'vsearch', or a path to an executable (e.g., /opt/sw/bin/usearch64)"))
-      exit(1)
-    }
+  // check to make sure denoiser is a valid input
+  if (!(params.denoiser in ['usearch','vsearch'])) {
+    exit(1,colors.bred("--denoiser") + colors.red(" must be either 'vsearch' or 'usearch'"))
   }
 
   // sanity check, blast database
@@ -384,7 +375,6 @@ process relabel {
 
 
   script:
-
   if (params.denoiser == "vsearch") {
     def combined = "<(cat input-*.fastq)"
     """
@@ -394,15 +384,14 @@ process relabel {
       awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}_relabeled.fasta"
     """
   } else {
-    // combined = fastq.collect{ it.baseName }.join('_') + "_combined.fastq"
     def combined = "combined.fastq"
-    def denoiser = params.execDenoiser ? params.denoiser : 'usearch'
     """
     cat input-*.fastq > ${combined}
     # we have to convert everything to uppercase because obisplit --uppercase is broken
-    ${denoiser} -fastx_relabel ${combined} -prefix "${key}." -fastaout /dev/stdout | \\
-      tail -n+7 | \\
-      awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}"_relabeled.fasta
+    # and usearch -otutab will treat lowercase sequences as masked
+    usearch -fastq_filter ${combined} -relabel "${key}." -fastaout relabeled_combined.fasta 
+    awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' relabeled_combined.fasta > "${key}_relabeled.fasta"
+    rm relabeled_combined.fasta
     """
   }
 }
@@ -475,19 +464,18 @@ process dereplicate {
     fi
     """
   } else {
-    def denoiser = params.execDenoiser ? params.denoiser : 'usearch'
     """
     # steps:
     # 1. get unique sequences
     # 2. run denoising & chimera removal
     # 3. generate zotu table
     if [ -s "${relabeled_merged}" ]; then
-      ${denoiser} -fastx_uniques ${relabeled_merged} \\
-        -sizeout -fastaout "${id}_unique.fasta"
-      ${denoiser} -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta" \\
+      usearch -fastx_uniques ${relabeled_merged} \\
+        -sizeout -fastaout "${id}_unique.fasta" -threads ${task.cpus}
+      usearch -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta"  -threads ${task.cpus} \\
         -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} \\
         -unoise_alpha ${params.alpha}
-      ${denoiser} -otutab ${relabeled_merged} -id ${params.zotuIdentity} \\
+      usearch -otutab ${relabeled_merged} -id ${params.zotuIdentity} -threads ${task.cpus} \\
         -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zotu_map.tsv
     else
       >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"

@@ -533,13 +533,6 @@ process blast {
   blast_options['best_hit_score_edge'] = 0.05
   blast_options['best_hit_overhang'] = 0.25
 
-  // get extra blast options passed on the command line as --blastn-*
-  def extra_options = params
-    .findAll { it.key =~ /^blastn[A-Z].+/ }
-    .collectEntries { k, v -> [k.replaceAll(/^blastn/,'').toLowerCase(),v] }
-
-  // merge blast options with any extra options
-  blast_options = blast_options << extra_options
   // collapse them into a single string
   def blast_opt_str = blast_options
     .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
@@ -559,6 +552,7 @@ process blast {
     -db "${db_name}" \
     -outfmt "6 qseqid sseqid staxid ssciname scomname sskingdom pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \
     ${blast_opt_str} \
+    ${task.ext.blastn_args} \
     -query ${zotus_fasta} -num_threads ${task.cpus} \
     > blast_result.tsv
   """

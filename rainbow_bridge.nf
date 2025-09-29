@@ -350,14 +350,14 @@ process split_samples {
   publishDir "${params.preDir}/split_samples", mode: params.publishMode
 
   input:
-    tuple val(key), path(fastq), val(barcode)
+    tuple val(key), path('to_split'), val(barcode)
 
   output:
-    path("__split__*.fastq"), optional: true
+    path('*.fastq'), optional: true
 
   script:
   """
-  obisplit --uppercase -p "__split__" -t sample -u "${key}_split_orphans.fastq" ${fastq}
+  obisplit --uppercase -t sample -u "${key}.orphans" to_split
   """
 }
 
@@ -369,29 +369,26 @@ process relabel {
   publishDir "${params.preDir}/relabeled", mode: params.publishMode
 
   input:
-    tuple val(key), path(fastq, name: 'input-????.fastq')
+    tuple val(key), path(fastq)
   output:
     path('*_relabeled.fasta'), optional: true, emit: result
 
 
   script:
+  // we have to convert everything to uppercase because obisplit --uppercase is broken
+  // and usearch -otutab will treat lowercase sequences as masked
+  // vsearch might as well, so we play it safe
   if (params.denoiser == "vsearch") {
-    def combined = "<(cat input-*.fastq)"
     """
-    # this may or may not be necessary anymore, but it seems like a good sanity check
-    # since this will fail on empty files
-    vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --fastx_filter ${combined} --relabel "${key}." --label_suffix ";sample=${key}" --fastaout - | \\
+    vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --fastx_filter ${fastq} --relabel "${key}." --label_suffix ";sample=${key}" --fastaout - | \\
       awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}_relabeled.fasta"
     """
   } else {
-    def combined = "combined.fastq"
     """
-    cat input-*.fastq > ${combined}
-    # we have to convert everything to uppercase because obisplit --uppercase is broken
-    # and usearch -otutab will treat lowercase sequences as masked
-    usearch -fastq_filter ${combined} -relabel "${key}." -fastaout relabeled_combined.fasta 
-    awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' relabeled_combined.fasta > "${key}_relabeled.fasta"
-    rm relabeled_combined.fasta
+    # usearch doesn't allow output to stdout so we have to use an intermediate file
+    usearch -fastq_filter ${fastq} -relabel "${key}." -fastaout tmp.fasta 
+    awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' tmp.fasta > "${key}_relabeled.fasta"
+    rm tmp.fasta
     """
   }
 }
@@ -1173,9 +1170,9 @@ workflow {
         rfm_barcodes |
           filter_length |
           map { [it[0], it[1]]} |
-          // group together different barcodes because they're
-          // concatenated in relabel
-          groupTuple |
+          // collectFile concatenates multiple possible barcode/primer matches
+          collectFile { id, file -> [ "${id}.fastq", file ] } |
+          map { [ it.baseName, it ] } |
           // relabel to fasta
           relabel |
           set { relabeled }
@@ -1184,7 +1181,7 @@ workflow {
           toList | merge_relabeled |
           set { to_dereplicate }
 
-      } else {
+      } else { // demultiplexed by barcode/combined
         // here, reads are demultiplexed by barcodes, so they're either
         // all in one or two fastq files (depending on single vs paired end)
         // or they're pooled such that barcode pairs are reused across index pairs
@@ -1194,18 +1191,17 @@ workflow {
           if (params.paired) {
             reads |
               // flatten the reads tuple
-              map { key, reads -> [key,reads[0],reads[1]] } |
+              map { key, reads -> [key] + reads } |
               // split fastq files
               splitFastq(by: params.splitBy, file: true, pe: true) |
               // rearrange reads tuple so it looks like [key, [R1,R2]]
-              // and add the split number to the key
-              map { key, read1, read2 -> ["${key}." + file(read1.baseName).extension, [read1,read2]] } |
+              map { key, read1, read2 -> [key, [read1,read2]] } |
               set { reads }
           } else {
             // in single-end mode we can just split directly
             reads |
               splitFastq(by: params.splitBy, file: true) |
-              map { key, readfile -> ["${key}." + file(readfile.baseName).extension, readfile] } |
+              map { key, readfile -> [key, readfile] } |
               set { reads }
           }
         }
@@ -1230,7 +1226,6 @@ workflow {
           filter_merge |
           set { reads_filtered_merged }
 
-
         // post-filtering fastqc step
         if (params.fastqc) {
           Channel.of("filtered") |
@@ -1246,6 +1241,7 @@ workflow {
           }
         }
 
+        // process pooled barcodes
         if (params.demultiplexedBy == "combined") {
           barcodes |
             // split barcode file into multiples by the first column (key value)
@@ -1278,15 +1274,11 @@ workflow {
           split_samples |
           // we have to flatten here because we can get results that look like
           // [[sample1,sample2,sample3],[sample1,sample2,sample3]]
-          flatten |
-          // this collectFile will merge all individual splits with the same name, so the
-          // tuple above turns into [sample1,sample2,sample3]
+          flatten | 
+          // collect different files with the same name into concatenated samples
           collectFile |
-          // get rid of the '__split__' business in the filenames
-          map { [it.baseName.replaceFirst(/^__split__/,""), it] } |
-          // group together different barcodes because they're
-          // concatenated in relabel
-          groupTuple |
+          // extract sample IDs
+          map { [it.baseName, it] } |
           // relabel to fasta
           relabel |
           set { relabeled }

@@ -386,7 +386,7 @@ process relabel {
   } else {
     """
     # usearch doesn't allow output to stdout so we have to use an intermediate file
-    usearch -fastq_filter ${fastq} -relabel "${key}." -fastaout tmp.fasta 
+    usearch -fastq_filter ${fastq} -relabel "${key}." -fastaout tmp.fasta  -sample "${key}"
     awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' tmp.fasta > "${key}_relabeled.fasta"
     rm tmp.fasta
     """
@@ -422,38 +422,70 @@ process dereplicate {
   publishDir "${params.outDir}/zotus", mode: params.publishMode
 
   input:
-    tuple val(id), path(relabeled_merged)
+    tuple val(id), path(relabeled_merged), path(chimera_reference)
 
   output:
     tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tsv"), emit: result
     path 'zotu_map.tsv'
+    path 'chimera_map.tsv'
+    path '*_chimera_sequences.fasta'
+    path '*_chimeras_denovo.fasta', optional: true
+    path '*_chimeras_reference.fasta', optional: true
 
   script:
   if (params.denoiser == "vsearch") {
     """
-    # steps:
-    # 1. get unique sequence variants
-    # 2. run denoising algorithm
-    # 3. get rid of chimeras
-    # 4. match original sequences to zotus by 97% identity
     if [ -s "${relabeled_merged}" ]; then
+      # dereplicate to uniques
       vsearch \\
+        --sizeout \\
         --threads ${task.cpus} \\
-        --derep_fulllength ${relabeled_merged} --sizeout \\
+        --derep_fulllength ${relabeled_merged} \\
         --output "${id}_unique.fasta"
+
+      # remove chimeras
+      if [ -f "${chimera_reference}" ]; then
+        # if we have a valid reference file
+        # do reference-based chimera removal in addition to denovo
+        vsearch \\
+          --threads ${task.cpus} \\
+          --uchime3_denovo "${id}_unique.fasta" \\
+          --chimeras "${id}_chimeras_denovo.fasta" \\
+          --nonchimeras - |\\
+          vsearch \\
+            --threads ${task.cpus} \\
+            --uchime_ref - \\
+            --db "${chimera_reference}" \\
+            --nonchimeras "${id}_chimeras_removed.fasta" \\
+            --chimeras "${id}_chimeras_reference.fasta" 
+      else
+        # otherwise just do it denovo
+        vsearch \\
+          --threads ${task.cpus} \\
+          --uchime3_denovo "${id}_unique.fasta" \\
+          --nonchimeras "${id}_chimeras_removed.fasta" \\
+          --uchimeout chimera_map.tsv \\
+          --chimeras "${id}_chimera_sequences.fasta" 
+      fi
+
+      # denoise to zotus
       vsearch \\
         --threads ${task.cpus} \\
-        --cluster_unoise "${id}_unique.fasta" --centroids "${id}_centroids.fasta" \\
-        --minsize ${params.minAbundance} --unoise_alpha ${params.alpha}
-      vsearch \\
-        --threads ${task.cpus} \\
-        --uchime3_denovo "${id}_centroids.fasta" --nonchimeras "${id}_zotus.fasta" \\
+        --cluster_unoise "${id}_chimeras_removed.fasta" \\
+        --centroids "${id}_zotus.fasta" \\
+        --minsize ${params.minAbundance}  \\
+        --unoise_alpha ${params.alpha} \\
         --relabel Zotu
+
+      # generate zotu table
       vsearch \\
         --threads ${task.cpus} \\
-        --usearch_global ${relabeled_merged} --db "${id}_zotus.fasta" \\
-        --id ${params.zotuIdentity} --otutabout zotu_table.tsv \\
-        --userout zotu_map.tsv --userfields "query+target" \\
+        --usearch_global ${relabeled_merged} \\
+        --db "${id}_zotus.fasta" \\
+        --id ${params.zotuIdentity} \\
+        --otutabout zotu_table.tsv \\
+        --userout zotu_map.tsv \\
+        --userfields "query+target" \\
         --top_hits_only
     else
       >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"
@@ -462,18 +494,35 @@ process dereplicate {
     """
   } else {
     """
-    # steps:
-    # 1. get unique sequences
-    # 2. run denoising & chimera removal
-    # 3. generate zotu table
     if [ -s "${relabeled_merged}" ]; then
-      usearch -fastx_uniques ${relabeled_merged} \\
-        -sizeout -fastaout "${id}_unique.fasta" -threads ${task.cpus}
-      usearch -unoise3 "${id}_unique.fasta"  -zotus "${id}_zotus.fasta"  -threads ${task.cpus} \\
-        -tabbedout "${id}_unique_unoise3.txt" -minsize ${params.minAbundance} \\
+      # dereplicate to uniques
+      usearch \\
+        -fastx_uniques ${relabeled_merged} \\
+        -sizeout \\
+        -fastaout "${id}_unique.fasta" \\
+        -threads ${task.cpus}
+
+      # remove chimeras
+      usearch -uchime3_denovo "${id}_unique.fasta" \\
+        -uchimeout chimera_map.tsv \\
+        -chimeras "${id}_chimera_sequences.fasta" \\
+        -nonchimeras "${id}_chimeras_removed.fasta"
+
+      # denoise to zotus
+      usearch -unoise3 "${id}_unique.fasta"  \\
+        -zotus "${id}_zotus.fasta" \\
+        -threads ${task.cpus} \\
+        -tabbedout zotu_map.tsv \\
+        -minsize ${params.minAbundance} \\
         -unoise_alpha ${params.alpha}
-      usearch -otutab ${relabeled_merged} -id ${params.zotuIdentity} -threads ${task.cpus} \\
-        -zotus ${id}_zotus.fasta -otutabout zotu_table.tsv -mapout zotu_map.tsv
+
+      # generate zotu table
+      usearch -otutab ${relabeled_merged} \\
+        -id ${params.zotuIdentity} \\
+        -threads ${task.cpus} \\
+        -zotus ${id}_zotus.fasta \\
+        -otutabout zotu_table.tsv \\
+        -mapout zotu_map.tsv
     else
       >&2 echo "Merged FASTA is empty. Did your PCR primers match anything?"
       exit 1
@@ -1300,6 +1349,7 @@ workflow {
     // build the channel, run dereplication, and set to a channel we can use again
     Channel.of(params.project) |
       combine(to_dereplicate) |
+      combine(Channel.fromPath(params.chimeraRef)) |
       dereplicate |
       set { dereplicated }
 

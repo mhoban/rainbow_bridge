@@ -252,14 +252,12 @@ class helper {
                                     Use with demultiplexed runs lacking primer sequences.
 
     Denoising and zOTU inference:  
-      --denoiser [tool/path]        Sets the tool used for denoising & chimera removal
-                                    accepted options: usearch/usearch32 (equivalent), vsearch, 
-                                    path to usearch64 executable (default: vsearch)
+      --denoiser [usearch/vsearch]  Sets the tool used for denoising & chimera removal (default: vsearch)
       --alpha [num]                 Sets the alpha parameter for the UNOISE3 algorithm (default: ${params.alpha})
       --min-abundance [num]         Minimum sequence abundance for zOTU determination; sequences below threshold will be discarded
                                     (default: ${params.minAbundance}) 
       --zotu-identity [num]         Fractional identity (0–1) for zOTU search (default: 0.97)
-      --usearch                     shortcut for --denoiser usearch
+      --chimera-ref [file]          FASTA file to use in reference-based chimera detection
 
     LULU zOTU curation:
       --lulu                        Curate zOTUs using LULU

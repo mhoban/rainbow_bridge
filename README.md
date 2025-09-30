@@ -774,11 +774,11 @@ In both cases, the output from the assignment/LCA operations can be found in the
 ### Denoising/dereplication and zOTU inference
 These options control how (and by what tool) sequences are denoised and zOTUs are inferred By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch) (a free 64-bit clone of usearch), which does not suffer from the 4GB memory limit of the free version of [usearch](https://www.drive5.com/usearch/). You still retain the option of using either the free (32 bit) or commercial (64 bit) versions of usearch, if you really want to. 
 
-<small>**`--denoiser [tool/path]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'usearch32', 'vsearch', path to 64-bit usearch executable (default: vsearch)    
+<small>**`--denoiser [usearch/vsearch]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'vsearch' (default: vsearch)    
 <small>**`--min-abundance [num]`**</small>:  Minimum sequence abundance for zOTU determination; sequences with abundances below the specified threshold will be discarded during the denoising process (default: 8)   
 <small>**`--alpha [num]`**</small>: Alpha parameter passed to the UNOISE3 algorithm (see the [unoise2 paper for more info](https://doi.org/10.1101/081257)) (default: 2.0)  
 <small>**`--zotu-identity [num]`**</small>: Fractional pairwise identity used to match raw reads to zOTUs, equivalent to `vsearch` `--id`/`usearch` `-id` parameters (default: 0.97)  
-<small>**`--usearch`**</small>:  Alias for `--denoiser usearch`  
+<small>**`--chimera-ref [file]`**</small>: FASTA file to use in reference-based chimera detection (if omitted, denovo chimera detection will be used). Only available with `vsearch`.  
 
 ### zOTU curation using LULU
 

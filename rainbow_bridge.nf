@@ -540,7 +540,7 @@ process blast {
     def pid = String.format("%d",(Integer)num(params.percentIdentity ))
     def evalue = String.format("%.3f",num(params.evalue))
     def qcov = String.format("%d",(Integer)num(params.qcov))
-    return "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}/${db_name}"
+    "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}/${db_name}"
   }, mode: params.publishMode
 
   input:
@@ -700,7 +700,7 @@ process insect {
     def thresh = String.format("%.2f",num(params.insectThreshold))
     def minc = String.format("%d",(Integer)num(params.insectMinCount))
     def ping = String.format("%.2f",num(params.insectPing))
-    return "${params.outDir}/taxonomy/insect/thresh${thresh}_offset${offs}_mincount${minc}_ping${ping}"
+    "${params.outDir}/taxonomy/insect/thresh${thresh}_offset${offs}_mincount${minc}_ping${ping}"
   }, mode: params.publishMode
 
   input:
@@ -797,7 +797,7 @@ process finalize {
   publishDir {
     def td = params.standaloneTaxonomy ? 'final/standalone' : 'final'
     "${params.outDir}/${td}"
-  }, mode: params.publishMode
+  }, mode: 'copy'
 
   input:
     tuple path(zotu_table), path(curated_zotu_table), path(lca_taxonomy), path(insect_taxonomy)

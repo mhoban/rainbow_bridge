@@ -417,7 +417,7 @@ process merge_relabeled {
 // dereplication, chimera removal, zOTU table generation
 process dereplicate {
   label 'denoiser'
-  label 'process_high'
+  label 'process_full'
 
   publishDir "${params.outDir}/zotus", mode: params.publishMode
 
@@ -534,7 +534,7 @@ process dereplicate {
 // run blast query
 process blast {
   label 'blast'
-  label 'all_cpus'
+  label 'process_full'
 
   publishDir {
     def pid = String.format("%d",(Integer)num(params.percentIdentity ))
@@ -693,7 +693,7 @@ process collapse_taxonomy {
 // run insect classifier model
 process insect {
   label 'r'
-  label 'all_cpus'
+  label 'process_full'
 
   publishDir {
     def offs = String.format("%d",(Integer)num(params.insectOffset))

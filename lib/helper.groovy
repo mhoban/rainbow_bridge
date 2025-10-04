@@ -272,6 +272,9 @@ class helper {
       --max-memory [mem]            Maximum memory available to nextflow processes, e.g., '8.GB' (default: ${params.maxMemory})
       --max-cpus [num]              Maximum cores available to nextflow processes default: ${params.maxCpus})
       --max-time [time]             Maximum time allocated to each pipeline process, e.g., '2.h' (default: ${params.maxTime})
+      --max-retries [num]           The maxmimum number of times rainbow_bridge will attempt to re-execute a process
+                                    that fails due to resource limitations (with increased resources for each iteration) 
+                                    (default: 1)
 
     Singularity options:
       --bind-dir [dir]              Space-separated list of directories to bind within singularity images

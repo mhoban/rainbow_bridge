@@ -47,6 +47,7 @@ For more information on the original eDNAFlow pipeline and other software used a
       + [Non-demultiplexed paired-end runs](#non-demultiplexed-paired-end-runs)
       + [For previously-demultiplexed paired-end runs](#for-previously-demultiplexed-paired-end-runs)
    * [Contents of output directories](#contents-of-output-directories)
+   * [Configuration profiles](#configuration-profiles)
    * [When things go wrong (interpreting errors)](#when-things-go-wrong-interpreting-errors)
    * [A note on globs/wildcards](#a-note-on-globswildcards)
 - [Description of run options](#description-of-run-options)
@@ -139,12 +140,7 @@ For manual installation of Nextflow, follow the instructions at [on the nextflow
 To install Singularity manually, follow the instructions at [singularity installation](https://sylabs.io/guides/3.5/admin-guide/installation.html). If working on HPC, you may need to contact your HPC helpdesk. The Singularity installation how-to is long and complicated, but if you're on a RedHat or Debian-adjacent distro, there are .deb and .rpm packages that can be found at [https://github.com/sylabs/singularity/releases/latest](https://github.com/sylabs/singularity/releases/latest). 
 
 #### Podman
-Manual podman installation instructions can be found [here](https://podman.io/docs/installation). rainbow_bridge should work with podman out of the box, but you will have to specify a podman profile for it to function properly. There are two profiles built in: `podman_arm`, and `podman_intel`. These both tell nextflow to use podman for its container system, and the second half just specifies your CPU architecture. Most systems will probably use the `_intel` variant, but if you are on a newer Mac with Apple silicon, you'll want to use the `_arm` variant. To run the pipeline using podman as its container system, specify a profile with the following option (note the single dash in the '-profile' option):
-
-```bash
-# in this example, we're running on a Mac with the M3 processor
-$ rainbow_bridge.nf -profile podman_arm <further options>
-```
+Manual podman installation instructions can be found [here](https://podman.io/docs/installation). rainbow_bridge should work with podman out of the box, but you will have to specify a podman profile for it to function properly. There are two profiles built in: `podman_arm`, and `podman_intel`. These both tell nextflow to use podman for its container system, and the second half just specifies your CPU architecture. Most systems will probably use the `_intel` variant, but if you are on a newer Mac with Apple silicon, you'll want to use the `_arm` variant. See the section on [configuration profiles](#configuration-profiles) for information on using these named profiles.
 
 ### Testing installation
 
@@ -390,6 +386,57 @@ When the pipeline finishes, output from each step can be found in directories co
 |             | phyloseq/                            | Phyloseq object                                              | --phyloseq and associated options                        |
 | work/       | A bunch of nonsense                 | All internal and intermediate files processed by nextflow    |                                                          |
 | .nextflow/  | various                             | Hidden nextflow-generated internal folder                    |                                                          |
+
+## Configuration profiles
+
+Resource availability, container subsystems, and various other aspects vary from computer to computer. To that end, nextflow allows the creation of custom named configuration profiles that can be loaded when running rainbow_bridge to customize various settings. Details about the creation of these profiles is beyond the scope of this documentations, but can be found in the [nextflow documentation](https://www.nextflow.io/docs/latest/config.html#config-profiles). By default, rainbow_bridge loads the `standard` profile, which uses the 'local' nextflow executor and limits its maximum CPUs and memory to the system limits or the values passed to the `--max-cpus` and `--max-memory` options (whichever is smaller). It also uses singularity as its default container engine. rainbow_bridge comes with the following built-in configuration profiles:
+
+| Profile name | Description |
+| ------------ | ----------- |
+| standard (loaded automatically)  | Default profile: local executor, cpus/memory set to system limits or `--max-cpus`/`--max-memory`, singularity container engine |
+| singularity  | Enables the singularity container engine |
+| podman_intel  | Enables the podman container engine with intel architecture |
+| podman_arm  | Enables the podman container engine with ARM architecture |
+
+To use any named profile when running rainbow_bridge, simply pass it using the `-profile <profile name>` option (note again the single dash, since it's a nextflow option and not a rainbow_bridge option). Note that specifying any named profile will override the `standard` profile, so that container/executor settings may need to be redefined. 
+
+rainbow_bridge will automatically load profiles found in files matching the pattern `conf/profiles/*.config` within the pipeline's installation directory. To create a custom profile, first define your profile in a file with the `.config` extension and copy it to `conf/profiles` subdirectory under the location of the rainbow_bridge script file. For example, if you've got a server called `bigiron` with 100 cpus and 700 GB of memory and you've installed rainbow_bridge to `/opt/pipelines/rainbow_bridge`, you could create a file called `bigiron.config`, and save it to `/opt/pipelines/rainbow_bridge/conf/profiles`. The `bigiron.config` file might look something like this:
+
+```
+bigiron {
+  executor {
+    name = 'local'
+    cpus = 100
+    memory = 700.GB
+  }
+}
+```
+
+As mentioned above, this profile will override the `standard` profile, and since a container system is not specified, nextflow will look for executables on the local filesystem. Fortunately, nextflow supports multiple profiles: just separate the names with a comma. For this example, if we wanted to use the `bigiron` profile with the singularity container system, we could launch rainbow_bridge using `-profile bigiron,singularity`, like this:
+
+```console
+$ rainbow_bridge.nf -profile bigiron,singularity <...further options...>
+```
+
+If you want to define a profile but don't have write access to the `<rainbow_bridge>/conf/profiles` directory, you can create a custom config file containing your profile, save it anywhere, and pass its filename to rainbow_bridge with the `-c` option (single dash again!). rainbow_bridge will still load any built-in profiles from `conf/profiles`. In this case, you will have to enclose your profile definition in the `profiles {}` scope, like this:
+
+```
+profiles {
+  bigiron {
+    executor {
+      name = 'local'
+      cpus = 100
+      memory = 700.GB
+    }
+  }
+}
+```
+
+And (assuming you've named the file `bigiron.config` and saved it in the directory where you're running your analysis), execute the pipeline like this:
+
+```console
+$ rainbow_bridge.nf -c bigiron.config -profile bigiron,singularity <...further options...>
+```
 
 ## When things go wrong (interpreting errors)
 
@@ -796,6 +843,9 @@ These options allow you to allocate resources (CPUs and memory) to rainbow_bridg
 <small>**`--max-memory [mem]`**</small>:  Maximum memory available to nextflow processes, e.g., '8.GB' (default: maximum available system memory)  
 <small>**`--max-cpus [num]`**</small>:  Maximum cores available to nextflow processes (default: maximum available system CPUs)  
 <small>**`--max-time [time]`**</small>:  Maximum time allocated to each pipeline process, e.g., '2.h' (default: 10d)  
+<small>**`--max-retries [num]`**</small>:  The maxmimum number of times (default: 1) rainbow_bridge will attempt to re-execute a process that fails due to resource limitations. Resource allocation requests will be multiplied by the number of retry attempts.  
+
+Within rainbow_bridge, different processes are allocated different amount of base resources, depending on how memory- or CPU-intensive they are. However, the pipeline will not exceed the values passed to `--max-cpus` or `--max-memory`. Thus, if a given process is allocated 6 CPUs by default but the user passes `--max-cpus 2`, it will only use 2 CPUs. 
 
 ### Singularity options
 

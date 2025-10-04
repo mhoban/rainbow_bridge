@@ -389,11 +389,11 @@ When the pipeline finishes, output from each step can be found in directories co
 
 ## Configuration profiles
 
-Resource availability, container subsystems, and various other aspects vary from computer to computer. To that end, nextflow allows the creation of custom named configuration profiles that can be loaded when running rainbow_bridge to customize various settings. Details about the creation of these profiles is beyond the scope of this documentations, but can be found in the [nextflow documentation](https://www.nextflow.io/docs/latest/config.html#config-profiles). By default, rainbow_bridge loads the `standard` profile, which uses the 'local' nextflow executor and limits its maximum CPUs and memory to whatever values are passed to the `--max-cpus` and `--max-memory` options. It also uses singularity as its default container engine. rainbow_bridge comes with the following built-in configuration profiles:
+Resource availability, container subsystems, and various other aspects vary from computer to computer. To that end, nextflow allows the creation of custom named configuration profiles that can be loaded when running rainbow_bridge to customize various settings. Details about the creation of these profiles is beyond the scope of this documentations, but can be found in the [nextflow documentation](https://www.nextflow.io/docs/latest/config.html#config-profiles). By default, rainbow_bridge loads the `standard` profile, which uses the 'local' nextflow executor and limits its maximum CPUs and memory to the system limits or the values passed to the `--max-cpus` and `--max-memory` options (whichever is smaller). It also uses singularity as its default container engine. rainbow_bridge comes with the following built-in configuration profiles:
 
 | Profile name | Description |
 | ------------ | ----------- |
-| standard (loaded automatically)  | Default profile: local executor, cpus/memory set to `--max-cpus`/`--max-memory`, singularity container engine |
+| standard (loaded automatically)  | Default profile: local executor, cpus/memory set to system limits or `--max-cpus`/`--max-memory`, singularity container engine |
 | singularity  | Enables the singularity container engine |
 | podman_intel  | Enables the podman container engine with intel architecture |
 | podman_arm  | Enables the podman container engine with ARM architecture |
@@ -416,6 +416,26 @@ As mentioned above, this profile will override the `standard` profile, and since
 
 ```console
 $ rainbow_bridge.nf -profile bigiron,singularity <...further options...>
+```
+
+If you want to define a profile but don't have write access to the `<rainbow_bridge>/conf/profiles` directory, you can create a custom config file containing your profile, save it anywhere, and pass its filename to rainbow_bridge with the `-c` option (single dash again!). rainbow_bridge will still load any built-in profiles from `conf/profiles`. In this case, you will have to enclose your profile definition in the `profiles {}` scope, like this:
+
+```
+profiles {
+  bigiron {
+    executor {
+      name = 'local'
+      cpus = 100
+      memory = 700.GB
+    }
+  }
+}
+```
+
+And (assuming you've named the file `bigiron.config` and saved it in the directory where you're running your analysis), execute the pipeline like this:
+
+```console
+$ rainbow_bridge.nf -c bigiron.config -profile bigiron,singularity <...further options...>
 ```
 
 ## When things go wrong (interpreting errors)

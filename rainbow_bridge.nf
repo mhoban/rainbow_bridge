@@ -213,12 +213,19 @@ process filter_merge {
     tuple val(key), path(reads)
 
   output:
-    tuple val(key), path('*_trimmed_merged.fastq')
+    tuple val(key), path('*_trimmed_merged.fastq'), emit: result
+    path 'settings.yml'
 
   script:
   if( params.single ) {
     // single end
     """
+    echo 'single: true' > settings.yml
+    echo 'paired: false' >> settings.yml
+    echo 'min-quality: ${params.minQuality}' >> settings.yml
+    echo 'max-quality: ${params.maxQuality}' >> settings.yml
+    echo 'mate-separator: ${params.mateSeparator}' >> settings.yml
+
     AdapterRemoval --threads ${task.cpus} --file1 ${reads} \\
       --trimns --trimqualities \\
       --minquality ${params.minQuality} \\
@@ -231,6 +238,13 @@ process filter_merge {
   } else if ( params.paired ) {
     // if reads are paired-end then merge
     """
+    echo 'single: false' > settings.yml
+    echo 'paired: true' >> settings.yml
+    echo 'min-quality: ${params.minQuality}' >> settings.yml
+    echo 'max-quality: ${params.maxQuality}' >> settings.yml
+    echo 'min-align-len: ${params.minAlignLen}' >> settings.yml
+    echo 'mate-separator: ${params.mateSeparator}' >> settings.yml
+
     AdapterRemoval --threads ${task.cpus} --file1 ${reads[0]} --file2 ${reads[1]} \\
       --collapse --trimns --trimqualities \\
       --minquality $params.minQuality \\
@@ -315,10 +329,13 @@ process ngsfilter {
 
 
   output:
-    tuple val(key), path("*_annotated.fastq"), val("${barcode.baseName}")
+    tuple val(key), path("*_annotated.fastq"), val("${barcode.baseName}"), emit: result
+    path 'settings.yml'
 
   script:
   """
+  echo 'primer-mismatch: ${params.primerMismatch}' > settings.yml
+
   ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "${key}_filter_orphans.fastq" ${read} > "${key}_${barcode.baseName}_annotated.fastq"
   """
 }
@@ -334,10 +351,13 @@ process filter_length {
     tuple val(key), path(fastq), val(barcode)
 
   output:
-    tuple val(key), path('*_length_filtered.fastq'), val(barcode)
+    tuple val(key), path('*_length_filtered.fastq'), val(barcode), emit: result
+    path 'settings.yml'
 
   script:
   """
+  echo 'min-len: ${params.minLen}' > settings.yml
+
   obigrep --uppercase -l ${params.minLen} "${fastq}" > "${key}_length_filtered.fastq"
   """
 }
@@ -372,6 +392,7 @@ process relabel {
     tuple val(key), path(fastq)
   output:
     path('*_relabeled.fasta'), optional: true, emit: result
+    path 'settings.yml'
 
 
   script:
@@ -380,11 +401,15 @@ process relabel {
   // vsearch might as well, so we play it safe
   if (params.denoiser == "vsearch") {
     """
+    echo 'denoiser: vsearch' > settings.yml
+
     vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --fastx_filter ${fastq} --relabel "${key}." --label_suffix ";sample=${key}" --fastaout - | \\
       awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}_relabeled.fasta"
     """
   } else {
     """
+    echo 'denoiser: usearch' > settings.yml
+
     # usearch doesn't allow output to stdout so we have to use an intermediate file
     usearch -fastq_filter ${fastq} -relabel "${key}." -fastaout tmp.fasta  -sample "${key}"
     awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' tmp.fasta > "${key}_relabeled.fasta"
@@ -426,6 +451,7 @@ process dereplicate {
 
   output:
     tuple val(id), path("${id}_unique.fasta"), path("${id}_zotus.fasta"), path("zotu_table.tsv"), emit: result
+    path 'settings.yml'
     path 'zotu_map.tsv'
     path 'chimera_map.tsv'
     path '*_chimera_sequences.fasta'
@@ -435,6 +461,10 @@ process dereplicate {
   script:
   if (params.denoiser == "vsearch") {
     """
+    echo 'min-abundance: ${params.minAbundance}' > settings.yml
+    echo 'alpha: ${params.alpha}' >> settings.yml
+    echo 'zotu-identity: ${params.zotuIdentity}' >> settings.yml
+
     if [ -s "${relabeled_merged}" ]; then
       # dereplicate to uniques
       vsearch \\
@@ -494,6 +524,10 @@ process dereplicate {
     """
   } else {
     """
+    echo 'min-abundance: ${params.minAbundance}' > settings.yml
+    echo 'alpha: ${params.alpha}' >> settings.yml
+    echo 'zotu-identity: ${params.zotuIdentity}' >> settings.yml
+
     if [ -s "${relabeled_merged}" ]; then
       # dereplicate to uniques
       usearch \\
@@ -543,6 +577,8 @@ process blast {
     "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}/${db_name}"
   }, mode: params.publishMode
 
+  publishDir { "${params.outDir}/blast" }, mode: params.publishMode, pattern: 'settings.yml'
+
   input:
     tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb)
 
@@ -559,24 +595,32 @@ process blast {
 
   // setup and populate the "basic" blast options
   def blast_options = [:]
-  blast_options['task'] = "blastn"
+  // blast_options['task'] = "blastn"
   blast_options['perc_identity'] = params.percentIdentity
   blast_options['evalue'] = params.evalue
   blast_options['qcov_hsp_perc'] = params.qcov
   blast_options['max_target_seqs'] = params.maxQueryResults
-  blast_options['best_hit_score_edge'] = 0.05
-  blast_options['best_hit_overhang'] = 0.25
+  // blast_options['best_hit_score_edge'] = 0.05
+  // blast_options['best_hit_overhang'] = 0.25
 
   // collapse them into a single string
   def blast_opt_str = blast_options
     .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
     .join(" ")
+
+  def blastn_args = task.ext.blastn_map
+    .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
+    .join(" ") 
   """
   # record blast settings
-  echo "percent_identity: ${pid}" > settings.yml
-  echo "e_value: ${evalue}" >> settings.yml
-  echo "query_coverage: ${qcov}" >> settings.yml
-  echo "max_sequences: ${params.maxQueryResults}" >> settings.yml
+  echo "percent-identity: ${params.percentIdentity}" > settings.yml
+  echo "evalue: ${params.evalue}" >> settings.yml
+  echo "qcov: ${params.qcov}" >> settings.yml
+  echo "max-query-results: ${params.maxQueryResults}" >> settings.yml
+  if [ -n "${blastn_args}" ]; then
+    echo "blastn-options:" >> settings.yml
+    echo -e "${task.ext.blastn_map.collect { k, v -> "  ${k}: ${v}"}.join("\\n")}" >> settings.yml
+  fi
 
   # set BLASTDB to local working directory
   export BLASTDB=.
@@ -585,8 +629,7 @@ process blast {
   blastn \\
     -db "${db_name}" \\
     -outfmt "6 qseqid sseqid staxid ssciname scomname sskingdom pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \\
-    ${blast_opt_str} \\
-    ${task.ext.blastn_args} \\
+    ${blast_opt_str} ${blastn_args} \\
     -query ${zotus_fasta} -num_threads ${task.cpus} \\
     > blast_result.tsv
   """
@@ -628,9 +671,16 @@ process lulu {
 
   output:
     tuple path("lulu_zotu_table.tsv"), path("lulu_zotu_map.tsv"), path("lulu_result_object.rds"), emit: result
+    path 'settings.yml'
 
   script:
   """
+  echo "lulu-min-ratio: ${params.luluMinRatio}" > settings.yml
+  echo "lulu-min-ratio-type: ${params.luluMinRatioType}" >> settings.yml
+  echo "lulu-min-match: ${params.luluMinMatch}" >> settings.yml
+  echo "lulu-min-rc: ${params.luluMinRc}" >> settings.yml
+
+
   lulu.R \\
     -m ${params.luluMinRatio} \\
     -t ${params.luluMinRatioType} \\
@@ -666,12 +716,12 @@ process collapse_taxonomy {
   def lineage = params.lcaLineage ?: 'rankedlineage.dmp'
   """
   # save settings
-  echo "min_query_coverage: ${params.lcaQcov}" > settings.yml
-  echo "min_percent_identity: ${params.lcaPid}" >> settings.yml
-  echo "pid_diff: ${params.lcaDiff}" >> settings.yml
-  echo "filter_max_query_coverage: ${params.lcaFilterMaxQcov ? 'yes' : 'no'}" >> settings.yml
-  echo "taxon_filter: ${params.lcaTaxonFilter}" >> settings.yml
-  echo "taxon_filter_case_sensitive: ${!params.lcaCaseInsensitive ? 'yes' : 'no'}" >> settings.yml
+  echo "lca-qcov: ${params.lcaQcov}" > settings.yml
+  echo "lca-pid: ${params.lcaPid}" >> settings.yml
+  echo "lca-diff: ${params.lcaDiff}" >> settings.yml
+  echo "lca-filter-max-qcov: ${params.lcaFilterMaxQcov ? 'yes' : 'no'}" >> settings.yml
+  echo "lca-taxon-filter: ${params.lcaTaxonFilter}" >> settings.yml
+  echo "lca-case-insensitive: ${!params.lcaCaseInsensitive ? 'yes' : 'no'}" >> settings.yml
 
   collapse_taxonomy.R \\
     --qcov ${params.lcaQcov} \\
@@ -719,10 +769,10 @@ process insect {
 
   """
   # record insect settings
-  echo "offset: ${offs}" > settings.yml
-  echo "threshold: ${thresh}" >> settings.yml
-  echo "minimum_count: ${minc}" >> settings.yml
-  echo "ping: ${ping}" >> settings.yml
+  echo "insect-offset: ${params.insectOffset}" > settings.yml
+  echo "insect-threshold: ${params.insectThreshold}" >> settings.yml
+  echo "insect-min-count: ${params.insectMinCount}" >> settings.yml
+  echo "insect-ping: ${params.insectPing}" >> settings.yml
 
   if [ "${classifier}" != "insect_model.rds" ]; then
     mv ${classifier} insect_model.rds
@@ -737,25 +787,6 @@ process insect {
      --output insect_taxonomy.tsv \\
      --merged merged.dmp \\
      ${zotus} insect_model.rds
-  """
-}
-
-// dummy process to generate published file
-process save_taxdump {
-  label 'shell'
-  label 'process_single'
-
-  publishDir 'output/taxonomy/ncbi_taxdump'
-
-  input:
-    path(taxdump)
-
-  output:
-    path(taxdump)
-
-  script:
-  """
-  echo "linking taxdump to publish dir"
   """
 }
 
@@ -1181,7 +1212,8 @@ workflow {
         // run the first part of the pipeline for sequences that have already
         // been demultiplexed by the sequencer
         reads |
-          filter_merge |
+          filter_merge 
+        filter_merge.out.result |
           set { reads_filtered_merged }
 
         // do fastqc/multiqc for filtered/merged
@@ -1211,13 +1243,15 @@ workflow {
         // only run ngsfilter if we have primers
         if(!params.noPcr) {
           rfm_barcodes |
-            ngsfilter |
+            ngsfilter 
+          ngsfilter.out.result |
             set { rfm_barcodes }
         }
 
         // continue length filtering and whatnot
         rfm_barcodes |
-          filter_length |
+          filter_length 
+        filter_length.out.result |
           map { [it[0], it[1]]} |
           // collectFile concatenates multiple possible barcode/primer matches
           collectFile { id, file -> [ "${id}.fastq", file ] } |
@@ -1272,7 +1306,8 @@ workflow {
 
         // do quality filtering and/or paired-end merge
         reads |
-          filter_merge |
+          filter_merge 
+        filter_merge.out.result |
           set { reads_filtered_merged }
 
         // post-filtering fastqc step
@@ -1318,8 +1353,10 @@ workflow {
         // run the rest of the pipeline, including demultiplexing, length filtering,
         // splitting, and recombination for dereplication
         reads_barcodes |
-          ngsfilter |
-          filter_length |
+          ngsfilter 
+        ngsfilter.out.result |
+          filter_length 
+        filter_length.out.result |
           split_samples |
           // we have to flatten here because we can get results that look like
           // [[sample1,sample2,sample3],[sample1,sample2,sample3]]

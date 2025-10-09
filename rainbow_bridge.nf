@@ -570,14 +570,14 @@ process blast {
   label 'blast'
   label 'process_full'
 
+  publishDir { "${params.outDir}/blast" }, mode: params.publishMode, pattern: 'settings.yml'
+  publishDir { "${params.outDir}/blast/${db_name}" }, mode: params.publishMode
   publishDir {
     def pid = String.format("%d",(Integer)num(params.percentIdentity ))
     def evalue = String.format("%.3f",num(params.evalue))
     def qcov = String.format("%d",(Integer)num(params.qcov))
     "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}/${db_name}"
   }, mode: params.publishMode
-
-  publishDir { "${params.outDir}/blast" }, mode: params.publishMode, pattern: 'settings.yml'
 
   input:
     tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb)
@@ -632,6 +632,31 @@ process blast {
     ${blast_opt_str} ${blastn_args} \\
     -query ${zotus_fasta} -num_threads ${task.cpus} \\
     > blast_result.tsv
+  """
+}
+
+// merge blast results
+process merge_blast {
+  label 'shell'
+  label 'process_single'
+
+  publishDir {
+    def pid = String.format("%d",(Integer)num(params.percentIdentity ))
+    def evalue = String.format("%.3f",num(params.evalue))
+    def qcov = String.format("%d",(Integer)num(params.qcov))
+    "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}"
+  }, mode: params.publishMode
+  publishDir { "${params.outDir}/blast" }, mode: params.publishMode
+
+  input:
+    path 'staged/*'
+
+  output:
+    path 'blast_result_merged.tsv'
+
+  script:
+  """
+  cat staged/* > blast_result_merged.tsv
   """
 }
 
@@ -1466,16 +1491,18 @@ workflow {
         combine(taxdb) |
         blast
 
-      // format output directory name for merged blast results
-      def pid = String.format("%d",(Integer)num(params.percentIdentity ))
-      def evalue = String.format("%.3f",num(params.evalue))
-      def qcov = String.format("%d",(Integer)num(params.qcov))
-      def blast_dir = "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}"
+      // // format output directory name for merged blast results
+      // def pid = String.format("%d",(Integer)num(params.percentIdentity ))
+      // def evalue = String.format("%.3f",num(params.evalue))
+      // def qcov = String.format("%d",(Integer)num(params.qcov))
+      // def blast_dir = "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}"
 
       // since we're now doing blasts separately for each database, combine the results
       // and store it below each indiviudal database result
       blast.out.result |
-        collectFile(name: 'blast_result_merged.tsv', storeDir: blast_dir) |
+        collect |
+        merge_blast |
+        // collectFile(name: 'blast_result_merged.tsv', storeDir: "${params.outDir}/blast") |
         set { blast_result }
     }
 

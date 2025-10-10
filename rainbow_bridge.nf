@@ -777,6 +777,7 @@ process insect {
     def ping = String.format("%.2f",num(params.insectPing))
     "${params.outDir}/taxonomy/insect/thresh${thresh}_offset${offs}_mincount${minc}_ping${ping}"
   }, mode: params.publishMode
+  publishDir { "${params.outDir}/taxonomy/insect" }
 
   input:
     tuple path(classifier), path(zotus), path(dmp)

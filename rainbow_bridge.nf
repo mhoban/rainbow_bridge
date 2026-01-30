@@ -724,6 +724,7 @@ process collapse_taxonomy {
   publishDir {
     "${params.outDir}/taxonomy/lca/qcov${params.lcaQcov}_pid${params.lcaPid}_diff${params.lcaDiff}"
   }, mode: params.publishMode
+  publishDir { "${params.outDir}/taxonomy/lca" }
 
   input:
     tuple path(blast_result), path(dmp)

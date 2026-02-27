@@ -1208,6 +1208,10 @@ workflow {
           map{ id, pair -> [ pair.collect{ file(it).baseName }.join("-"), pair ] } |
           join( sample_map ) |
           map{ oldid, pair, newid -> [ newid, pair ] } |
+          ifEmpty {
+            // bail if we didn't find anything
+            exit(1,"Sample re-mapping resulted in an empty dataset. Double check contents of map file `${params.sampleMap}`")
+          } |
           set { reads }
       }
 

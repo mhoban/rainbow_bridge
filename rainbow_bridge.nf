@@ -135,30 +135,23 @@ def check_params() {
   // sanity check, blast database
   if (params.blast) {
 
-    // if --blast-taxdb is passed, check that it's a directory and that files exist
-    if (!(params.blastTaxdb =~ /(?i)\.tar\.gz$/)) {
+    // if --blast-taxdb is passed, check that it's a .tar.gz archive
+    if (params.blastTaxdb && !(params.blastTaxdb =~ /(?i)\.tar\.gz$/)) {
       println(colors.bred("--blast-taxdb") + colors.red(" must be a .tar.gz archive"))
       exit(1)
     }
-
-    // get blast environment variable
-    def bdb = helper.get_env("FLOW_BLAST")
 
     // make --blast-db param into a list, if it isn't
     def blasts = params.blastDb
     if (!helper.is_list(blasts))
       blasts = [blasts]
 
-    // if $FLOW_BLAST was set and we're not ignoring it, add it to the front of the list
-    if (bdb != "" && !params.ignoreBlastEnv)
-      blasts = blasts.plus(0,bdb)
-
     // get unique vals
     blasts = blasts.unique(false)
 
     // make sure we've got at least one db
     if (!blasts.size()) {
-      println(colors.red("You must pass at least one value to --blast-db or FLOW_BLAST must point to a valid BLAST database"))
+      println(colors.red("You must pass at least one value to --blast-db"))
       exit(1)
     } else {
       // make sure all dbs exist
@@ -166,7 +159,7 @@ def check_params() {
         if (!file("${it}.ndb").exists()) {
           println(colors.red("Could not find BLAST database '${it}'. Please provide the path to an existing blast database."))
           if (it =~ /~/) {
-            println(colors.yellow("The BLAST database '${it}' contains a '~' that was not expanded by the shell. Try entering an absolute path."))
+            println(colors.yellow("The BLAST database '${it}' contains a tilde ('~') that was not expanded by the shell. Try entering an absolute path."))
           }
           exit(1)
         }
@@ -912,18 +905,20 @@ workflow {
   check_params()
 
   def directions = []
+  // files to extract from ncbi archives
+  def ncbi_taxdumps = ['merged.dmp','nodes.dmp','taxidlineage.dmp','rankedlineage.dmp']
+  def ncbi_taxdbs = ['taxdb.bti','taxdb.btd','taxonomy4blast.sqlite3']
 
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
 
     // load and extract NCBI taxonomy
     Channel.fromPath(params.ncbiTaxdump,glob:false) |
-      combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp','rankedlineage.dmp')) |
+      combine(Channel.of(ncbi_taxdumps).toList()) |
       extract_ncbi_taxonomy 
 
     // collate extracted files into a list channel
     ncbi_dumps = extract_ncbi_taxonomy.out.file |
-      collect | 
       toList
 
     // do lca
@@ -1428,18 +1423,11 @@ workflow {
     if (params.blast) {
       // def only works on its own line
       // possibly related to NF issue #804: https://github.com/nextflow-io/nextflow/issues/804
-      def bdb
-      // get $FLOW_BLAST environment variable
-      bdb = helper.get_env("FLOW_BLAST")
 
       // make --blast-db value a list, if it's not already
       def blasts = params.blastDb
       if (!helper.is_list(blasts))
         blasts = [blasts]
-
-      // if $FLOW_BLAST was set and we're not ignoring it, add it to the front of the list
-      if (bdb != "" && !params.ignoreBlastEnv)
-        blasts = blasts.plus(0,bdb)
 
       // get unique blast dbs
       blasts = blasts.unique(false)
@@ -1449,66 +1437,52 @@ workflow {
 
       // collect list of files within blast databases
       // and group them by blast db names
-      blasts.inject(null,{ b,d ->
-        !b ?
-          channel.of(file(d).Name) | combine(channel.fromPath("${d}${wildcard}")) :
-          b | concat(channel.of(file(d).Name) | combine(channel.fromPath("${d}${wildcard}")))
-      }) |
-        groupTuple |
+      Channel.fromPath(blasts) | 
+        map { [ it.Name, file("${it}*") ] } | 
         set { blastdb }
 
       if (!helper.file_exists(params.lcaLineage)) {
-        // try to find taxdb files in any of the supplied blast databases
-        def db = blasts.collect {
-          blastr ->
-            file(blastr).Parent.list().findAll {
-              it =~ /taxdb\.bt[id]/
-            }.collect {
-              "${file(blastr).Parent}/${it}"
-            }
-        }.getAt(0)
+        // make channel for taxdb files (whether or not they actually exist)
 
-        // get taxdb files (either download or from command line)
-        if (db.size() > 0) {
-          // if we found something and we don't want something else, use what we found
-          Channel.fromPath(db) |
-            collect |
-            toList |
-            set { taxdb }
-        } else {
-          // download and extract taxdb from ncbi website
-          Channel.fromPath(params.blastTaxdb,glob:false) |
-            combine(Channel.of('taxdb.btd','taxdb.bti')) |
+        // get taxdb if specified on command line
+        if (params.blastTaxdb) {
+          // stage/download file and extract
+          // glob:false required for URLs to work properly
+          Channel.fromPath(params.blastTaxdb,glob:false) | 
+            combine(Channel.of(ncbi_taxdbs).toList()) |
             extract_ncbi_taxdb
+          // flatten to list
           extract_ncbi_taxdb.out.file |
-            collect |
-            toList | 
-            set { taxdb }  
+            toList |
+            set { tdb }
+          // combine with blast db channel
+          blastdb = blastdb.combine(tdb)
+        } else {
+          // otherwise just assume taxdb files live under each blast db
+          Channel.fromPath(blasts, checkIfExists: false) |
+            map { b -> [b.Name, ncbi_taxdbs.collect{ file("${b.Parent}/${it}") } ] } |
+            set { tdb }
+          blastdb = blastdb.join(tdb)
         }
       } else {
-        Channel.value([[file("taxdb.bti"),file("taxdb.btd")]]) |
-          set { taxdb }
+        Channel.value( [ ncbi_taxdbs.collect{ file(it) } ] ) |
+          set { tdb }
+        blastdb = blastdb.combine(tdb)
       }
+
+      // TODO: there's unmatched braces or something somewhere
 
       // run the blast query
       dereplicated |
         map { sid, uniques, zotus, zotutable -> zotus } |
         combine(blastdb) |
-        combine(taxdb) |
         blast
-
-      // // format output directory name for merged blast results
-      // def pid = String.format("%d",(Integer)num(params.percentIdentity ))
-      // def evalue = String.format("%.3f",num(params.evalue))
-      // def qcov = String.format("%d",(Integer)num(params.qcov))
-      // def blast_dir = "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}"
 
       // since we're now doing blasts separately for each database, combine the results
       // and store it below each indiviudal database result
       blast.out.result |
         collect |
         merge_blast |
-        // collectFile(name: 'blast_result_merged.tsv', storeDir: "${params.outDir}/blast") |
         set { blast_result }
     }
 
@@ -1528,12 +1502,11 @@ workflow {
 
     // load and extract NCBI taxonomy
     Channel.fromPath(params.ncbiTaxdump,glob:false) |
-      combine(Channel.of('merged.dmp','nodes.dmp','taxidlineage.dmp','rankedlineage.dmp')) |
+      combine(Channel.of(ncbi_taxdumps).toList()) |
       extract_ncbi_taxonomy 
 
     // collate extracted files into a list channel
     ncbi_dumps = extract_ncbi_taxonomy.out.file |
-      collect | 
       toList
 
     // run the insect classifier, if so desired

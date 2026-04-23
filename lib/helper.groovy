@@ -154,14 +154,11 @@ class helper {
       --blast-db [blastdb]          Location of BLAST database (path AND name).
                                     e.g., '/drive1/blast/custom_db', where the database files are named
                                     things like custom_db.ndb, custom_db.nhr, custom_db.nin, etc.
-                                    If the \$FLOW_BLAST environment variable points to a BLAST database, 
-                                    the pipeline will include it in the list of databases to search.
-                                    To specify multiple BLAST databases, pass them as a list in the
+                                    To specify multiple BLAST databases, pass them as a list in a
                                     parameters file (see README for more information).
       --blast-taxdb [file]          Specify local NCBI taxdb.tar.gz file. 
                                     If unspecified or missing from the --blast-db directory, the pipeline 
                                     will download these files from the NCBI server.
-      --ignore-blast-env            Ignore the value of the \$FLOW_BLAST environment variable
       --blastn-task [task]          Set blast+ task (default: "blastn")
       --max-query-results [num]     Maxmimum number of BLAST results to return per zOTU (default: 10)
       --percent-identity [num]      Minimum percent identity of matches to report (default: 95)

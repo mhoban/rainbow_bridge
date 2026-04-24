@@ -49,14 +49,15 @@ process extract_zip {
   label 'process_single'
 
   input:
-    tuple path(zipfile), val(f)
+    tuple path(zipfile), val(to_extract)
   output:
-    path(f), emit: file
+    path(to_extract), emit: file
     path(zipfile), emit: zip
   
   script:
+  def arg = to_extract instanceof Collection ? to_extract.collect{ "\"${it}\"" }.join(" ") : "\"${to_extract}\""
   """
-  unzip -p ${zipfile} ${f} > ${f}
+  unzip ${zipfile} ${arg}
   """
 }
 // extract files from a .tar.gz archive
@@ -72,7 +73,8 @@ process extract_targz {
     path(archive), emit: zip
 
   script:
+  def arg = to_extract instanceof Collection ? to_extract.collect{ "\"${it}\"" }.join(" ") : "\"${to_extract}\""
   """
-  gunzip -c ${archive} | tar x ${to_extract}
+  tar -zxf ${archive} ${arg}
   """
 }

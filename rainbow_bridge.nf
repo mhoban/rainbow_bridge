@@ -574,6 +574,7 @@ process blast {
 
   input:
     tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb)
+    val taxids
 
   output:
     path("blast_result.tsv"), emit: result
@@ -601,7 +602,17 @@ process blast {
     .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
     .join(" ")
 
-  def blastn_args = task.ext.blastn_map
+  def blastn_map = task.ext.blastn_map
+  if (taxids instanceof Collection) {
+    taxids = taxids.findAll { it != "" }
+    taxids = taxids.join(",")
+  }
+  if (taxids) {
+    def tt = blastn_map.containsKey('taxids') ? blastn_map['taxids'] : ""
+    blastn_map['taxids'] = ([taxids,tt] - "").join(",")
+  }
+
+  def blastn_args = blastn_map
     .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
     .join(" ") 
   """
@@ -625,6 +636,27 @@ process blast {
     ${blast_opt_str} ${blastn_args} \\
     -query ${zotus_fasta} -num_threads ${task.cpus} \\
     > blast_result.tsv
+  """
+}
+
+// lookup taxids from taxa names
+process lookup_blast_taxids {
+  // label 'r'
+  label 'shell'
+  label 'process_single'
+
+  input:
+    tuple val(taxa), path(ncbi_dumps)
+  output:
+    env(taxids)
+
+  script:
+  if (!(taxa instanceof Collection)) {
+    taxa = [taxa]
+  }
+  def begin = "BEGIN { " + taxa.collect { "spp[\"${it.toLowerCase()}\"] = 1;" }.join(" ") + " }"
+  """
+  taxids=\$(awk -F '\\t' '${begin} (tolower(\$3) in spp && \$7 == "scientific name") {print tolower(\$1)}' names.dmp | sort -n | paste -sd,)
   """
 }
 
@@ -906,7 +938,7 @@ workflow {
 
   def directions = []
   // files to extract from ncbi archives
-  def ncbi_taxdumps = ['merged.dmp','nodes.dmp','taxidlineage.dmp','rankedlineage.dmp']
+  def ncbi_taxdumps = ['merged.dmp','nodes.dmp','taxidlineage.dmp','rankedlineage.dmp', 'names.dmp']
   def ncbi_taxdbs = ['taxdb.bti','taxdb.btd','taxonomy4blast.sqlite3']
 
   // do standalone taxonomy assignment
@@ -1409,7 +1441,7 @@ workflow {
         set { to_dereplicate }
     }
 
-    // build the channel, run dereplication, and set to a channel we can use again
+    // build the input channel, run dereplication, and set to a channel we can use again
     Channel.of(params.project) |
       combine(to_dereplicate) |
       combine(Channel.fromPath(params.chimeraRef)) |
@@ -1418,6 +1450,14 @@ workflow {
 
     dereplicated.result |
       set { dereplicated }
+
+    // load and extract NCBI taxonomy
+    Channel.fromPath(params.ncbiTaxdump,glob:false) |
+      combine(Channel.of(ncbi_taxdumps).toList()) |
+      extract_ncbi_taxonomy 
+    // collate extracted files into a list channel
+    ncbi_dumps = extract_ncbi_taxonomy.out.file |
+      toList
 
     // run blast query, unless skipped
     if (params.blast) {
@@ -1472,14 +1512,27 @@ workflow {
 
       // TODO: there's unmatched braces or something somewhere
 
-      // run the blast query
+      // create the blast input channel
       dereplicated |
         map { sid, uniques, zotus, zotutable -> zotus } |
         combine(blastdb) |
-        blast
+        set { blast_input }
 
-      // since we're now doing blasts separately for each database, combine the results
-      // and store it below each indiviudal database result
+      // lookup filter taxids if necessary
+      if (params.blastTaxonFilter) {
+        Channel.of(params.blastTaxonFilter.split(",")).collect().toList() |
+          combine(ncbi_dumps) | 
+          lookup_blast_taxids |
+          toList |
+          set { blast_taxids }
+      } else {
+        blast_taxids = Channel.of("")
+      }
+
+      // run the blast query
+      blast(blast_input,blast_taxids)
+
+      // merge blast results from different databases
       blast.out.result |
         collect |
         merge_blast |
@@ -1499,15 +1552,6 @@ workflow {
         lulu_blast |
         lulu
     }
-
-    // load and extract NCBI taxonomy
-    Channel.fromPath(params.ncbiTaxdump,glob:false) |
-      combine(Channel.of(ncbi_taxdumps).toList()) |
-      extract_ncbi_taxonomy 
-
-    // collate extracted files into a list channel
-    ncbi_dumps = extract_ncbi_taxonomy.out.file |
-      toList
 
     // run the insect classifier, if so desired
     if (params.insect) {

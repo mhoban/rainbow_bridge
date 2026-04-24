@@ -125,11 +125,13 @@ To clone the repository and and install dependencies (for running the .nf script
      This will install nextflow and singularity to the system. If this fails, try the instructions given [below](#manual-dependency-installation).
 
 
-To run the pipeline directly from github (note: this method assumes you already have the necessary dependencies installed on the system):
+To run the pipeline directly from github:
 
 ```console
 $ nextflow run -<nextflow-options> mhoban/rainbow_bridge --<rainbow_bridge-options>
 ```
+> [!NOTE]
+> This method assumes you already have the necessary dependencies installed on the system
    
 ### Manual dependency installation
 
@@ -245,7 +247,8 @@ In all cases, if you're processing fastq runs, you must specify the location of 
 
 For paired-end sequencing runs, sequence read filenames must be identical apart from the pattern delineating read direction and all read pairs within a sequencing run must use the same read direction pattern (e.g., 'R1', 'R2'). Thus the following read pairs are supported: `sample1_R1.fastq/sample1_R2.fastq`, `sample1.F.fastq/sample1.R.fastq`, `sample1.1.fastq/sample1.2.fastq`, but the following pairs will fail: `sample1.1.15_R1.fastq/sample1.1.17_R2.fastq`, `sample1.R1.fastq/sample1_R2.fastq`. There are no filename restrictions for single-end sequencing runs.
 
-**Note: when passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--reads '/storage/sequences/run1/*{R1,R2}*.fastq.gz'`). If you don't, the glob will be expanded by the shell rather than rainbow_bridge and parameter values will be incorrect.**
+> [!NOTE]
+> When passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--reads '/storage/sequences/run1/*{R1,R2}*.fastq.gz'`). If you don't, the glob will be expanded by the shell rather than rainbow_bridge and parameter values will be incorrect.
 
 
 There are a few ways you can tell rainbow_bridge where your reads are:
@@ -461,7 +464,8 @@ In the example above, there was error output but nothing in the `.command.out` f
 
 A number of rainbow_bridge command-line options accept file globs (wildcards). These are used when you want to indicate more than one file using a matching pattern. For an in-depth treatment of globs in the bash shell environment, have a look [here](https://www.baeldung.com/linux/bash-globbing). For the purposes of this pipeline though, you'll mostly use the following things:
 
-**Note: when passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--reads '/storage/sequences/run1/*{R1,R2}*.fastq.gz'`). If you don't, the glob will be expanded by the shell rather than rainbow_bridge and parameter values will be incorrect.**
+> [!NOTE]
+> When passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--reads '/storage/sequences/run1/*{R1,R2}*.fastq.gz'`). If you don't, the glob will be expanded by the shell rather than rainbow_bridge and parameter values will be incorrect.
 
 **\***: a star means 'match any string of characters of any length'  
 For example, the glob 'bc\*.tab' will match any filename that begins with 'bc', followed by a sequence of any characters, and finally ending with '.tab'  
@@ -489,7 +493,8 @@ For fastq-based analyses, you must specify whether the sequencing run is single 
 <small>**`--single`**</small>: denotes single-end sequencing runs  
 <small>**`--paired`**</small>: denotes paired-end sequencing runs  
 
-<small>**Note: one of the above options is required (specifying both will throw an error)**</small>
+> [!NOTE]
+> One of the above options is required (specifying both will throw an error)
 
 ### Specifying demultiplexing strategy
 
@@ -500,7 +505,8 @@ You must also specify the [demultiplexing strategy](#input-requirements) used wh
 ### Other required options
 
 #### Barcode file 
-Note: a barcode file is optional for demultiplexed runs where PCR primers have already been stripped.
+> [!NOTE]
+> A barcode file is optional for demultiplexed runs where PCR primers have already been stripped.
 
 <small>**`--barcode [file/glob]`**</small>: Aside from specifying how to find your sequence reads, you must specify barcode file(s) using the `--barcode` option. If the value passed to `--barcode` is a glob (enclosed in quotes!), rainbow_bridge will use all matching barcode files for demultiplexing/primer matching. Barcode files should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to specify sample barcodes and amplicon primers. It will vary slightly based on whether your runs have been demultiplexed by the sequencer or not. Note that the pipeline can perform a few standalone tasks that do not require barcode files (e.g. collapsing taxonomy to LCA or taxonomic classification via insect).
 
@@ -591,7 +597,8 @@ sample_CL1
 sample_CL2
 ```
 
-**NOTE: Make sure the filenames in your sample map match the complete filenames (base names) as they exist on-disk (e.g., if they are gzipped, be sure to include the '.gz' extension in your sample map). This differs from previous versions of the pipeline in which the .gz extension needed to be stripped.**
+> ![NOTE]
+> Make sure the filenames in your sample map match the complete filenames (base names) as they exist on-disk (e.g., if they are gzipped, be sure to include the '.gz' extension in your sample map). This differs from previous versions of the pipeline in which the .gz extension needed to be stripped.
 
 ## Other options
 
@@ -647,7 +654,13 @@ BLAST databases use numerical NCBI taxonomy IDs (taxids) to assign taxonomy to s
 
   - taxdb files (`taxdb.btd`, `taxdb.bti`, and `taxonomy4blast.sqlite3`) present alongside the database(s) passed using `--blast-db` will be used for queries of those supplied databases. 
     * If you're using one of the NCBI nucleotide databases (e.g., `nt`, `nt_core`, etc.), you most likely already have these files present and won't have to worry about any of this.
-  - Taxonomy files can be explicitly specified using the `--blast-taxdb` option. The option value must point to the `taxdb.tar.gz` archive file containing the relevant files. Note that it is possible to pass URLs to this argument and the file will be downloaded. To download the taxonomy database directly from NCBI, use `--blast-taxdb https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz`.
+  - BLAST taxonomy files can be explicitly specified using the `--blast-taxdb` option. The option value must point to the `taxdb.tar.gz` archive file containing the relevant files. Note that it is possible to pass URLs to this argument and the file will be downloaded. To download the taxonomy database directly from NCBI, use `--blast-taxdb https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz`.
+
+Limiting BLAST queries to specific taxonomic groups:  
+NCBI BLAST queries can be limited so that only certain taxa are searched/returned. This works both for "terminal" taxa (i.e. species) and higher-level taxa like families or orders. Traditionally, in order to do this you need to know the numeric NCBI taxonomy id (taxid) of the taxon you're interested in, but rainbow_bridge provides a layer of abstraction that allows you to pass these taxa by name. Thus, if you want a BLAST query to return only animals, you can include the argument `--blast-taxon-filter metazoa` (taxon names are case-insensitive). 
+
+> [!NOTE]
+> If you pass a taxon to `--blast-taxon-filter` that doesn't exist in the BLAST database you're using, you will get an error. In that case you'll see "BLAST Database error: Taxonomy ID(s) not found in the XXX database" in the "Command error" section of the pipeline output (where "XXX" is the name of the BLAST database). If you pass a taxon that just doesn't exist (e.g., "hamburger"), you won't get any errors, the BLAST query just won't be filtered.
 
 Multiple BLAST databases:  
 It is possible to query sequences against multiple BLAST databases. Nextflow does not support multiple values for the same option on the command line (e.g., `workflow.nf --opt val1 --opt val2`), but it *does* support them when using [parameter files](#specifying-parameters-in-a-parameter-file). Thus, if you want to use multiple custom databases, you'll need to pass them as a list in your parameter file ([see here](#setting-multiple-values-for-the-same-option) for an example). The pipeline will run BLAST queries against each database separately and merge the results into a common output file.    
@@ -656,6 +669,7 @@ All BLAST options:
 <small>**`--blast`**</small>: Query zOTU sequences against a provided BLAST database.  
 <small>**`--blast-db [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db.  
 <small>**`--blast-taxdb [archive]`**</small>: Specify a local taxdb archive. The file passed to this argument must be a .tar.gz archive containing the NCBI taxdb files (`taxdb.btd`, `taxdb.bti`). If these files already occur alongside any of the databases passed to `--blast-db`, they will be reused for all databases. If they are missing entirely, they will be downloaded from the NCBI servers.  
+<small>**`--blast-taxon-filter [taxa]`**</small>: Filter your BLAST query by a specific taxon or taxa. The value of this option should be a taxon name (e.g., "Metazoa", "Actinopteri"). Multiple taxa can be passed if separated by commas (e.g., "Metazoa,Rhodophyta") and taxon names are case-insensitive.  
 
 BLAST options passed to the NCBI `blastn` tool:  
 <small>**`--blastn-task [task]`**</small>:  Set blast+ task (default: "blastn"). NCBI `blastn` option: `-task`.  

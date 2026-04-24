@@ -156,9 +156,13 @@ class helper {
                                     things like custom_db.ndb, custom_db.nhr, custom_db.nin, etc.
                                     To specify multiple BLAST databases, pass them as a list in a
                                     parameters file (see README for more information).
-      --blast-taxdb [file]          Specify local NCBI taxdb.tar.gz file. 
-                                    If unspecified or missing from the --blast-db directory, the pipeline 
-                                    will download these files from the NCBI server.
+      --blast-taxdb [file]          Specify NCBI taxdb.tar.gz file. 
+                                    By default, the pipeline will use any taxdb files that are found
+                                    alongside the specified BLAST databases. If absent, this can be downloaded
+                                    by passing this argument with the URL of the taxdb archive on the NCBI website:
+                                    (https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz)
+      --blast-taxon-filter [taxa]   Limit BLAST query to the specified taxa. Multiple taxa can be passed
+                                    as a comma-separated list.
       --blastn-task [task]          Set blast+ task (default: "blastn")
       --max-query-results [num]     Maxmimum number of BLAST results to return per zOTU (default: 10)
       --percent-identity [num]      Minimum percent identity of matches to report (default: 95)

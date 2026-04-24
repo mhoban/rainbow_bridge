@@ -158,8 +158,10 @@ class helper {
                                     parameters file (see README for more information).
       --blast-taxdb [file]          Specify NCBI taxdb.tar.gz file. 
                                     By default, the pipeline will use any taxdb files that are found
-                                    alongside the specified BLAST databases. If absent, this can be downloaded
-                                    by passing this argument with the URL of the taxdb archive on the NCBI website:
+                                    alongside the specified BLAST databases. If this option is passed,
+                                    the supplied taxdb will be used for ALL blast databases. 
+                                    If a taxdb is missing, it can be downloaded by passing this argument 
+                                    with the URL of the taxdb archive on the NCBI website:
                                     (https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz)
       --blast-taxon-filter [taxa]   Limit BLAST query to the specified taxa. Multiple taxa can be passed
                                     as a comma-separated list.

@@ -1472,14 +1472,10 @@ workflow {
       // get unique blast dbs
       blasts = blasts.unique(false)
 
-      // wildcard to capture blast database files
-      def wildcard = "{.n*,.[0-9]*.n*}"
-
-      // collect list of files within blast databases
-      // and group them by blast db names
+      // collect list of blast database files, grouped by database name
       Channel.fromPath(blasts) | 
-        map { [ it.Name, file("${it}*") ] } | 
-        set { blastdb }
+        map { [ it.Name, file("${it}.*") ] } | 
+        set { blastdb } 
 
       if (!helper.file_exists(params.lcaLineage)) {
         // make channel for taxdb files (whether or not they actually exist)
@@ -1509,8 +1505,6 @@ workflow {
           set { tdb }
         blastdb = blastdb.combine(tdb)
       }
-
-      // TODO: there's unmatched braces or something somewhere
 
       // create the blast input channel
       dereplicated |

@@ -656,7 +656,7 @@ process lookup_blast_taxids {
   }
   def begin = "BEGIN { " + taxa.collect { "spp[\"${it.toLowerCase()}\"] = 1;" }.join(" ") + " }"
   """
-  taxids=\$(awk -F '\\t' '${begin} (tolower(\$3) in spp && \$7 == "scientific name") {print tolower(\$1)}' names.dmp | sort -n | paste -sd,)
+  taxids=\$(awk -F '\\t' '${begin} (tolower(\$3) in spp && \$7 == "scientific name") {print \$1}' names.dmp | sort -n | paste -sd,)
   """
 }
 

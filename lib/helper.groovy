@@ -149,7 +149,7 @@ class helper {
                                     (default: ${params.minAlignLen})
       --min-len [num]               Minimum overall sequence length (default: ${params.minLen})
 
-    BLAST settings (one or more database is required, unless skipping):
+    BLAST settings:
       --blast                       Query zOTUs against a BLAST database
       --blast-db [blastdb]          Location of BLAST database (path AND name).
                                     e.g., '/drive1/blast/custom_db', where the database files are named
@@ -163,14 +163,17 @@ class helper {
                                     If a taxdb is missing, it can be downloaded by passing this argument 
                                     with the URL of the taxdb archive on the NCBI website:
                                     (https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz)
-      --blast-taxon-filter [taxa]   Limit BLAST query to the specified taxa. Multiple taxa can be passed
+      --blast-taxa [taxa]           Limit BLAST query to the specified taxa. Multiple taxa can be passed
                                     as a comma-separated list.
+      --blast-exclude-taxa [taxa]   Exclude specified taxa from BLAST search. Multiple taxa can be passed
+                                    as a comma-separated list.
+                                    NOTE: only one of --blast-taxa or --blast-exclude-taxa may be given.
       --blastn-task [task]          Set blast+ task (default: "blastn")
       --max-query-results [num]     Maxmimum number of BLAST results to return per zOTU (default: 10)
       --percent-identity [num]      Minimum percent identity of matches to report (default: 95)
       --evalue [num]                Expectation value threshold for saving hits (default: 0.001)
       --qcov [num]                  Percent query coverage per hsp (default: 100)
-      --blastn-<option> [arg?]      Pass <option> to blastn with optional argument
+      --blastn-<option> [arg?]      Pass <option> to blastn executable with optional argument
 
     General taxonomy operations:
       --standalone-taxonomy         Run LCA and/or insect in standalone mode (independent of pipeline)

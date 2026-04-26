@@ -141,6 +141,19 @@ def check_params() {
       exit(1)
     }
 
+    // exclude and include blast taxa are mutally exclusive, so let's
+    // make sure only one of the options is passed (check --blastn-xxx options too)
+    def pos = params.blastTaxa || params.containsKey('blastnTaxids')
+    def neg = params.blastExcludeTaxa || params.containsKey('blastnNegative_taxids')
+    if (pos && neg) {
+      println( colors.red("Only one of ") + colors.bred("--blast-taxa") + colors.red(" or ") +
+        colors.bred("--blast-exclude-taxa") + colors.red(" may be passed ") +
+        colors.red("(this includes ") + colors.bred("--blastn-taxids") + colors.red(" and ") +
+        colors.bred("--blastn-negative_taxids") + colors.red(")")
+      )
+      exit(1)
+    }
+
     // make --blast-db param into a list, if it isn't
     def blasts = params.blastDb
     if (!helper.is_list(blasts))
@@ -574,7 +587,7 @@ process blast {
 
   input:
     tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb)
-    val taxids
+    tuple val(taxids), val(method)
 
   output:
     path("blast_result.tsv"), emit: result
@@ -602,14 +615,15 @@ process blast {
     .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
     .join(" ")
 
+  // get any --blastn-xxx arguments that may exist
   def blastn_map = task.ext.blastn_map
-  if (taxids instanceof Collection) {
-    taxids = taxids.findAll { it != "" }
-    taxids = taxids.join(",")
-  }
-  if (taxids) {
-    def tt = blastn_map.containsKey('taxids') ? blastn_map['taxids'] : ""
-    blastn_map['taxids'] = ([taxids,tt] - "").join(",")
+  // construct -taxids or -negative_taxids argument
+  if (taxids && method) {
+    if (taxids instanceof Collection) {
+      taxids = (taxids - "").join(",")
+    }
+    def tt = blastn_map[method] ?: ""
+    blastn_map[method] = ([taxids,tt] - "").join(",")
   }
 
   def blastn_args = blastn_map
@@ -1512,17 +1526,21 @@ workflow {
         combine(blastdb) |
         set { blast_input }
 
-      // lookup filter taxids if necessary
-      if (params.blastTaxonFilter) {
-        Channel.of(params.blastTaxonFilter.split(",")).collect().toList() |
+      // default taxid filter values are blank
+      def blast_filter_method = ''
+      blast_taxids = Channel.of(["",""])
+
+      // get taxids to include/exclude if requested
+      if (params.blastTaxa || params.blastExcludeTaxa) {
+        def taxa = params.blastTaxa ? params.blastTaxa : params.blastExcludeTaxa
+        blast_filter_method = params.blastTaxa ? 'taxids' : 'negative_taxids'
+        Channel.of(taxa.split(",")).collect().toList() |
           combine(ncbi_dumps) | 
           lookup_blast_taxids |
           toList |
+          combine(Channel.of(blast_filter_method)) |
           set { blast_taxids }
-      } else {
-        blast_taxids = Channel.of("")
-      }
-
+      } 
       // run the blast query
       blast(blast_input,blast_taxids)
 

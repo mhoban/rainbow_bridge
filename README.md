@@ -30,6 +30,7 @@ For more information on the original eDNAFlow pipeline and other software used a
 <!-- TOC start (generated with https://github.com/derlin/bitdowntoc) -->
 
 - [Basic usage](#basic-usage)
+   * [Quick start](#quick-start)
    * [Running the pipeline](#running-the-pipeline)
    * [Input requirements](#input-requirements)
    * [Processing fastq input](#processing-fastq-input)
@@ -49,45 +50,44 @@ For more information on the original eDNAFlow pipeline and other software used a
          - [Nextflow](#nextflow)
          - [Singularity](#singularity)
          - [Podman](#podman)
-      + [Testing installation](#testing-installation)
-- [Description of run options](#description-of-run-options)
+   * [Testing installation](#testing-installation)
+- [Description of rainbow_bridge command-line options](#description-of-rainbow_bridge-command-line-options)
    * [Required options](#required-options)
       + [Specifying sequencing run type](#specifying-sequencing-run-type)
       + [Specifying demultiplexing strategy](#specifying-demultiplexing-strategy)
       + [Other required options](#other-required-options)
          - [Barcode file ](#barcode-file)
          - [BLAST settings ](#blast-settings)
+   * [General options](#general-options)
    * [Sample IDs](#sample-ids)
       + [Re-mapping custom sample IDs](#re-mapping-custom-sample-ids)
-   * [Other options](#other-options)
-      + [General ](#general)
-      + [Splitting input](#splitting-input)
-      + [Length, quality, and merge settings](#length-quality-and-merge-settings)
-      + [Sequence filtering (`ngsfilter` options)](#sequence-filtering-ngsfilter-options)
-      + [Assigning taxonomy](#assigning-taxonomy)
-         - [BLAST settings](#blast-settings-1)
-         - [Classification using insect](#classification-using-insect)
-         - [LCA collapse](#lca-collapse)
-            * [LCA options](#lca-options)
-            * [LCA worked example](#lca-worked-example)
-            * [Using LCA with custom taxonomy and/or BLAST databases](#using-lca-with-custom-taxonomy-andor-blast-databases)
-         - [Standalone taxonomic assignment/collapse](#standalone-taxonomic-assignmentcollapse)
-      + [Denoising/dereplication and ZOTU inference](#denoisingdereplication-and-zotu-inference)
-      + [ZOTU curation using LULU](#zotu-curation-using-lulu)
-      + [Resource allocation](#resource-allocation)
-      + [Singularity options](#singularity-options)
-      + [Output products and finalization](#output-products-and-finalization)
-         - [Finalization options](#finalization-options)
-            * [Data cleanup](#data-cleanup)
-            * [Contamination / negative controls](#contamination--negative-controls)
-            * [Abundance filtration and rarefaction](#abundance-filtration-and-rarefaction)
-            * [Other finalization options](#other-finalization-options)
-         - [Output products](#output-products)
-            * [Generating phyloseq objects](#generating-phyloseq-objects)
+   * [Length, quality, and merge settings](#length-quality-and-merge-settings)
+   * [Sequence filtering (`ngsfilter` options)](#sequence-filtering-ngsfilter-options)
+   * [Denoising/dereplication and ZOTU inference](#denoisingdereplication-and-zotu-inference)
+   * [ZOTU curation using LULU](#zotu-curation-using-lulu)
+   * [Assigning taxonomy](#assigning-taxonomy)
+      + [BLAST settings](#blast-settings-1)
+      + [Classification using insect](#classification-using-insect)
+      + [LCA collapse](#lca-collapse)
+         - [LCA options](#lca-options)
+         - [LCA worked example](#lca-worked-example)
+         - [Using LCA with custom taxonomy and/or BLAST databases](#using-lca-with-custom-taxonomy-andor-blast-databases)
+      + [Standalone taxonomic assignment/collapse](#standalone-taxonomic-assignmentcollapse)
+   * [Splitting fastq input for increased parallelization](#splitting-fastq-input-for-increased-parallelization)
+   * [Resource allocation](#resource-allocation)
+   * [Singularity options](#singularity-options)
+   * [Output products and finalization](#output-products-and-finalization)
+      + [Finalization options](#finalization-options)
+         - [Data cleanup](#data-cleanup)
+         - [Contamination / negative controls](#contamination--negative-controls)
+         - [Abundance filtration and rarefaction](#abundance-filtration-and-rarefaction)
+         - [Other finalization options](#other-finalization-options)
+      + [Output products](#output-products)
+         - [Generating phyloseq objects](#generating-phyloseq-objects)
 - [Useful examples and tips](#useful-examples-and-tips)
-   * [Downloading the NCBI BLAST nucleotide database](#downloading-the-ncbi-blast-nucleotide-database)
+   * [Downloading NCBI BLAST databases](#downloading-ncbi-blast-databases)
    * [Making a custom BLAST database](#making-a-custom-blast-database)
-   * [Specifying parameters in a parameter file](#specifying-parameters-in-a-parameter-file)
+   * [Parameter files](#parameter-files)
       + [Setting multiple values for the same option](#setting-multiple-values-for-the-same-option)
    * [Notification](#notification)
 - [Workflow](#workflow)
@@ -98,7 +98,7 @@ For more information on the original eDNAFlow pipeline and other software used a
 
 ## Quick start
 
-The following command can be used to analyze a dataset of paired-end sequences and assign taxonomy using a local version of the NCBI `core_nt` BLAST database. For this example, sequence reads have been previously demultiplexed by the sequencer and reside in a directory called `reads`, there is a barcode file called `barcode.tsv` that describes the PCR primers used, and read direction is determined by the presence of `R1`/`R2` in the filename.
+The following command can be used to analyze a dataset of paired-end sequences and assign taxonomy using a local version of the NCBI `core_nt` BLAST database. For this example, sequence reads have been previously demultiplexed by the sequencer and reside in a directory called `reads`, there is a barcode file called `barcode.tsv` that describes the PCR primers used, and read direction is determined by the presence of `R1`/`R2` in the filename. The pipeline is also being run directly from the github repository rather than cloned locally first.
 
 ```console
 $ nextflow run mhoban/rainbow_bridge \
@@ -258,7 +258,7 @@ There are a few ways you can tell rainbow_bridge where your reads are:
 
 
 ## Usage examples
-Following are some examples of the basic command to run the pipeline on your local machine on single-end/paired-end data with multiple possible barcode files. For each of these examples, I assume `rainbow_bridge.nf` is in the system PATH, you're working on a project called `example_project`, and your directory structure looks something like this:
+Following are some examples of the basic command to run the pipeline on your local machine on single-end/paired-end data with multiple possible barcode files. For each of these examples, I assume you're working on a project called `example_project` and your directory structure looks something like this:
 
 ```bash
 example_project/            # base directory containing project files
@@ -274,7 +274,7 @@ The pipeline run is started from within the `analysis` directory. The options us
 In this case you will have one fastq file and one or more barcode files containing sample barcodes (forward/reverse) and PCR primers (forward/reverse).
 
 ```bash
-$ rainbow_bridge.nf \
+$ nextflow run /path/to/rainbow_bridge.nf \
   --single \
   --reads ../fastq/sequence_reads.fastq \   # <-- reads denotes a single .fastq file
   --barcode '../data/*.tab'                 # <-- note the glob enclosed in single-quotes
@@ -286,7 +286,7 @@ $ rainbow_bridge.nf \
 In this case, you will have multiple fastq files, each representing one sample and one or more barcode files denoting PCR primers only (i.e., no sample barcodes).
 
 ```bash
-$ rainbow_bridge.nf \
+$ nextflow run /path/to/rainbow_bridge.nf \
   --single \
   --reads '../fastq/*.fastq' \    # <-- reads is a glob denoting multiple .fastq files
   --barcode '../data/*.tab'
@@ -299,7 +299,7 @@ $ rainbow_bridge.nf \
 In non-demultiplexed runs, the pipeline assumes you have exactly one forward fastq file and one reverse fastq file. 
 
 ```bash
-$ rainbow_bridge.nf \
+$ nextflow run /path/to/rainbow_bridge.nf \
   --paired \
   --reads ../fastq/    # <--- reads points to a directory containing *R1/R2*.fastq files
   --barcode '../data/*.tab'
@@ -311,7 +311,7 @@ $ rainbow_bridge.nf \
 For demultiplexed paired-end runs, you will have two fastq files per sample, each designated by a pattern indicating read direction (typically R1/R2, as in this example). 
 
 ```bash
-$ rainbow_bridge.nf \
+$ nextflow run /path/to/rainbow_bridge.nf \
   --paired \
   --reads ../fastq \   # Here, reads indicates the directory where reads are found. 
   --barcode '../data/*.tab' # by default, the pipeline will search <reads>/*R1|R2*.f*q* 
@@ -371,7 +371,7 @@ bigiron {
 As mentioned above, this profile will override the `standard` profile, and since a container system is not specified, nextflow will look for executables on the local filesystem. Fortunately, nextflow supports multiple profiles: just separate the names with a comma. For this example, if we wanted to use the `bigiron` profile with the singularity container system, we could launch rainbow_bridge using `-profile bigiron,singularity`, like this:
 
 ```console
-$ rainbow_bridge.nf -profile bigiron,singularity <...further options...>
+$ nextflow run /path/to/rainbow_bridge.nf -profile bigiron,singularity <...further options...>
 ```
 
 If you want to define a profile but don't have write access to the `<rainbow_bridge>/conf/profiles` directory, you can create a custom config file containing your profile, save it anywhere, and pass its filename to rainbow_bridge with the `-c` option (single dash again!). rainbow_bridge will still load any built-in profiles from `conf/profiles`. In this case, you will have to enclose your profile definition in the `profiles {}` scope, like this:
@@ -391,7 +391,7 @@ profiles {
 And (assuming you've named the file `bigiron.config` and saved it in the directory where you're running your analysis), execute the pipeline like this:
 
 ```console
-$ rainbow_bridge.nf -c bigiron.config -profile bigiron,singularity <...further options...>
+$ nextflow run /path/to/rainbow_bridge.nf -c bigiron.config -profile bigiron,singularity <...further options...>
 ```
 
 ## When things go wrong (interpreting errors)
@@ -492,13 +492,13 @@ The [rainbow_bridge-test](https://github.com/mhoban/rainbow_bridge-test) github 
 
 To test the pipeline, clone the repository from <https://github.com/mhoban/rainbow_bridge-test.git> and see the README file there for more information.
 
-# Description of run options
+# Description of rainbow_bridge command-line options
 
 rainbow_bridge allows for a good deal of customization with regard to which and how various elements of the pipeline are run. All command-line options can be either be passed as-is or saved in a parameters file. For details on saving options in a parameters file, see [below](#specifying-parameters-in-a-parameter-file).
 
 To see a detailed list of available command-line options, run:
 ```console
-$ rainbow_bridge.nf --help
+$ nextflow run /path/to/rainbow_bridge.nf --help
 ```
 
 ## Required options
@@ -571,7 +571,14 @@ You must also specify the [demultiplexing strategy](#input-requirements) used wh
 
 For pipeline runs in which BLAST queries are performed, the `--blast` argument is required and you must identify the database(s) being used. This is done using the `--blast-db` option. See [below](#blast-settings-1) for details on how to do this and how to configure BLAST searches. 
 
+## General options
+<small>**`--project [project]`**</small>:    Project name, applied as a prefix to various output filenames. (default: project directory name)  
+<small>**`--save-config [file (optional)]`**</small>:    Save current command-line options to a YAML file. With no argument, saves to `options.yml`, otherwise pass filename.  
+<small>**`--publish-mode [mode]`**</small>:  Specify how nextflow places files in output directories. See [nextflow documentation](https://www.nextflow.io/docs/latest/process.html#publishdir) for supported values (default: symlink)  
+<small>**`--fastqc`**</small>:               Output FastQC reports for pre and post filter/merge steps. MultiQC is used for demultiplexed or split runs.  
+
 ## Sample IDs
+
 For non-demultiplexed sequencing runs (`--demultipexed-by barcode`), sample IDs are designated using the `sample` column of the barcode file. For demultiplexed runs (`--demultipexed-by index`), sample IDs are generated using the first (shared) part of the read filename(s) before the fwd/rev (R1/R2) pattern (if applicable). For example, the following read pairs:
 
 ```
@@ -614,24 +621,9 @@ sample_CL2
 ```
 
 > ![NOTE]
-> Make sure the filenames in your sample map match the complete filenames (base names) as they exist on-disk (e.g., if they are gzipped, be sure to include the '.gz' extension in your sample map). This differs from previous versions of the pipeline in which the .gz extension needed to be stripped.
+> Make sure the filenames in your sample map match the complete filenames (base names) as they exist on-disk (e.g., if they are gzipped, be sure to include the '.gz' extension in your sample map). This differs from previous versions of the pipeline in which the .gz extension needed to be stripped from the sample ID map.
 
-## Other options
-
-### General 
-<small>**`--project [project]`**</small>:    Project name, applied as a prefix to various output filenames. (default: project directory name)  
-<small>**`--save-config [file (optional)]`**</small>:    Save current command-line options to a YAML file. With no argument, saves to `options.yml`, otherwise pass filename.  
-<small>**`--publish-mode [mode]`**</small>:  Specify how nextflow places files in output directories. See [nextflow documentation](https://www.nextflow.io/docs/latest/process.html#publishdir) for supported values (default: symlink)  
-<small>**`--fastqc`**</small>:               Output FastQC reports for pre and post filter/merge steps. MultiQC is used for demultiplexed or split runs.  
-
-
-### Splitting input
-To improve performance, large input files can be split into multiple smaller files and processed in parallel. This option is only available for either pooled runs or runs that have *not* previously been demultiplexed. With the `--split` option, rainbow_bridge will break up the input reads into smaller files (with the number of reads per file customizable as explained below) and process them in parallel the same way that demultiplexed runs are processed. 
-
-<small>**`--split`**</small>:    Split input fastq files and process in parallel   
-<small>**`--split-by [num]`**</small>: Number of sequences per split fastq chunk (default: 100000)  
-
-### Length, quality, and merge settings
+## Length, quality, and merge settings
 These settings allow you to set values related to quality filtering and paired-end merging.
 
 <small>**`--mate-separator [char]`**</small>: Forward/reverse read mate separator (passed to `AdapterRemoval`, default: '/')  
@@ -639,7 +631,7 @@ These settings allow you to set values related to quality filtering and paired-e
 <small>**`--min-align-len [num]`**</small>:   Minimum sequence overlap when merging forward/reverse reads (default: 12)  
 <small>**`--min-len [num]`**</small>:         Minimum overall sequence length (default: 50)  
 
-### Sequence filtering (`ngsfilter` options)
+## Sequence filtering (`ngsfilter` options)
 These settings control options passed to the `ngsfilter` tool and include allowable PCR primer mismatch and whether to retain sequences with ambiguous Illumina indices.
 
 <small>**`--primer-mismatch [num]`**</small>:  Allowed number of mismatched primer bases (default: 2)  
@@ -650,13 +642,32 @@ These settings control options passed to the `ngsfilter` tool and include allowa
 <small>**`--demuxed-example`**</small>:  Spit out example usearch/vsearch demultiplexed FASTA format  
 <small>**`--demux-only`**</small>:  Stop after demultiplexing and splitting raw reads  
 
-### Assigning taxonomy
+## Denoising/dereplication and ZOTU inference
+These options control how (and with what tool) sequences are denoised and ZOTUs are inferred By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch), but [usearch](https://github.com/rcedgar/usearch12) is also supported.
+
+<small>**`--denoiser [usearch/vsearch]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'vsearch' (default: vsearch)    
+<small>**`--min-abundance [num]`**</small>:  Minimum sequence abundance for ZOTU determination; sequences with abundances below the specified threshold will be discarded during the denoising process (default: 8)   
+<small>**`--alpha [num]`**</small>: Alpha parameter passed to the UNOISE3 algorithm (see the [unoise2 paper for more info](https://doi.org/10.1101/081257)) (default: 2.0)  
+<small>**`--zotu-identity [num]`**</small>: Fractional pairwise identity used to match raw reads to ZOTUs, equivalent to `vsearch` `--id`/`usearch` `-id` parameters (default: 0.97)  
+<small>**`--chimera-ref [file]`**</small>: FASTA file to use in reference-based chimera detection (if omitted, denovo chimera detection will be used). Only supported with `vsearch`.  
+
+## ZOTU curation using LULU
+
+rainbow_bridge includes the option to curate ZOTUs using [lulu](https://github.com/tobiasgf/lulu). For a more detailed explantion of these parameters please see the [LULU documentation](https://github.com/tobiasgf/lulu).
+
+<small>**`--lulu`**</small>:  Curate ZOTUs using LULU  
+<small>**`--lulu-min-ratio-type [num]`**</small>: LULU minimum ratio type (accepted values: 'min', 'avg', default: 'min')  
+<small>**`--lulu-min-ratio [num]`**</small>: LULU minimum ratio (default: 1)  
+<small>**`--lulu-min-match [num]`**</small>: LULU minimum threshold of sequence similarity to consider ZOTUs as spurious. Choose higher values when using markers with lower genetic variation and/or few expected PCR and sequencing errors (default: 84)  
+<small>**`--lulu-min-rc [num]`**</small>: LULU minimum relative co-occurence rate (default: 0.95)  
+
+## Assigning taxonomy
 
 These options relate to assignment/collapsing of taxonomy by ZOTU sequence. Initial taxonomic assignment is performed using BLAST and/or insect and further refined using lowest common ancestor (LCA) collapse.  
 
 BLAST is an alignment-based approach that uses a reference database (such as NCBI [GenBank](https://www.ncbi.nlm.nih.gov/genbank/)) to match ZOTUs to sequences with known taxonomic identity. [insect](https://github.com/shaunpwilkinson/insect) is a phylogenetic (tree-based) approach to taxonomic assignment. It is particularly useful for assigning higher-order (e.g. phylum, order) taxonomy to ZOTUs that are otherwise unidentified by BLAST. In the LCA method, BLAST results for each ZOTU are compared to one another and a decision is made whether or not to collapse to the next highest taxonomic rank based on a user-defined variability threshold among those results. 
 
-#### BLAST settings
+### BLAST settings
 
 These settings allow you to control how BLAST searches are performed and specify the location of search databases. The only required option (unless BLAST queries are being skipped) is the location of a local BLAST database, which is set using the command line option `--blast-db`. Other options in this category allow you to control BLAST search criteria directly (e.g., e-value, percent match, etc.). For further explanation of these options beyond what is described here, see the [blast+ documentation](https://www.ncbi.nlm.nih.gov/books/NBK279690/).
 
@@ -674,11 +685,14 @@ BLAST databases use numerical NCBI taxonomy IDs (taxids) to assign taxonomy to s
     * If you're using one of the NCBI nucleotide databases (e.g., `nt`, `nt_core`, etc.), you most likely already have these files present and won't have to worry about any of this.
   - BLAST taxonomy files can be explicitly specified using the `--blast-taxdb` option. The option value must point to the `taxdb.tar.gz` archive file containing the relevant files. Note that it is possible to pass URLs to this argument and the file will be downloaded. To download the taxonomy database directly from NCBI, use `--blast-taxdb https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz`.
 
-Limiting BLAST queries to specific taxonomic groups:  
-NCBI BLAST queries can be limited so that only certain taxa are searched/returned. This works both for "terminal" taxa (i.e. species) and higher-level taxa like families or orders. Traditionally, in order to do this you need to know the numeric NCBI taxonomy id (taxid) of the taxon you're interested in, but rainbow_bridge provides a layer of abstraction that allows you to pass these taxa by name. Thus, if you want a BLAST query to return only animals, you can include the argument `--blast-taxon-filter metazoa` (taxon names are case-insensitive). 
+Requiring/excluding specific taxonomic groups from BLAST searches:  
+NCBI BLAST queries can be limited so that only certain taxa are searched/returned or that certain taxa are excluded from the results. This works both for "terminal" taxa (species) and higher-level taxa like families or orders. Multiple taxa can be given in a comma-separated list.  
+To limit searches to specific taxa, use the `--blast-taxa` option. For example, if you want a BLAST search to include only animals and red algae, pass the option `--blast-taxa metazoa,rhodophyta`.  
+To exclude taxa from a search, use the `--blast-exclude-taxa` option. For example, `--blast-exclude-taxa bacteria` will exclude all bacteria from a search.   
+Taxon names passed to either option are case-insensitive (i.e,. "Bacteria" and "bacteria" will both work).
 
 > [!NOTE]
-> If you pass a taxon to `--blast-taxon-filter` that doesn't exist in the BLAST database you're using, you will get an error. In that case you'll see "BLAST Database error: Taxonomy ID(s) not found in the XXX database" in the "Command error" section of the pipeline output (where "XXX" is the name of the BLAST database). If you pass a taxon that just doesn't exist (e.g., "hamburger"), you won't get any errors, the BLAST query just won't be filtered.
+> If you pass a taxon to `--blast-taxa` that doesn't exist in the BLAST database you're using, you will get an error. In that case you'll see "BLAST Database error: Taxonomy ID(s) not found in the XXX database" in the "Command error" section of the pipeline output (where "XXX" is the name of the BLAST database). If you pass a taxon that just doesn't exist (e.g., "hamburger"), you won't get any errors, the BLAST query just won't be filtered.
 
 Multiple BLAST databases:  
 It is possible to query sequences against multiple BLAST databases. Nextflow does not support multiple values for the same option on the command line (e.g., `workflow.nf --opt val1 --opt val2`), but it *does* support them when using [parameter files](#specifying-parameters-in-a-parameter-file). Thus, if you want to use multiple custom databases, you'll need to pass them as a list in your parameter file ([see here](#setting-multiple-values-for-the-same-option) for an example). The pipeline will run BLAST queries against each database separately and merge the results into a common output file.    
@@ -687,7 +701,8 @@ All BLAST options:
 <small>**`--blast`**</small>: Query ZOTU sequences against a provided BLAST database.  
 <small>**`--blast-db [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db.  
 <small>**`--blast-taxdb [archive]`**</small>: Specify a local taxdb archive. The file passed to this argument must be a .tar.gz archive containing the NCBI taxdb files (`taxdb.btd`, `taxdb.bti`, `taxonomy4blast.sqlite3`). By default, taxdb files present alongside BLAST database files will be used.  
-<small>**`--blast-taxon-filter [taxa]`**</small>: Filter your BLAST query by a specific taxon or taxa. The value of this option should be a taxon name (e.g., "Metazoa", "Actinopteri"). Multiple taxa can be passed if separated by commas (e.g., "Metazoa,Rhodophyta") and taxon names are case-insensitive.  
+<small>**`--blast-taxa [taxa]`**</small>: Filter your BLAST query by a specific taxon or taxa. The value of this option should be a taxon name (e.g., "Metazoa", "Actinopteri"). Multiple taxa can be passed if separated by commas (e.g., "Metazoa,Rhodophyta") and taxon names are case-insensitive.  
+<small>**`--blast-exclude-taxa [taxa]`**</small>: Exclude taxa from BLAST search. Option values have the same requirements as `--blast-taxa`.  
 
 BLAST options passed to the NCBI `blastn` tool:  
 <small>**`--blastn-task [task]`**</small>:  Set blast+ task (default: "blastn"). NCBI `blastn` option: `-task`.  
@@ -702,14 +717,14 @@ Any [supported command-line option](https://www.ncbi.nlm.nih.gov/books/NBK279684
 
 For example, the following call:
 ```console
-$ rainbow_bridge.nf --blastn-gapopen 15 --blastn-gapextend 25 --blastn-html
+$ nextflow run /path/to/rainbow_bridge.nf --blastn-gapopen 15 --blastn-gapextend 25 --blastn-html
 ```
 Will result in `blastn` being executed like this:
 ```console
 $ blastn -gapopen 15 -gapextend 25 -html
 ```
 
-#### Classification using insect
+### Classification using insect
 
 These options control taxonomy assignment using the [insect](https://github.com/shaunpwilkinson/insect) algorithm. To run insect on your sequences, you must specify either one of the [pre-trained](https://github.com/shaunpwilkinson/insect#classifying-sequences) classifier models OR one that you've trained yourself. Insect also takes various parameters to tweak how it does its assignments.
 
@@ -740,13 +755,13 @@ These options control taxonomy assignment using the [insect](https://github.com/
 <small>**`--insect-min-count [num]`**</small>:  Minimum number of training sequences belonging to a selected child node for the classification to progress (default: 5)  
 <small>**`--insect-ping [num]`**</small>:  Numeric value (0--1) indicating whether a nearest neighbor search should be carried out, and if so, what the minimum distance to the nearest neighbor should be for the the recursive classification algorithm to be skipped (default: 0.98)  
 
-#### LCA collapse
+### LCA collapse
 
 Options for the lowest common ancestor (LCA) method of taxonomy refinement.
 
 The LCA method will selectively collapse BLAST assignments to their lowest common ancestor based on user-defined variability and certainty thresholds. This script first filters BLAST results according to minimum quality thresholds (percent identity: `--lca-pid`, query coverage: `--lca-qcov`, and e-value: `--lca-evalue`). For cases where ZOTU sequences return multiple matches to the same sequence ID, the matches are summarized by the best combination of match scores. Then, results whose percent identity differs from the best result by more than a user-defined amount (`--lca-diff`) are discarded. Finally, ZOTUs with taxonomic assignments that are consistent across remaining BLAST results will receive species-level taxonomy. Otherwise, the taxonomy of that ZOTU will be collapsed to the lowest common ancestor of remaining BLAST results (if using NCBI taxonomy, the NCBI taxid for the common ancestor will also be retrieved). Two files are produced: a collapsed taxonomy table and an intermediate table retaining all ZOTUs passing minimum quality thresholds. The intermediate table may be useful in determining why particular ZOTUs were collapsed.
 
-##### LCA options
+#### LCA options
 
 The following command-line options are available for the LCA collapse method:
 
@@ -764,7 +779,7 @@ The following command-line options are available for the LCA collapse method:
 <small>**`--lca-case-insensitive`**</small>: Ignore case when applying the regex in `--lca-taxon-filter` (default: false).  
 <small>**`--lca-filter-max-qcov`**</small>: During LCA collapse, retain only BLAST records having the highest query coverage (default: false).  
 
-##### LCA worked example
+#### LCA worked example
 
 Here is a brief worked example using default parameters (`--lca-pid 97`, `--lca-qcov 100`, `--lca-diff 1`) and BLAST results for two different ZOTUs. In this example, one ZOTU will be collapsed to LCA and the other will receive a species-level assignment. 
 
@@ -822,7 +837,7 @@ Finally, we collapse ZOTUs with more than one species assignment to lowest commo
 Note that Zotu8 matched both *Ctenochaetus* and *Acanthurus* and was collapsed to family level (Acanthuridae) while Zotu11 matched only *Halichoeres ornatissimus* and so retained its species-level ID.
 
 
-##### Using LCA with custom taxonomy and/or BLAST databases
+#### Using LCA with custom taxonomy and/or BLAST databases
 
 By default, rainbow_bridge assumes that taxonomy IDs (taxids) returned from BLAST searches are NCBI taxids. That is, it is assumed that they will match entries in the NCBI [taxonomy database](https://www.ncbi.nlm.nih.gov/taxonomy/). This is true for both NCBI and custom BLAST databases. However, since published reference databases (e.g., [PR2](https://pr2-database.org/)) frequently come with associated taxonomic lineage information that may not match NCBI databases, it is also possible to provide that custom lineage data to be used by rainbow_bridge (and the LCA process). In order for rainbow_bridge to use your custom taxonomic lineage, you must provide a custom blast database with taxids (see [below](#making-a-custom-blast-database)) that match entries in a custom lineage file. The taxids can be any integers you'd like, since if a custom lineage is given, the pipeline won't attempt to match them to the NCBI database. However, the taxids in the BLAST database *must* match the taxids in the lineage file. The lineage file is a tabular file (either comma- or tab-separated) in which the first column must contain the (numeric) taxid, and subsequent columns contain whatever taxonomic ranks you want associated with it. Each column (other than taxid) should be named for its taxonomic rank (e.g., species, family, etc.). An example lineage file with the ranks family, genus, and species might look like this:
 
@@ -836,7 +851,7 @@ By default, rainbow_bridge assumes that taxonomy IDs (taxids) returned from BLAS
 
 To use a custom taxonomic lineage, pass this tabular lineage file to rainbow_bridge using the `--lca-lineage` option.
 
-#### Standalone taxonomic assignment/collapse
+### Standalone taxonomic assignment/collapse
 rainbow_bridge can run the LCA collapse and/or insect classification processes independent of the rest of the pipeline (either or both processes may be run). This is useful for experimenting with different parameter valuess without having to re-run the entire pipeline. This can be done using the `--standalone-taxonomy` option alongside `--lca` and/or `--insect [option]` and any specific options you wish to pass to [LCA](#lca-collapse) or [insect](#classification-using-insect). 
 
 When running LCA in standalone mode, in addition to `--standalone-taxonomy`, you must supply a BLAST result file with the `--blast-file` option. You may also optionally provide a ZOTU table using the `--zotu-table` option. 
@@ -845,27 +860,13 @@ When running insect in standalone mode, in addition to `--standalone-taxonomy` y
 
 In both cases, the output from the assignment/LCA operations can be found in the usual place (`output/taxonomy/<insect|lca>/<settings>`). If a ZOTU table is supplied, the finalized (combined) output can be found in `output/final/standalone`.
 
+## Splitting fastq input for increased parallelization
+To improve performance, large input files can be split into multiple smaller files and processed in parallel. This option is only available for either pooled runs or runs that have *not* previously been demultiplexed. With the `--split` option, rainbow_bridge will break up the input reads into smaller files (with the number of reads per file customizable as explained below) and process them in parallel the same way that demultiplexed runs are processed. 
 
-### Denoising/dereplication and ZOTU inference
-These options control how (and with what tool) sequences are denoised and ZOTUs are inferred By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch), but [usearch](https://github.com/rcedgar/usearch12) is also supported.
+<small>**`--split`**</small>:    Split input fastq files and process in parallel   
+<small>**`--split-by [num]`**</small>: Number of sequences per split fastq chunk (default: 100000)  
 
-<small>**`--denoiser [usearch/vsearch]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'vsearch' (default: vsearch)    
-<small>**`--min-abundance [num]`**</small>:  Minimum sequence abundance for ZOTU determination; sequences with abundances below the specified threshold will be discarded during the denoising process (default: 8)   
-<small>**`--alpha [num]`**</small>: Alpha parameter passed to the UNOISE3 algorithm (see the [unoise2 paper for more info](https://doi.org/10.1101/081257)) (default: 2.0)  
-<small>**`--zotu-identity [num]`**</small>: Fractional pairwise identity used to match raw reads to ZOTUs, equivalent to `vsearch` `--id`/`usearch` `-id` parameters (default: 0.97)  
-<small>**`--chimera-ref [file]`**</small>: FASTA file to use in reference-based chimera detection (if omitted, denovo chimera detection will be used). Only supported with `vsearch`.  
-
-### ZOTU curation using LULU
-
-rainbow_bridge includes the option to curate ZOTUs using [lulu](https://github.com/tobiasgf/lulu). For a more detailed explantion of these parameters please see the [LULU documentation](https://github.com/tobiasgf/lulu).
-
-<small>**`--lulu`**</small>:  Curate ZOTUs using LULU  
-<small>**`--lulu-min-ratio-type [num]`**</small>: LULU minimum ratio type (accepted values: 'min', 'avg', default: 'min')  
-<small>**`--lulu-min-ratio [num]`**</small>: LULU minimum ratio (default: 1)  
-<small>**`--lulu-min-match [num]`**</small>: LULU minimum threshold of sequence similarity to consider ZOTUs as spurious. Choose higher values when using markers with lower genetic variation and/or few expected PCR and sequencing errors (default: 84)  
-<small>**`--lulu-min-rc [num]`**</small>: LULU minimum relative co-occurence rate (default: 0.95)  
-
-### Resource allocation
+## Resource allocation
 These options allow you to allocate resources (CPUs and memory) to rainbow_bridge processes.
 
 <small>**`--max-memory [mem]`**</small>:  Maximum memory available to nextflow processes, e.g., '8.GB' (default: maximum available system memory)  
@@ -875,20 +876,20 @@ These options allow you to allocate resources (CPUs and memory) to rainbow_bridg
 
 Within rainbow_bridge, different processes are allocated different amount of base resources, depending on how memory- or CPU-intensive they are. However, the pipeline will not exceed the values passed to `--max-cpus` or `--max-memory`. Thus, if a given process is allocated 6 CPUs by default but the user passes `--max-cpus 2`, it will only use 2 CPUs. 
 
-### Singularity options
+## Singularity options
 
 Options to control how singularity behaves. 
 
 <small>**`--bind-dir [dir]`**</small>:  Space-separated list of directories to bind within singularity images (must be surrounded by quotations if more than one directory). This is passed to the -B option of `singularity run`. In most cases any filenames passed to the pipeline will be auto-bound within singularity instances, but you might try this option if you're getting 'file not found' errors.  
 <small>**`--singularity-cache [dir]`**</small>:  Location to store downloaded singularity images. May also be specified with the environment variable $NXF_SINGULARITY_CACHEDIR. 
 
-### Output products and finalization
+## Output products and finalization
 
-#### Finalization options
+### Finalization options
 
 These options control the final output of the pipeline and include things like cleanup, abundance filtering, rarefaction, and production of a phyloseq object.
 
-##### Data cleanup
+#### Data cleanup
 
 <small>**`--taxon-remap [file]`**</small>: Manually re-map taxonomic classification using criteria in user-supplied table. Argument is a tabular data file (.csv or .tsv) with four columns: `original_level`, `original_value`, `new_level`, and `new_value`. Taxonomic levels are re-mapped by matching the taxonomic level (e.g., kingdom, phylum, etc.) in the `original_level` column with the value in the `original_value` column and assigning the value in `new_value` to the level in `new_level`. An example map file might look like this:  
 
@@ -915,7 +916,7 @@ Using this filter map, all ZOTUs assigned to kingdoms 'Metazoa' or 'Plantae' wil
 
 <small>**`--taxon-priority [lca/insect]`**</small>: If both LCA and insect methods were used, the final taxonomic table will be merged. Use this option to specify which method should take priority if assignments disagree. Possible options: 'lca' or 'insect'.
 
-##### Contamination / negative controls
+#### Contamination / negative controls
 
 These options provide different ways to deal with possible contaminates in your dataset. The pipeline currently supports the following methods:
 
@@ -933,7 +934,7 @@ The following command line options are available:
 <small>**`--decontam-method [method]`**</small>: (for action = 'decontam' only') Method used for determining contaminates. Value is passed to the `method` argument of the `isContaminant` function in decontam. See [package documentation](https://benjjneb.github.io/decontam/vignettes/decontam_intro.html) for more information. (default: 'auto')  
 <small>**`--dna-concentration [file]`**</small>: (for action = 'decontam' only') Tabular file containing DNA concentrations of each sample in ng/ul. A file in .csv or .tsv format with two columns: `sample` and `concentration`. The first column contains sample IDs and the second column contains DNA concentrations. Passed to the `conc` argument of the `isContaminant` function in decontam. See [package documentation](https://benjjneb.github.io/decontam/vignettes/decontam_intro.html) for more information.  
 
-##### Abundance filtration and rarefaction
+#### Abundance filtration and rarefaction
 
 These options provide the ability to filter output by absolute and relative sequence abundance as well as rarefy read counts to minimum depth.
 
@@ -945,14 +946,14 @@ These options provide the ability to filter output by absolute and relative sequ
 <small>**`--rarefaction-method [method]`**</small>: Method by which to rarefy read counts. Available options are 'perm' and 'phyloseq'. For 'perm', perform permutational rarefaction using the `rrarefy.perm` function in the [EcolUtils](https://github.com/GuillemSalazar/EcolUtils) package. For 'phyloseq', use the `rarefy_even_depth` function in the [phyloseq](https://joey711.github.io/phyloseq/) package. (default: 'perm')  
 <small>**`--permutations [num]`**</small>: Number of permutations to use in permutational rarefaction (only when `--rarefy` and `--rarefy-method perm` are passed). (default: 100)  
 
-##### Other finalization options
+#### Other finalization options
 
 <small>**`--lca-table`**</small>: Produce final ZOTU table merged with LCA taxonomy only.  
 <small>**`--insect-table`**</small>: Produce final ZOTU table merged with insect taxonomy only.  
 
-#### Output products
+### Output products
 
-##### Generating phyloseq objects
+#### Generating phyloseq objects
 
 rainbow_bridge supports generation of [phyloseq](https://joey711.github.io/phyloseq/) objects from pipeline output or user-supplied data. This will produce an RDS file that you can load directly into R and use for downstream analyses. There are a few options that can be specified for this process. Pipeline-generated (i.e., [insect](#classification-using-insect) or [LCA](#lca-collapse)) or user-supplied taxonomic classifications can be used along with the required user-supplied sample metadata.
 
@@ -964,8 +965,9 @@ rainbow_bridge supports generation of [phyloseq](https://joey711.github.io/phylo
 
 # Useful examples and tips
 
-## Downloading the NCBI BLAST nucleotide database
-If you choose to BLAST your ZOTUs, you'll need to provide a path to a local GenBank nucleotide (nt) and/or your custom BLAST database. To download the NCBI nucleotide database locally, follow the steps below (these examples all use singularity, but the commands following 'singularity run' are universal):
+## Downloading NCBI BLAST databases
+
+If you choose to BLAST your ZOTUs, you'll need to provide a path to a local BLAST database. This can be either a custom database made from your own sequences or one of the databases supplied by NCBI (e.g., 'nt', 'core_nt', etc.). Below is an example of how to download the nucleotide (nt) database from NCBI's servers. This applies to any database available from NCBI (just replace 'nt' with the name of the database you want to download). These examples use singularity, but the commands following 'singularity run' are universal:
 
 1. Download the official [BLAST+ container](https://github.com/ncbi/blast_plus_docs#show-blast-databases-available-for-download-from-ncbi) with Singularity:
    ```console
@@ -973,10 +975,10 @@ If you choose to BLAST your ZOTUs, you'll need to provide a path to a local GenB
    ```
    --dir can be any directory you want it to. It's just the place where the image (.sif file) is saved.
 
-1. Create a directory where you want to keep the database (here, for example, /opt/storage/blast). From there use the `update_blastdb.pl` command to download the appropriate database (this is going to take a very long time so it's good to run it inside a screen session or on a computer you can walk away from):
+1. Create a directory where you want to keep the database (here, for example, /opt/blast). From there use the `update_blastdb.pl` command to download the appropriate database (this is going to take a very long time so it's good to run it inside a screen session or on a computer you can walk away from):
    ```console
-   $ mkdir /opt/storage/blast
-   $ cd /opt/storage/blast
+   $ mkdir -p /opt/blast
+   $ cd /opt/blast
    $ singularity run $HOME/tmp/blast_latest.sif update_blastdb.pl --decompress nt
    ```
    
@@ -1011,7 +1013,7 @@ GTCCATTCGGAGTACTGACTTATCAAATGTCGATGGTTCGGTATTGGCGAACCATGTTGGTAACGAGTAACGGGGAATCA
 GGGTTCGATTCCGGAGAGGCAGCCTGAGAAACGGCTGGCACATCT
 ```
 
-Since you want them to be assigned appropriate taxonomy, you've mapped each sequence to an [NCBI taxonomic ID](https://www.ncbi.nlm.nih.gov/taxonomy) (file can be tab- or space-separated).This file will be called `taxid_map`:
+Since you want them to be assigned appropriate taxonomy, you've mapped each sequence to an [NCBI taxonomic ID](https://www.ncbi.nlm.nih.gov/taxonomy) (file can be tab- or space-separated). This file will be called `taxid_map`:
 
 ```
 seq1	9593
@@ -1060,7 +1062,7 @@ In order to use this custom database with rainbow_bridge, if these files reside 
 
 ## Parameter files
 
-All the command-line options outlined in this document can either be passed as shown or, for convenience and repeatability, they may be defined in a parameter file in either YAML or json format. Then, launch the pipeline using the option `-params-file [file]` (**note the single dash before the option, this denotes a nextflow option rather than a rainbow_bridge option**). Option names can be entered as-is (they must be quoted if using json format), but **leading dashes need to be removed**. For example, the option `--demultiplexed-by` should be entered as `demultiplexed-by`. Boolean options (i.e., options with no parameter that are just on/off switches such as `--single` or `--paired`) should be assigned a value of 'true' or 'false'. Here is an example parameter file in YAML format:
+All of the command-line options outlined in this document can be defined in a parameter file in either YAML or json format for ease of reuse. With parameters defined in a file, launch the pipeline using the option `-params-file [file]` (**note the single dash before the option, this denotes a nextflow option rather than a rainbow_bridge option**). Option names can be entered as-is (they must be quoted if using json format), but **leading dashes need to be removed**. For example, the option `--demultiplexed-by` should be entered as `demultiplexed-by`. Boolean options (i.e., options with no parameter that are just on/off switches such as `--single` or `--paired`) should be assigned a value of 'true' or 'false'. Here is an example parameter file in YAML format:
 
 ```yaml
 paired: true
@@ -1092,14 +1094,14 @@ and the same thing in json format:
 If the first example above is saved as options.yml, rainbow_bridge can be then executed like this:
 
 ```console
-$ rainbow_bridge.nf -params-file options.yml
+$ nextflow run /path/to/rainbow_bridge.nf -params-file options.yml
 ```
 <small>**(again, note the single dash)**</small>
 
 Which is equivalent to running it like this:
 
 ```console
-$ rainbow_bridge.nf \
+$ nextflow run /path/to/rainbow_bridge.nf \
   --paired \
   --reads 'reads/*{R1,R2}*.fastq.gz' \
   --demultiplexed-by index \
@@ -1140,7 +1142,7 @@ And in json:
 Nextflow allows the user to be notified upon completion or failure of the pipeline run. To do this, simply pass your email address with the `-N` option when running rainbow_bridge.nf (again, note the single dash). For example, if you want to launch the pipeline using an options file and receive an email when the run completes:
 
 ```console
-$ rainbow_bridge.nf -params-file options.yml -N someguy@nobody.com
+$ nextflow run /path/to/rainbow_bridge.nf -params-file options.yml -N someguy@nobody.com
 ```
 
 # Workflow

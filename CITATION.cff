@@ -25,13 +25,13 @@ identifiers:
 repository-code: 'https://github.com/mhoban/rainbow_bridge'
 abstract: >-
   rainbow_bridge is a fully automated containerized 
-  pipeline based on nextflow that employs a number of
-  state-of-the-art applications to process eDNA and other
-  metabarcoding data from raw sequences to the generation of
+  pipeline based on nextflow that processes eDNA and other
+  metabarcoding data from raw sequences to the inference of
   operational taxonomic units and their abundance tables.
 keywords:
   - metabarcoding
   - environmental DNA
+  - amplicon sequencing
   - eDNA
   - biodiversity
 license: AGPL-3.0-or-later

@@ -53,25 +53,39 @@ def check_params() {
     exit(0)
   }
 
+  // check PCR primers
+  if (params.fwdPrimer || params.reversePrimer) {
+    // only allow primers or barcode
+    if (params.barcode) {
+      println(colors.red("Only one of ") + colors.bred("--barcode") + colors.red(" or ") + colors.bred("--fwd-primer/--reverse-primer") + colors.red(" may be passed"))
+      exit(1)
+    }
+    // bail if either primer doesn't exist
+    if ((!params.fwdPrimer) || (!params.reversePrimer)) {
+      println(colors.red("Both forward and reverse primers are required"))
+      exit(1)
+    }
+  }
+
   // check barcode file(s)
-  if (!params.noPrimers) {
-    if (params.denoiser != 'dada2' || !(params.fwdPrimer && params.reversePrimer)) {
-      def exists = false
-      if (params.barcode) {
-        def f = file(params.barcode)
-        f = helper.is_list(f) ? f : [f]
-        exists = f.size() && f.every{ it.exists() }
-      }
-      if (!exists) {
-        if (params.denoiser == 'dada2') {
-          println(colors.red("PCR primers must specified for trimming before analysis with DADA2 using the arguments ") + colors.bred("--fwd-primer") +
-          colors.red(" and ") + colors.bred("--reverse-primer"))
-          println(colors.red("Primers may also be supplied in a barcode file using the ") + colors.bred("--barcode") + colors.red(" argument"))
-        } else {
-          println(colors.red("A barcode file must be specified using the ") + colors.bred("--barcode") + colors.red(" argument"))
-        }
-        exit(1)
-      }
+  if (params.barcode) {
+    // only allow primers or barcode
+    if (params.fwdPrimer || params.reversePrimer) {
+      println(colors.red("Only one of ") + colors.bred("--barcode") + colors.red(" or ") + colors.bred("--fwd-primer/--reverse-primer") + colors.red(" may be passed"))
+      exit(1)
+    }
+    // check barcode file(s) exist
+    def f = file(params.barcode)
+    f = helper.is_list(f) ? f : [f]
+    if (!(f.size() && f.every{ it.exists() })) {
+      println(colors.red("The specified barcode file(s) either don't exist or there was some problem"))
+      exit(1)
+    }
+  } else {
+    // bail if demultiplexed by barcode or pool and no barcode is given
+    if (params.demultiplexedBy in ['combined','barcode']) {
+      println(colors.red("A valid barcode file is required for this demultiplexing method"))
+      exit(1)
     }
   }
 
@@ -1493,9 +1507,9 @@ workflow {
       insect_taxonomy = Channel.fromPath('nofile-insect-taxonomy')
     }
 
-    // do this part if the zotu table exists
-    if (helper.file_exists(params.zotuTable)) {
-      zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
+    // do this part if the sequence table exists
+    if (helper.file_exists(params.seqTable)) {
+      zotu_table = Channel.fromPath(params.seqTable, checkIfExists: true)
       curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table")
 
       // run it through finalize
@@ -1743,33 +1757,26 @@ workflow {
       }
     }
       
-    // load barcodes
-    // run them through fix_barcodes, which replaces I's with N's in the primer sequences
-    if (params.barcode) {
-      Channel.fromPath(params.barcode) |
-        fix_barcodes |
-        set { barcodes }
-    }
-
     // run the dada2 pipeline
     if (params.denoiser == "dada2") {
-      primers = Channel.of([])
-      // if there's a barcode file, assume it's in ngsfilter format
-      // and pull unique primer pairs out of the fourth and fifth columns
-      // if there's more than one unique set, weird stuff might happen
-      if (params.barcode) {
-        barcodes | 
-          splitCsv(sep: "\t") |
-          map { !(it[0] =~ /^#/ ) ? [it[3],it[4]] : null } |
-          unique |
-          set { primers }
-      } else {
-        // otherwise get the primer sequences from the command line
-        primers = Channel.of([params.fwdPrimer,params.reversePrimer])
-      }
 
+      def trim = params.barcode || (params.fwdPrimer && params.reversePrimer)
       if (params.demultiplexedBy == "index") {
-        if (!params.noPrimers) {
+        if (trim) {
+          primers = Channel.of([])
+          // if there's a barcode file, assume it's in ngsfilter format
+          // and pull unique primer pairs out of the fourth and fifth columns
+          // if there's more than one unique set, weird stuff might happen
+          if (params.barcode) {
+            Channel.fromPath(params.barcode) | 
+              splitCsv(sep: "\t") |
+              map { !(it[0] =~ /^#/ ) ? [it[3],it[4]] : null } |
+              unique |
+              set { primers }
+          } else {
+            // otherwise get the primer sequences from the command line
+            primers = Channel.of([params.fwdPrimer,params.reversePrimer])
+          }
           trim_primers(reads.combine(primers)) |
             set { reads }
         } else {
@@ -1786,6 +1793,7 @@ workflow {
         dada_plot_quality_profiles(reads)
         if (params.plotOnly) { 
           println(colors.yellow("bailing out"))
+          // TODO: make this actually work
           // wait for plotting to finish and bail
           dada_plot_quality_profiles.collect()
           exit(0)
@@ -1865,6 +1873,21 @@ workflow {
       } else {
         // otherwise do all the various processing bits
 
+        // load barcodes or create a barcode file from primers
+        // run them through fix_barcodes if we need to, 
+        // which replaces I's with N's in the primer sequences
+        if (params.barcode) {
+          barcode = Channel.fromPath(params.barcode) 
+            fix_barcodes |
+            set { barcodes }
+        } else if (params.fwdPrimer && params.reversePrimer) {
+          Channel.of( [params.fwdPrimer.replaceAll(/[Ii]/,'N'), params.reversePrimer.replaceAll(/[Ii]/,'N')]  ) | 
+            collectFile { ['barcode.tsv', "marker\tsample\t:\t${it[0]}\t${it[1]}\tseq\n"] } | 
+            set { barcodes }
+        } else {
+          barcodes = Channel.fromPath('-')
+        }
+
         // if the sequences are already demultiplexed by indices, we'll
         // process them separately, including optionally attempting to remove ambiguous indices
         // and ultimately smash them together for vsearch/usearch to do the dereplication
@@ -1912,7 +1935,8 @@ workflow {
             set { rfm_barcodes }
 
           // only run ngsfilter if we have primers
-          if(!params.noPrimers) {
+          def trim = params.barcode || (params.fwdPrimer && params.reversePrimer)
+          if(trim) {
             rfm_barcodes |
               ngsfilter 
             ngsfilter.out.result |

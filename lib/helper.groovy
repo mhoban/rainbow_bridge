@@ -30,6 +30,17 @@ class helper {
 		return (new File(f)).exists()
 	}
 
+  static public boolean is_url(url) throws MalformedURLException, URISyntaxException {
+    try {
+      new URL(url).toURI();
+      return true;
+    } catch (MalformedURLException e) {
+      return false;
+    } catch (URISyntaxException e) {
+      return false;
+    }
+  }
+
 	static public boolean is_dir(d) {
 		return (new File(d)).isDirectory()
 	}

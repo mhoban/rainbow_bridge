@@ -1877,7 +1877,7 @@ workflow {
         // run them through fix_barcodes if we need to, 
         // which replaces I's with N's in the primer sequences
         if (params.barcode) {
-          barcode = Channel.fromPath(params.barcode) 
+          Channel.fromPath(params.barcode) |
             fix_barcodes |
             set { barcodes }
         } else if (params.fwdPrimer && params.reversePrimer) {

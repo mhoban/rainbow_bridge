@@ -496,6 +496,9 @@ These options control how (and with what tool) sequences are denoised and sequen
 
 ### Options for DADA2
 
+> [!NOTE]
+> Since the `dada` R package has a delay when loading, `dada2`-based runs tend to be slower than those using `usearch` or `vsearch`.
+
 <small>**`--plot-qualities`**</small>: Plot quality score profiles per sample (fwd/rev for paired-end reads).  
 <small>**`--plot-only`**</small>: Terminate pipeline after plotting quality scores.  
 <small>**`--plot-errors`**</small>: Plot learned vs. expected errors.  

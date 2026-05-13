@@ -192,7 +192,7 @@ def check_params() {
     }
 
     // make --blast-db param into a list, if it isn't
-    def blasts = params.blastDb
+    def blasts = params.blast
     if (!helper.is_list(blasts))
       blasts = [blasts]
 
@@ -1184,14 +1184,14 @@ process merge_blast {
   publishDir { "${params.outDir}/blast" }, mode: params.publishMode
 
   input:
-    path 'staged/*'
+    path 'staged/*.tsv'
 
   output:
     path 'blast_result_merged.tsv'
 
   script:
   """
-  cat staged/* > blast_result_merged.tsv
+  cat staged/*.tsv > blast_result_merged.tsv
   """
 }
 
@@ -2114,7 +2114,7 @@ workflow {
       // possibly related to NF issue #804: https://github.com/nextflow-io/nextflow/issues/804
 
       // make --blast-db value a list, if it's not already
-      def blasts = params.blastDb
+      def blasts = params.blast
       if (!helper.is_list(blasts))
         blasts = [blasts]
 

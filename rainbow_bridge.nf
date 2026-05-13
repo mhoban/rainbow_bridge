@@ -1084,8 +1084,7 @@ process blast {
   }, mode: params.publishMode
 
   input:
-    tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb)
-    tuple val(taxids), val(method)
+    tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb), val(taxids), val(method)
 
   output:
     path("blast_result.tsv"), emit: result
@@ -2177,7 +2176,7 @@ workflow {
           set { blast_taxids }
       } 
       // run the blast query
-      blast(blast_input,blast_taxids)
+      blast(blast_input.combine(blast_taxids))
 
       // merge blast results from different databases
       blast.out.result |

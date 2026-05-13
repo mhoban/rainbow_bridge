@@ -70,7 +70,7 @@ option_list = list(
     type="double",
     help="Value (between 0 and 1) indicating the minimum distance to the nearest neighbor for the the recursive classification algorithm to be skipped"
   ),
-  make_option(c("-z","--zotu-table"),action="store",default=NA,type="character",help="Optional (tab-separated) OTU table to merge with results (first column must be OTU ID)"),
+  make_option(c("-z","--seq-table"),action="store",default=NA,type="character",help="Optional (tab-separated) OTU table to merge with results (first column must be OTU ID)"),
   make_option(c("-l","--lineage"),action="store",default=NA,type="character",help="NCBI ranked lineage file to fill in domain"),
   make_option(c("-m","--merged"),action="store",default=NA,type="character",help="NCBI merged taxid table"),
   make_option(c("-O","--output"),action="store",default="insect_taxonomy.tsv",type="character",help="Output filename")
@@ -89,7 +89,7 @@ opt = parse_args(
     option_list=option_list,
     formatter=nice_formatter,
     prog="insect.R",
-    usage="%prog [options] <zotus> <model>"
+    usage="%prog [options] <sequences> <model>"
   ), 
   convert_hyphens_to_underscores = TRUE,
   positional_arguments = 2,
@@ -105,7 +105,7 @@ if (any(!fe)) {
 }
 
 # pull out positional arguments
-zotu_file <- opt$args[1]
+seq_file <- opt$args[1]
 model_file <- opt$args[2]
 
 # pull out options
@@ -115,18 +115,18 @@ thresh <- opt$options$threshold
 offs <- opt$options$offset
 mincount <- opt$options$min_count
 pingr <- opt$options$ping
-zotu_table_file <- opt$options$zotu_table
+seq_table_file <- opt$options$seq_table
 lineage_dump <- opt$options$lineage
 merged_dump <- opt$options$merged
 
-# read zotus
-zotus <- readFASTA(zotu_file)
+# read sequences
+sequences <- readFASTA(seq_file)
 # read model
 classifier <- readRDS(model_file)
 
 # run the model
 classified <- classify(
-  zotus,
+  sequences,
   classifier,
   threshold = thresh,
   metadata = TRUE,
@@ -171,12 +171,12 @@ if (file_exists(lineage_dump)) {
     relocate(domain,.before=kingdom)
 }
 
-# merge zotu table, if desired
-if (file_exists(zotu_table_file)) {
-  zotu_table <- read_tsv(zotu_table_file,col_types=cols())
+# merge sequence table, if desired
+if (file_exists(seq_table_file)) {
+  seq_table <- read_tsv(seq_table_file,col_types=cols())
   # use inner join so we only get complete data
   classified <- classified %>%
-    inner_join(zotu_table,by=setNames(colnames(zotu_table)[1],"representative")) 
+    inner_join(seq_table,by=setNames(colnames(seq_table)[1],"representative")) 
 }
 
 classified <- classified %>%

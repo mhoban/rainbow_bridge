@@ -90,6 +90,9 @@ class helper {
                                    For `combined` demultiplexing strategy, first column of barcode file
                                    must match the underscore-delimited prefix of your sequence read files.
                                    (See README for more details).
+      --fwd-primer [seq]           Forward PCR primer (to trim)
+      --reverse-primer [seq]       Reverse PCR primer (to trim)
+      --free-primers               Primer sequences are unanchored when using cutadapt 
       --project [project]          Project name, applied to various output filenames (default: ${params.project}) 
       --save-config [file]         Save current command-line options to YAML file (default: options.yml)
       --publish-mode [mode]        Specify how nextflow places files in output directories 
@@ -182,7 +185,7 @@ class helper {
     LCA taxonomy collapse:
       --lca                         Collapse assigned BLAST results by least common ancestor (LCA)
       --blast-file [file]           Blast result table (only for standalone LCA assignment)
-      --zotu-table [file]           zOTU table file (only for standalone LCA assignment)
+      --seq-table [file]           zOTU table file (only for standalone LCA assignment)
       --lca-lineage [file]          Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage 
       --lca-qcov [num]              Minimum query coverage for LCA taxonomy assignment (default: 100)
       --lca-evalue [num]            Maximum e-value for LCA taxonomy refinement (default: 0.001)
@@ -254,10 +257,10 @@ class helper {
       --demux-only                  Stop after demultiplexing and splitting raw reads
       --primer-mismatch             Allowed number of mismatched primer bases 
                                     (default: ${params.primerMismatch})
-      --no-pcr                      Skip primer matching (ngsfilter) altogether. 
-                                    Use with demultiplexed runs lacking primer sequences.
+      --no-primers                  Skip primer matching (ngsfilter/cutadapt) altogether. 
+                                    Use with e.g., demultiplexed runs lacking primer sequences.
 
-    Denoising and zOTU inference:  
+    Denoising and zOTU inference (usearch/vsearch options):  
       --denoiser [usearch/vsearch]  Sets the tool used for denoising & chimera removal (default: vsearch)
       --alpha [num]                 Sets the alpha parameter for the UNOISE3 algorithm (default: ${params.alpha})
       --min-abundance [num]         Minimum sequence abundance for zOTU determination; sequences below threshold will be discarded
@@ -273,6 +276,28 @@ class helper {
                                     Choose higher values when using markers with lower genetic variation 
                                     and/or few expected PCR and sequencing errors. (default: ${params.luluMinMatch})
       --lulu-min-rc [num]           LULU minimum relative co-occurence rate (default: ${params.luluMinRc})
+
+    Denoising and ASV inference (dada2 options):  
+      --max-len [num]               Maximum overall sequence length (only for cutadapt/dada2, default: ${params.minLen})
+      --plot-only                   Terminate pipeline after plotting quality profiles 
+      --plot-qualities              Output quality profile plots
+      --plot-errors                 Output error profile plots
+      --plot-qualities-n [num]      Number of reads to sample from fastq when plotting quality profiles (default: ${params.plotQualitiesN})
+      --dada-truncate [num]         Truncate reads after specified number of bases (applies to both directions, default: ${params.dadaTruncate})
+      --dada-trunc-f [num]          Truncate forward reads after specified number of bases (default: ${params.dadaTruncF})
+      --dada-trunc-r [num]          Truncate reverse reads after specified number of bases (default: ${params.dadaTruncR}) 
+      --dada-trunc-q [num]          Truncate reads at first quality score below value (default: ${params.dadaTruncQ}) 
+      --dada-max-n [num]            Discard sequences with N's over value (default: ${params.dadaMaxN}) 
+      --dada-max-ee [num]           Discard reads with with higher than specified number of "expected errors" (both directions, default: ${params.dadaMaxEe}) 
+      --dada-max-ee-f [num]         Discard forward reads with with higher than specified number of "expected errors" (default: ${params.dadaMaxEeF}) 
+      --dada-max-ee-r [num]         Discard reverse reads with with higher than specified number of "expected errors" (default: ${params.dadaMaxEeR}) 
+      --dada-remove-phix            Discard reads matching known phiX sequences
+      --dada-trim-left [num]        Trim specified bases from beginning of reads (default: ${params.dadaTrimLeft})
+      --dada-trim-right [num]       Trim specified bases from end of reads (default: ${params.dadaTrimRight})
+      --dada-max-len [num]          Remove reads longer than specified length (default: ${params.dadaMaxLen})
+      --dada-min-len [num]          Remove reads shorter than specified length (default: ${params.dadaMinLen})
+      --dada-min-q [num]            Remove post-truncation reads with quality scores below value (default: ${params.dadaMinQ})
+      --dada-chimera-method [mehod] Chimera detection method (default: ${params.dadaChimeraMethod})
 
     Resource allocation:
       --max-memory [mem]            Maximum memory available to nextflow processes, e.g., '8.GB' (default: ${params.maxMemory})

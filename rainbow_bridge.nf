@@ -53,6 +53,43 @@ def check_params() {
     exit(0)
   }
 
+  // check PCR primers
+  if (params.fwdPrimer || params.reversePrimer) {
+    // only allow primers or barcode
+    if (params.barcode) {
+      println(colors.red("Only one of ") + colors.bred("--barcode") + colors.red(" or ") + colors.bred("--fwd-primer/--reverse-primer") + colors.red(" may be passed"))
+      exit(1)
+    }
+    // bail if either primer doesn't exist
+    if ((!params.fwdPrimer) || (!params.reversePrimer)) {
+      println(colors.red("Both forward and reverse primers are required"))
+      exit(1)
+    }
+  }
+
+  // check barcode file(s)
+  if (params.barcode) {
+    // only allow primers or barcode
+    if (params.fwdPrimer || params.reversePrimer) {
+      println(colors.red("Only one of ") + colors.bred("--barcode") + colors.red(" or ") + colors.bred("--fwd-primer/--reverse-primer") + colors.red(" may be passed"))
+      exit(1)
+    }
+    // check barcode file(s) exist
+    def f = file(params.barcode)
+    f = helper.is_list(f) ? f : [f]
+    if (!(f.size() && f.every{ it.exists() })) {
+      println(colors.red("The specified barcode file(s) either don't exist or there was some problem"))
+      exit(1)
+    }
+  } else {
+    // bail if demultiplexed by barcode or pool and no barcode is given
+    if (params.demultiplexedBy in ['combined','barcode']) {
+      println(colors.red("A valid barcode file is required for this demultiplexing method"))
+      exit(1)
+    }
+  }
+
+  // bail if they have previously demultiplexed samples and they're trying to split them
   if (params.split && params.demultiplexedBy == "index") {
     println(colors.red("Parameters") + colors.bred(" --split ") + colors.red("and") + colors.bred(" index-based demultiplexing ") + colors.red("are mutually exclusive"))
     exit(1)
@@ -68,11 +105,11 @@ def check_params() {
     exit(1)
   }
 
-  // check phyloseq params
+  // validate phyloseq params
   if (params.phyloseq) {
     if (!helper.file_exists(params.metadata)) {
-      println(colors.yellow("The metadata file you passed to use with phyloseq ('${params.metadata}') does not exist"))
-      /* exit(1) */
+      println(colors.yellow("The specified phyloseql metadata file ('${params.metadata}') does not exist"))
+      exit(1) 
     }
 
     switch(params.taxonomy) {
@@ -122,19 +159,19 @@ def check_params() {
     }
   }
 
+  // validate sample map
   if (params.sampleMap != "" && !helper.file_exists(params.sampleMap)) {
     println(colors.red("The supplied sample map file ${params.sampleMap} does not exist"))
     exit(1)
   }
 
   // check to make sure denoiser is a valid input
-  if (!(params.denoiser in ['usearch','vsearch'])) {
-    exit(1,colors.bred("--denoiser") + colors.red(" must be either 'vsearch' or 'usearch'"))
+  if (!(params.denoiser in ['usearch','vsearch','dada2'])) {
+    exit(1,colors.bred("--denoiser") + colors.red(" must be one of 'vsearch', 'usearch', or 'dada2'"))
   }
 
-  // sanity check, blast database
+  // sanity check blast database
   if (params.blast) {
-
     // if --blast-taxdb is passed, check that it's a .tar.gz archive
     if (params.blastTaxdb && !(params.blastTaxdb =~ /(?i)\.tar\.gz$/)) {
       println(colors.bred("--blast-taxdb") + colors.red(" must be a .tar.gz archive"))
@@ -172,7 +209,7 @@ def check_params() {
         if (!file("${it}.ndb").exists()) {
           println(colors.red("Could not find BLAST database '${it}'. Please provide the path to an existing blast database."))
           if (it =~ /~/) {
-            println(colors.yellow("The BLAST database '${it}' contains a tilde ('~') that was not expanded by the shell. Try entering an absolute path."))
+            println(colors.yellow("The BLAST database path '${it}' contains a tilde ('~') that was not expanded by the shell. Try entering an absolute path."))
           }
           exit(1)
         }
@@ -209,6 +246,467 @@ def check_params() {
   }
 }
 
+/* DADA2 and related processes (these supercede some of the others below) */
+
+// plot sequence read quality profiles
+process dada_plot_quality_profiles {
+  label 'r'
+  label 'process_more_memory'
+
+  publishDir "${params.preDir}/quality_plots"
+
+  input:
+    tuple val(key), path(reads)
+  output:
+    tuple val(key), path("${key}_quality_plot.pdf")
+  
+  script:
+  """
+  #!/usr/bin/env Rscript
+  library(ggplot2)
+  library(dada2)
+  reads <- c(${reads.collect{ '"' + it + '"' }.join(",")})
+  plotz <- plotQualityProfile(reads,n=${params.plotQualitiesN})
+  ggsave(filename="${key}_quality_plot.pdf",plot=plotz,device=cairo_pdf,width=7,height=5,units="in")
+  """
+}
+
+// trim primers from fwd/reverse reads
+process trim_primers {
+  label 'cutadapt'
+  label 'process_low'
+
+  publishDir "${params.preDir}/primers_trimmed"
+
+  input:
+    tuple val(key), path(reads), val(fwd), val(rev)
+  output:
+    tuple val(key), path("${key}_*_primer_trimmed.fastq.gz")
+
+  script:
+  // reverse complement the primers
+  def bases = [
+    'a': 'T', 't': 'A', 'u': 'A', 'g': 'C', 'c': 'G', 'y': 'R', 'r': 'Y', 's': 'S',
+    'w': 'W', 'k': 'M', 'm': 'K', 'b': 'V', 'd': 'H', 'h': 'D', 'v': 'B', 'n': 'N',
+    'A': 'T', 'T': 'A', 'U': 'A', 'G': 'C', 'C': 'G', 'Y': 'R', 'R': 'Y', 'S': 'S',
+    'W': 'W', 'K': 'M', 'M': 'K', 'B': 'V', 'D': 'H', 'H': 'D', 'V': 'B', 'N': 'N'
+  ]
+  def fwd_rc = fwd.reverse().collect{ bases[it] }.join('')
+  def rev_rc = rev.reverse().collect{ bases[it] }.join('')
+  """
+  cutadapt \\
+    --discard-untrimmed \\
+    --no-indels \\
+    -m ${params.minLen} \\
+    -j ${task.cpus} \\
+    -e ${params.primerMismatch} \\
+    -a ${params.freePrimers ? "" : "^"}${fwd}...${rev_rc} \\
+    -A ${params.freePrimers ? "" : "^"}${rev}...${fwd_rc} \\
+    -o ${key}_R1_primer_trimmed.fastq.gz \\
+    ${params.paired ? "-p ${key}_R2_primer_trimmed.fastq.gz" : "" } \\
+    ${params.maxLen ? "-M "  + params.maxLen : '' } \\
+    ${reads[0]} ${params.paired ? reads[1] : ""}
+  """
+}
+
+// trim reads to minimum absolute length
+process trim_length {
+  label 'cutadapt'
+  label 'process_low'
+
+  publishDir "${params.preDir}/length_filtered"
+
+  input:
+    tuple val(key), path(reads)
+  output:
+    tuple val(key), path("${key}_*_length_trimmed.fastq.gz")
+
+  script:
+  """
+  cutadapt \\
+    -m ${params.minLen} \\
+    -o ${key}_R1_length_trimmed.fastq.gz \\
+    ${params.paired ? "-p ${key}_R2_length_trimmed.fastq.gz" : "" } \\
+    ${reads[0]} ${params.paired ? reads[1] : ""}
+  """
+}
+
+/* do dada2 filter and trim */
+process dada_filter_trim {
+  label 'r'
+  label 'process_high'
+
+  publishDir "${params.preDir}/filtered_trimmed", pattern: "*.fastq.gz"
+  publishDir "${params.preDir}/filtered_trimmed", pattern: "*.tsv"
+
+  input: 
+    tuple val(samples), path(fwd), path(rev)
+
+  output:
+    tuple val(samples), path('*_R1_filtered_trimmed.fastq.gz'), path('*_R2_filtered_trimmed.fastq.gz'), path('fwd.rds'), path('rev.rds'), emit: result
+    path('filter.rds'), emit: filter
+    path('filter_report.tsv')
+  
+  script:
+  if (params.paired) {
+    """
+    #!/usr/bin/env Rscript
+    library(rlang)
+    library(purrr)
+    library(stringr)
+    library(dada2)
+    library(tibble)
+    library(readr)
+    library(dplyr)
+
+    samples <- c(${samples.collect{"\"${it}\""}.join(",")})
+    fwd <- c(${fwd.collect{"\"${it}\""}.join(",")})
+    sample_map <- samples %>%
+      set_names(fwd)  
+    rev <- c(${rev.collect{"\"${it}\""}.join(",")})
+    fwd_filtered <- map_chr(samples,\\(s) str_glue("{s}_R1_filtered_trimmed.fastq.gz")) %>%
+      set_names(samples)
+    rev_filtered <- map_chr(samples,\\(s) str_glue("{s}_R2_filtered_trimmed.fastq.gz")) %>%
+      set_names(samples)
+
+    filtered <- filterAndTrim(
+      fwd = fwd,
+      filt = fwd_filtered,
+      rev = rev,
+      filt.rev = rev_filtered,
+      compress = TRUE,
+      truncQ = ${params.dadaTruncQ},
+      truncLen = c(${params.dadaTruncate ? params.dadaTruncate : params.dadaTruncF + "," + params.dadaTruncR}),
+      trimLeft = ${params.dadaTrimLeft},
+      trimRight = ${params.dadaTrimRight},
+      maxLen = ${params.dadaMaxLen},
+      minLen = ${params.dadaMinLen},
+      maxN = ${params.dadaMaxN},
+      maxEE = c(${params.dadaMaxEeF && params.dadaMaxEeR ? params.dadaMaxEeF + "," + params.dadaMaxEeR : params.dadaMaxEe + "," + params.dadaMaxEe}),
+      rm.phix = TRUE,
+      multithread = ${task.cpus},
+      matchIDs = TRUE
+    )
+
+    kept <- filtered %>%
+      as_tibble(rownames="file") %>%
+      filter(reads.out > 0) %>%
+      pull(file)
+    fwd_filtered <- fwd_filtered[names(fwd_filtered) %in% sample_map[kept]]
+    rev_filtered <- rev_filtered[names(rev_filtered) %in% sample_map[kept]]
+
+    saveRDS(filtered,'filter.rds')
+
+    filtered <- as_tibble(filtered,rownames="file")
+    write_tsv(filtered,"filter_report.tsv")
+
+    saveRDS(fwd_filtered,'fwd.rds')
+    saveRDS(rev_filtered,'rev.rds')
+    """
+  } else if (params.single) {
+    """
+    #!/usr/bin/env Rscript
+    library(rlang)
+    library(purrr)
+    library(stringr)
+    library(dada2)
+    library(tibble)
+    library(readr)
+    library(dplyr)
+
+    samples <- c(${samples.collect{"\"${it}\""}.join(",")})
+    fwd <- c(${fwd.collect{"\"${it}\""}.join(",")})
+    sample_map <- samples %>%
+      set_names(fwd)  
+    fwd_filtered <- map_chr(samples,\\(s) str_glue("{s}_R1_filtered_trimmed.fastq.gz")) %>%
+      set_names(samples)
+    # make fake reverse reads
+    rev_filtered <- map_chr(samples,\\(s) {
+      fn <- str_glue("{s}_R2_filtered_trimmed.fastq.gz")
+      system(paste("touch",fn))
+      return(fn)
+    }) %>%
+      set_names(samples)
+
+    filtered <- filterAndTrim(
+      fwd = fwd,
+      filt = fwd_filtered,
+      compress = TRUE,
+      truncQ = ${params.dadaTruncQ},
+      truncLen = ${params.dadaTruncate},
+      trimLeft = ${params.dadaTrimLeft},
+      trimRight = ${params.dadaTrimRight},
+      maxLen = ${params.dadaMaxLen},
+      minLen = ${params.dadaMinLen},
+      maxN = ${params.dadaMaxN},
+      maxEE = ${params.dadaMaxEe},
+      rm.phix = TRUE,
+      multithread = ${task.cpus},
+      matchIDs = TRUE
+    )
+
+    saveRDS(fwd_filtered,'fwd_unkept.rds')
+    saveRDS(rev_filtered,'rev_unkept.rds')
+
+    kept <- filtered %>%
+      as_tibble(rownames="file") %>%
+      filter(reads.out > 0) %>%
+      pull(file)
+    fwd_filtered <- fwd_filtered[names(fwd_filtered) %in% sample_map[kept]]
+    rev_filtered <- rev_filtered[names(rev_filtered) %in% sample_map[kept]]
+
+    saveRDS(filtered,'filter.rds')
+
+    filtered <- as_tibble(filtered,rownames="file")
+    write_tsv(filtered,"filter_report.tsv")
+
+    saveRDS(fwd_filtered,'fwd.rds')
+    saveRDS(rev_filtered,'rev.rds')
+    """
+  }
+}
+
+// learn error rate
+process dada_learn_errors {
+  label 'r'
+  label 'process_medium'
+
+  input:
+    tuple path(reads), path(filtered), val(direction)
+    // tuple val(samples), path(fwd), path(rev), path(image)
+  output:
+    tuple path(reads), path(filtered), path("error_${direction}.rds"), val(direction)
+    // tuple val(samples), path(fwd), path(rev), path('errors.Rdata')
+
+  script:
+  """
+  #!/usr/bin/env Rscript
+  library(dada2)
+
+  filtered <- readRDS("${filtered}")
+
+  err <- learnErrors(filtered, multithread=${task.cpus})
+
+  saveRDS(err,"error_${direction}.rds")
+  """
+}
+
+process dada_plot_errors {
+  label 'r'
+  label 'process_more_memory'
+
+  publishDir "${params.preDir}/error_plots"
+
+  input:
+    tuple path(reads), path(filtered), path(err), val(direction)
+  output:
+    path('*.pdf')
+
+  script:
+  """
+  #!/usr/bin/env Rscript
+  library(dada2)
+  library(ggplot2)
+
+  err <- readRDS("${err}")
+  plotz <- plotErrors(err,nominalQ=TRUE)
+
+  ggsave(filename="${direction}_error_plot.pdf",plot=plotz,device=cairo_pdf,width=6,height=6,units="in")
+  """
+}
+
+// run the main dada2 sample inference algorithm
+process dada_infer_samples {
+  label 'r'
+  label 'process_medium'
+
+  input:
+    tuple path(reads), path(filtered), path(error), val(direction)
+  output:
+    tuple path(reads), path(filtered), path(error), path("dada_${direction}.rds"), val(direction)
+
+  script:
+  """
+  #!/usr/bin/env Rscript
+  library(dada2)
+  
+  reads <- readRDS("${filtered}")
+  err <- readRDS("${error}")
+
+  dd <- dada(derep=reads,err=err,multithread=${task.cpus})
+
+  saveRDS(dd,"dada_${direction}.rds")
+  """
+}
+
+// merge forward and reverse ASVs
+process dada_merge_reads {
+  label 'r'
+  label 'process_single'
+  label 'process_more_memory'
+
+  input:
+    tuple path(reads), path(filtered), path(error), path(dada)
+  output:
+    path('merged.rds')
+
+  script:
+  """
+  #!/usr/bin/env Rscript
+  library(dada2)
+  library(stringr)
+  library(rlang)
+  library(purrr)
+
+  dir <- c('fwd','rev')
+  dd <- map(set_names(dir,dir),\\(d) {
+    list(
+      filtered=readRDS(str_glue("{d}.rds")),
+      error=readRDS(str_glue("error_{d}.rds")),
+      dada=readRDS(str_glue("dada_{d}.rds"))
+    )
+  })
+
+  merged <- mergePairs(
+    dd\$fwd\$dada,dd\$fwd\$filtered,
+    dd\$rev\$dada,dd\$rev\$filtered,
+    verbose=TRUE
+  )
+  saveRDS(merged,'merged.rds')
+  """
+}
+
+// generate ASV table and ASV fasta
+process dada_make_asv_table {
+  label 'r'
+  label 'process_single'
+
+  publishDir "${params.outDir}/asvs", pattern: "*.{tsv,fasta}"
+
+  input:
+    path(merged)
+  output:
+    path('asv_table.rds'), emit: asv
+    path("asv_table.tsv")
+    path("asvs.fasta")
+
+  script:
+  """
+  #!/usr/bin/env Rscript
+  library(dada2)
+
+  merged <- readRDS('${merged}')
+  asv_table <- makeSequenceTable(merged)
+  sequences <- names(getUniques(asv_table))
+  seqid <- paste0("ASV",seq(ncol(asv_table)))
+
+  saveRDS(asv_table,'asv_table.rds')
+
+  asv_table <- as.data.frame(t(asv_table))
+  samples <- colnames(asv_table)
+  asv_table\$ASV <- seqid
+  rownames(asv_table) <- NULL
+  asv_table <- asv_table[c('ASV',samples)]
+
+  seqid <- paste0(">",seqid)
+  fasta <- c(rbind(seqid,sequences))
+
+  write.table(asv_table,"asv_table.tsv",sep="\\t",row.names=FALSE,quote=FALSE)
+  writeLines(fasta,"asvs.fasta")
+  """
+}
+
+// detect and remove chimeras
+process dada_remove_chimeras {
+  label 'r'
+  label 'process_medium'
+
+  publishDir "${params.outDir}/asvs", pattern: "*.{tsv,fasta}"
+
+  input:
+    path(asv_table)
+  output:
+    tuple path('asv_table_nochimeras.rds'), path(asv_table), emit: asv
+    path('asvs_nochimeras.fasta'), emit: fasta
+    path('asv_table_nochimeras.tsv'), emit: asv_table
+
+  script:
+  """
+  #!/usr/bin/env Rscript
+  library(dada2)
+
+  asv_table <- readRDS("${asv_table}")
+  asv_table_nochimeras <- removeBimeraDenovo(asv_table,method="${params.dadaChimeraMethod}",multithread=TRUE,verbose=TRUE)
+  saveRDS(asv_table_nochimeras,'asv_table_nochimeras.rds')
+
+  sequences <- names(getUniques(asv_table_nochimeras))
+  seqid <- paste0("ASV",seq(ncol(asv_table_nochimeras)))
+
+  asv_table_nochimeras <- as.data.frame(t(asv_table_nochimeras))
+  samples <- colnames(asv_table_nochimeras)
+  asv_table_nochimeras\$ASV <- seqid
+  rownames(asv_table_nochimeras) <- NULL
+  asv_table_nochimeras <- asv_table_nochimeras[c('ASV',samples)]
+
+  seqid <- paste0(">",seqid)
+  fasta <- c(rbind(seqid,sequences))
+
+  write.table(asv_table_nochimeras,"asv_table_nochimeras.tsv",sep="\\t",row.names=FALSE,quote=FALSE)
+  writeLines(fasta,"asvs_nochimeras.fasta")
+  """
+}
+
+// output table tracking sequence lost across dada2 processes
+process dada_track_reads {
+  label 'r'
+  label 'process_single'
+
+  publishDir "${params.outDir}/asvs"
+
+  input:
+    tuple path(filter_table), path(filter), path(dada), path(merged), path(asv_table)
+  output:
+    path('dada_summary.tsv')
+  
+  script:
+  if (params.paired) {
+    """
+    #!/usr/bin/env Rscript
+    library(dada2)
+    
+    filter_table <- readRDS("${filter_table}")
+    fwd_filtered <- readRDS('fwd.rds')
+    rev_filtered <- readRDS('rev.rds')
+    dada_fwd <- readRDS('dada_fwd.rds')
+    dada_rev <- readRDS('dada_rev.rds')
+    merged <- readRDS('merged.rds')
+    asv_table_nochimeras <- readRDS('asv_table_nochimeras.rds')
+
+    get_n <- function(x) sum(getUniques(x))
+    sequence_table <- cbind(rownames(asv_table_nochimeras),filter_table, sapply(dada_fwd, get_n), sapply(dada_rev, get_n), sapply(merged, get_n), rowSums(asv_table_nochimeras))
+    colnames(sequence_table) <- c("sample", "input", "filtered", "denoised_fwd", "denoised_rev", "merged", "chimeras_removed")
+
+    write.table(sequence_table,"dada_summary.tsv",sep="\\t",row.names=FALSE,quote=FALSE)
+    """
+  } else {
+    """
+    #!/usr/bin/env Rscript
+    library(dada2)
+    
+    filter_table <- readRDS("${filter_table}")
+    fwd_filtered <- readRDS('fwd.rds')
+    dada_fwd <- readRDS('dada_fwd.rds')
+    asv_table_nochimeras <- readRDS('asv_table_nochimeras.rds')
+
+    get_n <- function(x) sum(getUniques(x))
+    sequence_table <- cbind(rownames(asv_table_nochimeras), filter_table, sapply(dada_fwd, get_n), rowSums(asv_table_nochimeras))
+    colnames(sequence_table) <- c("sample", "input", "filtered", "denoised", "chimeras_removed")
+
+    write.table(sequence_table,"dada_summary.tsv",sep="\\t",row.names=FALSE,quote=FALSE)
+    """
+  }
+}
+
 // trim and (where relevant) merge paired-end reads
 process filter_merge {
   label 'process_medium'
@@ -232,7 +730,7 @@ process filter_merge {
     echo 'max-quality: ${params.maxQuality}' >> settings.yml
     echo 'mate-separator: ${params.mateSeparator}' >> settings.yml
 
-    AdapterRemoval --threads ${task.cpus} --file1 ${reads} \\
+    AdapterRemoval --threads ${task.cpus} --file1 ${reads[0]} \\
       --trimns --trimqualities \\
       --minquality ${params.minQuality} \\
       --qualitymax ${params.maxQuality} \\
@@ -624,7 +1122,7 @@ process blast {
     }
     def tt = blastn_map[method] ?: ""
     blastn_map[method] = ([taxids,tt] - "").join(",")
-  }
+  } 
 
   def blastn_args = blastn_map
     .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
@@ -655,7 +1153,6 @@ process blast {
 
 // lookup taxids from taxa names
 process lookup_blast_taxids {
-  // label 'r'
   label 'shell'
   label 'process_single'
 
@@ -1010,9 +1507,9 @@ workflow {
       insect_taxonomy = Channel.fromPath('nofile-insect-taxonomy')
     }
 
-    // do this part if the zotu table exists
-    if (helper.file_exists(params.zotuTable)) {
-      zotu_table = Channel.fromPath(params.zotuTable, checkIfExists: true)
+    // do this part if the sequence table exists
+    if (helper.file_exists(params.seqTable)) {
+      zotu_table = Channel.fromPath(params.seqTable, checkIfExists: true)
       curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table")
 
       // run it through finalize
@@ -1036,6 +1533,9 @@ workflow {
       save_config(config_file.toString())
     }
 
+    // if there isn't an already-demultiplexed FASTA file
+    // figure out where the sequence reads are, make sure they're
+    // in the right order, and remap sample IDs (if requested)
     if (!helper.file_exists(params.demuxedFasta)) {
       if (params.single) {
         // if params.reads is a directory, make it a glob
@@ -1255,223 +1755,359 @@ workflow {
           } |
           set { reads }
       }
+    }
+      
+    // run the dada2 pipeline
+    if (params.denoiser == "dada2") {
 
-      // load barcodes
-      // throw an error if the file(s) are bad, but only if we're not skipping the step that needs them.
-      // we don't check in check_params because params.barcode could be a wildcard, which is trickier to check cleanly
-      // and is handled automatically by fromPath
-      // also, we run it through fix_barcodes, which replaces I's with N's in the primer sequences
-      Channel.fromPath(params.barcode, checkIfExists: !params.noPcr) |
-        fix_barcodes |
-        set { barcodes }
-
-      // if the sequences are already demultiplexed by illumina, we'll
-      // process them separately, including optionally attempting to remove ambiguous indices
-      // and ultimately smash them together for vsearch/usearch to do the dereplication
+      def trim = params.barcode || (params.fwdPrimer && params.reversePrimer)
       if (params.demultiplexedBy == "index") {
-
-        // do fastqc/multqc before filtering & merging
-        if (params.fastqc) {
-          Channel.of("initial") |
-            combine(reads) |
-            first_fastqc |
-            collect(flat: true) |
-            toList |
-            combine(Channel.of("initial")) |
-            first_multiqc
-        }
-
-        // run the first part of the pipeline for sequences that have already
-        // been demultiplexed by the sequencer
-        reads |
-          filter_merge 
-        filter_merge.out.result |
-          set { reads_filtered_merged }
-
-        // do fastqc/multiqc for filtered/merged
-        if (params.fastqc) {
-          Channel.of("filtered") |
-            combine(reads_filtered_merged) |
-            second_fastqc |
-            collect(flat: true) |
-            toList |
-            combine(Channel.of("filtered")) |
-            second_multiqc
-        }
-
-        // remove ambiguous indices, if specified
-        if (params.removeAmbiguousIndices) {
-          reads_filtered_merged |
-            filter_ambiguous_indices |
-            set { reads_filtered_merged }
-        }
-
-        // with or without the primer mismatch check, do the
-        // length filtering and smash results together into one file
-        reads_filtered_merged |
-          combine(barcodes) |
-          set { rfm_barcodes }
-
-        // only run ngsfilter if we have primers
-        if(!params.noPcr) {
-          rfm_barcodes |
-            ngsfilter 
-          ngsfilter.out.result |
-            set { rfm_barcodes }
-        }
-
-        // continue length filtering and whatnot
-        rfm_barcodes |
-          filter_length 
-        filter_length.out.result |
-          map { [it[0], it[1]]} |
-          // collectFile concatenates multiple possible barcode/primer matches
-          collectFile { id, file -> [ "${id}.fastq", file ] } |
-          map { [ it.baseName, it ] } |
-          // relabel to fasta
-          relabel |
-          set { relabeled }
-
-        relabeled.result |
-          toList | merge_relabeled |
-          set { to_dereplicate }
-
-      } else { // demultiplexed by barcode/combined
-        // here, reads are demultiplexed by barcodes, so they're either
-        // all in one or two fastq files (depending on single vs paired end)
-        // or they're pooled such that barcode pairs are reused across index pairs
-
-        // split the input fastqs to increase parallelism, if requested
-        if (params.split) {
-          if (params.paired) {
-            reads |
-              // flatten the reads tuple
-              map { key, reads -> [key] + reads } |
-              // split fastq files
-              splitFastq(by: params.splitBy, file: true, pe: true) |
-              // rearrange reads tuple so it looks like [key, [R1,R2]]
-              map { key, read1, read2 -> [key, [read1,read2]] } |
-              set { reads }
+        if (trim) {
+          primers = Channel.of([])
+          // if there's a barcode file, assume it's in ngsfilter format
+          // and pull unique primer pairs out of the fourth and fifth columns
+          // if there's more than one unique set, weird stuff might happen
+          if (params.barcode) {
+            Channel.fromPath(params.barcode) | 
+              splitCsv(sep: "\t") |
+              map { !(it[0] =~ /^#/ ) ? [it[3],it[4]] : null } |
+              unique |
+              set { primers }
           } else {
-            // in single-end mode we can just split directly
-            reads |
-              splitFastq(by: params.splitBy, file: true) |
-              map { key, readfile -> [key, readfile] } |
-              set { reads }
+            // otherwise get the primer sequences from the command line
+            primers = Channel.of([params.fwdPrimer,params.reversePrimer])
           }
+          trim_primers(reads.combine(primers)) |
+            set { reads }
+        } else {
+          trim_length(reads) |
+            map { key, reads -> [ key, reads instanceof Collection ? reads : [reads] ]} |
+            set { reads }
+        }
+      } else {
+        // TODO: do a bunch of demultiplexing and so forth
+      }
+
+      // do the quality plots (if requested)
+      if (params.plotQualities) { 
+        dada_plot_quality_profiles(reads)
+        if (params.plotOnly) { 
+          println(colors.yellow("bailing out"))
+          // TODO: make this actually work
+          // wait for plotting to finish and bail
+          dada_plot_quality_profiles.collect()
+          exit(0)
+        }
+      }
+
+      // flatten the reads since dada2 works with everything all at once
+      samples = reads.collect { it[0] }
+      fwd = reads.collect { it[1][0] }
+      rev = params.paired ? reads.collect { it[1][1] } : Channel.fromPath('-')
+      samples |
+        toList |
+        combine(fwd.toList()) | 
+        combine(rev.toList()) |
+        set { to_trim }
+
+      filtered = dada_filter_trim(to_trim).result
+
+      // tuple val(samples), path('*_R1_filtered_trimmed.fastq.gz'), path('*_R2_filtered_trimmed.fastq.gz'), path('fwd.rds'), path('rev.rds'), emit: result
+      fwd = filtered.map{ [ it[1], it[3], 'fwd' ] }
+      rev = filtered.map{ [ it[2], it[4], 'rev' ] }
+
+      dada_learn_errors(params.paired ? fwd.concat(rev) : fwd) |
+        set { errors }
+      
+      if (params.plotErrors) {
+        dada_plot_errors(errors)
+      }
+
+      errors | 
+        dada_infer_samples |
+        set { inferred_samples }
+      
+      if (params.paired) {
+        inferred_samples | 
+          collect | 
+          map { [ it[0] + it[5], [it[1],it[6]], [it[2],it[7]], [it[3],it[8]] ]} |
+          set { to_merge }
+        to_merge |
+          dada_merge_reads | 
+          set { denoised }
+      } else {
+        inferred_samples |
+          map { it[3] } |
+          set { denoised } 
+      }
+      dada_make_asv_table(denoised)
+      dada_make_asv_table.out.asv | 
+        dada_remove_chimeras
+
+      // tuple path(filter_table), path(filter), path(dada), path(merged), path(asv_table)
+      if (params.paired) {
+        dada_filter_trim.out.filter |
+          combine(to_merge) | 
+          map { [ it[0], it[2], it[4] ] } |
+          combine(dada_merge_reads.out) |
+          combine(dada_remove_chimeras.out.asv | map { it[0] }) |
+          set { to_track }
+      } else {
+        dada_filter_trim.out.filter | 
+          combine(dada_filter_trim.out.result | map { it[3] }) |
+          combine(dada_infer_samples.out | map { it[3] } ) | 
+          combine(Channel.fromPath('-')) |
+          combine(dada_remove_chimeras.out.asv | map { it[0] }) | 
+          set { to_track }
+      }
+      dada_track_reads(to_track)
+
+    } else { // run the u/vsearch pipeline
+      if (helper.file_exists(params.demuxedFasta)) {
+        // we've already demultiplexed and relabeled sequences
+        // (presumably from an earlier run of the pipeline), so we can jump to here
+
+        // load the fasta file in usearch/vsearch format
+        Channel.fromPath(params.demuxedFasta, checkIfExists: true) |
+          set { to_dereplicate }
+      } else {
+        // otherwise do all the various processing bits
+
+        // load barcodes or create a barcode file from primers
+        // run them through fix_barcodes if we need to, 
+        // which replaces I's with N's in the primer sequences
+        if (params.barcode) {
+          Channel.fromPath(params.barcode) |
+            fix_barcodes |
+            set { barcodes }
+        } else if (params.fwdPrimer && params.reversePrimer) {
+          Channel.of( [params.fwdPrimer.replaceAll(/[Ii]/,'N'), params.reversePrimer.replaceAll(/[Ii]/,'N')]  ) | 
+            collectFile { ['barcode.tsv', "marker\tsample\t:\t${it[0]}\t${it[1]}\tseq\n"] } | 
+            set { barcodes }
+        } else {
+          barcodes = Channel.fromPath('-')
         }
 
-        // do initial fastqc step
-        if (params.fastqc) {
-          Channel.of("initial") |
-            combine(reads) |
-            first_fastqc
-          // if input files are split we'll run them through multiqc
-          if (params.split || params.demultiplexedBy == "combined") {
-            first_fastqc.out |
+        // if the sequences are already demultiplexed by indices, we'll
+        // process them separately, including optionally attempting to remove ambiguous indices
+        // and ultimately smash them together for vsearch/usearch to do the dereplication
+        if (params.demultiplexedBy == "index") {
+          // do fastqc/multqc before filtering & merging
+          if (params.fastqc) {
+            Channel.of("initial") |
+              combine(reads) |
+              first_fastqc |
               collect(flat: true) |
               toList |
               combine(Channel.of("initial")) |
               first_multiqc
           }
-        }
 
-        // do quality filtering and/or paired-end merge
-        reads |
-          filter_merge 
-        filter_merge.out.result |
-          set { reads_filtered_merged }
+          // run the first part of the pipeline for sequences that have already
+          // been demultiplexed by the sequencer
+          reads |
+            filter_merge 
+          filter_merge.out.result |
+            set { reads_filtered_merged }
 
-        // post-filtering fastqc step
-        if (params.fastqc) {
-          Channel.of("filtered") |
-            combine(reads_filtered_merged) |
-            second_fastqc
-          // again run multiqc if split
-          if (params.split || params.demultiplexedBy == "combined") {
-            second_fastqc.out |
+          // do fastqc/multiqc for filtered/merged
+          if (params.fastqc) {
+            Channel.of("filtered") |
+              combine(reads_filtered_merged) |
+              second_fastqc |
               collect(flat: true) |
               toList |
               combine(Channel.of("filtered")) |
               second_multiqc
           }
-        }
 
-        // process pooled barcodes
-        if (params.demultiplexedBy == "combined") {
-          barcodes |
-            // split barcode file into multiples by the first column (key value)
-            split_barcodes | flatten |
-            // and make it a list of [key, split barcode piece]
-            map { [it.baseName.split(/---/)[0], it] } |
-            set { barcodes }
+          // remove ambiguous indices, if specified
+          if (params.removeAmbiguousIndices) {
+            reads_filtered_merged |
+              filter_ambiguous_indices |
+              set { reads_filtered_merged }
+          }
 
-          // combines pooled reads with barcode files
-          reads_filtered_merged |
-            // this gives us a huge mess of combinations and many of them are wrong
-            combine(barcodes) |
-            // so filter them down to the the ones where the key matches
-            filter { key1, f1, key2, f2 -> key1 == key2 } |
-            // and make sure they're in a format we expect
-            map { key1, f1, key2, f2 -> [key1, f1, f2] } |
-            set { reads_barcodes }
-        } else {
-          // combine reads with barcode file(s)
+          // with or without the primer mismatch check, do the
+          // length filtering and smash results together into one file
           reads_filtered_merged |
             combine(barcodes) |
-            set { reads_barcodes }
+            set { rfm_barcodes }
+
+          // only run ngsfilter if we have primers
+          def trim = params.barcode || (params.fwdPrimer && params.reversePrimer)
+          if(trim) {
+            rfm_barcodes |
+              ngsfilter 
+            ngsfilter.out.result |
+              set { rfm_barcodes }
+          }
+
+          // continue length filtering and whatnot
+          rfm_barcodes |
+            filter_length 
+          filter_length.out.result |
+            map { [it[0], it[1]]} |
+            // collectFile concatenates multiple possible barcode/primer matches
+            collectFile { id, file -> [ "${id}.fastq", file ] } |
+            map { [ it.baseName, it ] } |
+            // relabel to fasta
+            relabel |
+            set { relabeled }
+
+          relabeled.result |
+            toList | merge_relabeled |
+            set { to_dereplicate }
+
+        } else { // demultiplexed by barcode/combined
+          // here, reads are demultiplexed by barcodes, so they're either
+          // all in one or two fastq files (depending on single vs paired end)
+          // or they're pooled such that barcode pairs are reused across index pairs
+
+          // split the input fastqs to increase parallelism, if requested
+          if (params.split) {
+            if (params.paired) {
+              reads |
+                // flatten the reads tuple
+                map { key, reads -> [key] + reads } |
+                // split fastq files
+                splitFastq(by: params.splitBy, file: true, pe: true) |
+                // rearrange reads tuple so it looks like [key, [R1,R2]]
+                map { key, read1, read2 -> [key, [read1,read2]] } |
+                set { reads }
+            } else {
+              // in single-end mode we can just split directly
+              reads |
+                // flatten the reads tuple
+                map { key, reads -> [key] + reads } |
+                splitFastq(by: params.splitBy as Integer, file: true) |
+                map { key, readfile -> [readfile.baseName, readfile] } |
+                set { reads }
+            }
+          }
+
+          // do initial fastqc step
+          if (params.fastqc) {
+            Channel.of("initial") |
+              combine(reads) |
+              first_fastqc
+            // if input files are split we'll run them through multiqc
+            if (params.split || params.demultiplexedBy == "combined") {
+              first_fastqc.out |
+                collect(flat: true) |
+                toList |
+                combine(Channel.of("initial")) |
+                first_multiqc
+            }
+          }
+
+          // do quality filtering and/or paired-end merge
+          reads |
+            filter_merge 
+          filter_merge.out.result |
+            set { reads_filtered_merged }
+
+          // post-filtering fastqc step
+          if (params.fastqc) {
+            Channel.of("filtered") |
+              combine(reads_filtered_merged) |
+              second_fastqc
+            // again run multiqc if split
+            if (params.split || params.demultiplexedBy == "combined") {
+              second_fastqc.out |
+                collect(flat: true) |
+                toList |
+                combine(Channel.of("filtered")) |
+                second_multiqc
+            }
+          }
+
+          // process pooled barcodes
+          if (params.demultiplexedBy == "combined") {
+            barcodes |
+              // split barcode file into multiples by the first column (key value)
+              split_barcodes | flatten |
+              // and make it a list of [key, split barcode piece]
+              map { [it.baseName.split(/---/)[0], it] } |
+              set { barcodes }
+
+            // combines pooled reads with barcode files
+            reads_filtered_merged |
+              // this gives us a huge mess of combinations and many of them are wrong
+              combine(barcodes) |
+              // so filter them down to the the ones where the key matches
+              filter { key1, f1, key2, f2 -> key1 == key2 } |
+              // and make sure they're in a format we expect
+              map { key1, f1, key2, f2 -> [key1, f1, f2] } |
+              set { reads_barcodes }
+          } else {
+            // combine reads with barcode file(s)
+            reads_filtered_merged |
+              combine(barcodes) |
+              set { reads_barcodes }
+          }
+
+          // run the rest of the pipeline, including demultiplexing, length filtering,
+          // splitting, and recombination for dereplication
+          reads_barcodes |
+            ngsfilter 
+          ngsfilter.out.result |
+            filter_length 
+          filter_length.out.result |
+            split_samples |
+            // we have to flatten here because we can get results that look like
+            // [[sample1,sample2,sample3],[sample1,sample2,sample3]]
+            flatten | 
+            // collect different files with the same name into concatenated samples
+            collectFile |
+            // extract sample IDs
+            map { [it.baseName, it] } |
+            // relabel to fasta
+            relabel |
+            set { relabeled }
+
+          // collect to single relabeled fasta
+          relabeled.result |
+            toList | merge_relabeled |
+            set { to_dereplicate }
         }
-
-        // run the rest of the pipeline, including demultiplexing, length filtering,
-        // splitting, and recombination for dereplication
-        reads_barcodes |
-          ngsfilter 
-        ngsfilter.out.result |
-          filter_length 
-        filter_length.out.result |
-          split_samples |
-          // we have to flatten here because we can get results that look like
-          // [[sample1,sample2,sample3],[sample1,sample2,sample3]]
-          flatten | 
-          // collect different files with the same name into concatenated samples
-          collectFile |
-          // extract sample IDs
-          map { [it.baseName, it] } |
-          // relabel to fasta
-          relabel |
-          set { relabeled }
-
-        // collect to single relabeled fasta
-        relabeled.result |
-          toList | merge_relabeled |
-          set { to_dereplicate }
       }
-    } else {
-      // here we've already demultiplexed and relabeled sequences
-      // (presumably from an earlier run of the pipeline), so we can jump to here
+      // build the input channel, run dereplication, and set to a channel we can use again
+      Channel.of(params.project) |
+        combine(to_dereplicate) |
+        combine(Channel.fromPath(params.chimeraRef)) |
+        dereplicate |
+        set { dereplicated }
 
-      // load the fasta file in usearch/vsearch format
-      Channel.fromPath(params.demuxedFasta, checkIfExists: true) |
-        set { to_dereplicate }
+      dereplicated.result |
+        set { dereplicated }
+    }
+      
+    if (params.blast || params.insect || params.lca) {
+      // load and extract NCBI taxonomy
+      Channel.fromPath(params.ncbiTaxdump,glob:false) |
+        combine(Channel.of(ncbi_taxdumps).toList()) |
+        extract_ncbi_taxonomy 
+      // collate extracted files into a list channel
+      ncbi_dumps = extract_ncbi_taxonomy.out.file |
+        toList
     }
 
-    // build the input channel, run dereplication, and set to a channel we can use again
-    Channel.of(params.project) |
-      combine(to_dereplicate) |
-      combine(Channel.fromPath(params.chimeraRef)) |
-      dereplicate |
-      set { dereplicated }
+    // get sequences and sequence table
+    if (params.denoiser == "dada2") {
+      dada_remove_chimeras.out.asv_table | 
+        set { seq_table }
+      dada_remove_chimeras.out.fasta | 
+        set { sequences }
+    } else {
+      dereplicated |
+        map { sid, uniques, zotus, zotutable -> zotutable } |
+        set { seq_table }
+      dereplicated |
+        map { sid, uniques, zotus, zotutable -> zotus } |
+        set { sequences }
+    }
 
-    dereplicated.result |
-      set { dereplicated }
-
-    // load and extract NCBI taxonomy
-    Channel.fromPath(params.ncbiTaxdump,glob:false) |
-      combine(Channel.of(ncbi_taxdumps).toList()) |
-      extract_ncbi_taxonomy 
-    // collate extracted files into a list channel
-    ncbi_dumps = extract_ncbi_taxonomy.out.file |
-      toList
 
     // run blast query, unless skipped
     if (params.blast) {
@@ -1521,9 +2157,8 @@ workflow {
       }
 
       // create the blast input channel
-      dereplicated |
-        map { sid, uniques, zotus, zotutable -> zotus } |
-        combine(blastdb) |
+      sequences | 
+        combine(blastdb) | 
         set { blast_input }
 
       // default taxid filter values are blank
@@ -1551,27 +2186,17 @@ workflow {
         set { blast_result }
     }
 
-    // grab the zotu table from our dereplication step
-    dereplicated |
-      map { sid, uniques, zotus, zotutable -> zotutable } |
-      set { zotu_table }
-
     // make lulu blast database and do lulu curation
     if (params.lulu) {
-      dereplicated |
-        // get zotus and sample id
-        map { sid, uniques, zotus, zotutable -> [sid,zotus,zotutable] } |
+      Channel.of(params.project) | 
+        combine(sequences) | 
+        combine(seq_table) |
         lulu_blast |
         lulu
     }
 
     // run the insect classifier, if so desired
     if (params.insect) {
-      // dereplicate returns a tuple, but we only need the zotus fasta
-      dereplicated |
-        map { sid, uniques, zotus, zotutable -> [zotus] } |
-        set { zotus }
-
       // load the classifier model
       if (helper.file_exists(params.insect)) {
         classifier = Channel.fromPath(params.insect)
@@ -1586,7 +2211,7 @@ workflow {
 
       // run the insect classification
       classifier |
-        combine(zotus) |
+        combine(sequences) |
         combine(ncbi_dumps) |
         insect
       insect_taxonomy = insect.out.taxonomy
@@ -1616,7 +2241,7 @@ workflow {
 
     // combine and finalize outputs
     if (params.lca || params.insect) {
-      zotu_table |
+      seq_table |
         combine(curated_zotu_table) |
         combine(lca_taxonomy) |
         combine(insect_taxonomy) |
@@ -1659,8 +2284,7 @@ workflow {
       if (physeq) {
         // construct the phyloseq output
         metadata = Channel.fromPath(params.metadata)
-        seqs = dereplicated.map { sid, uniques, zotus, zotutable -> zotus }
-        phyloseq(zotu_table,ph_taxonomy,metadata,seqs)
+        phyloseq(seq_table,ph_taxonomy,metadata,sequences)
       }
     }
   }

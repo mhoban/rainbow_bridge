@@ -13,17 +13,17 @@
 
 # rainbow_bridge
 
-rainbow_bridge is a fully automated pipeline that employs a number of state-of-the-art applications to process eDNA and other metabarcoding data from raw sequences (single- or paired-end) to the generation of curated zero-radius operational taxonomic units (ZOTUs) and their abundance tables. The pipeline will also collapse assigned taxonomy (via BLAST and/or insect) to lowest common ancestor (LCA) based on user-supplied threshold values as well as perform other finalization steps (e.g., taxon filtering/remapping, decontamination, rarefaction, etc.). 
+rainbow_bridge is an automated bioinformatic pipeline that processes eDNA and other metabarcoding data. Starting from raw sequences (single- or paired-end), rainbow_bridge generates curated sequence variants (ZOTUs or ASVs) and associated abundance tables. The pipeline will also assign taxonomy (via BLAST and/or insect) and collapse to lowest common ancestor (LCA) based on user-supplied threshold values as well as perform other finalization steps (e.g., taxon filtering/remapping, phyloseq object generation, decontamination, rarefaction, etc.). 
 
 A flowchart of the rainbow_bridge workflow can be found [at the bottom of this document](#workflow).
 
-This pipeline uses [nextflow](https://www.nextflow.io/) and a containerized subsystem (e.g., [singularity](https://docs.sylabs.io/guides/3.5/user-guide/introduction.html), [podman](https://podman.io/), etc.) to enable a scalable, portable and reproducible workflow on a local computer, cloud (eventually) or high-performance computing (HPC) clusters.
+This pipeline is built using [nextflow](https://www.nextflow.io/) and a containerized subsystem (e.g., [singularity](https://docs.sylabs.io/guides/3.5/user-guide/introduction.html), [podman](https://podman.io/), etc.) to enable a scalable, portable and reproducible workflow on a local server, cloud, or high-performance computing (HPC) cluster.
 
-## About this version
+## Acknowledgements
 
-This project is a fork of [`eDNAFlow`](https://github.com/mahsa-mousavi/eDNAFlow), rewritten to support the newest version of nextflow. It also better supports parallel processing, both through splitting and simultaneously processing large files and the ability to process already-demultiplexed sequence files. In addition, it adds several processing options, such as the ability to classify taxonomy using [insect](https://github.com/shaunpwilkinson/insect) and to produce a [phyloseq](https://joey711.github.io/phyloseq/) object as output, among others.
+This project began as a fork of [`eDNAFlow`](https://github.com/mahsa-mousavi/eDNAFlow), but has been more or less completely rewritten to support newer versions of nextflow. It is better at handling parallel processing, both through splitting and simultaneously processing large files and the ability to process reads demultiplexed by the sequencer. In addition, it adds various processing options, such as the ability to choose a sequence denoiser (usearch, vsearch, or DADA2), classify taxonomy using [insect](https://github.com/shaunpwilkinson/insect), and to produce a [phyloseq](https://joey711.github.io/phyloseq/) object as output, among others.
 
-For more information on the original eDNAFlow pipeline and other software used as part of the workflow, please read "eDNAFlow, an automated, reproducible and scalable workflow for analysis of environmental DNA (eDNA) sequences exploiting Nextflow and Singularity" in Molecular Ecology Resources (DOI: <https://doi.org/10.1111/1755-0998.13356>). If you use rainbow_bridge, we appreciate if you could cite the eDNAFlow paper, the DOI for this project, and the papers describing the underlying software.
+For more information on the original eDNAFlow pipeline and other software used as part of the workflow, please read "eDNAFlow, an automated, reproducible and scalable workflow for analysis of environmental DNA (eDNA) sequences exploiting Nextflow and Singularity" in Molecular Ecology Resources (DOI: <https://doi.org/10.1111/1755-0998.13356>). If you use rainbow_bridge, we appreciate if you could cite the eDNAFlow paper, the DOI for this project, and the papers describing the underlying software. For citation information, please see [CITATIONS.md](CITATIONS.md)
 
 # Table of contents
 
@@ -39,11 +39,8 @@ For more information on the original eDNAFlow pipeline and other software used a
       + [Non-demultiplexed single-end runs](#non-demultiplexed-single-end-runs)
       + [Previously-demultiplexed single-end runs](#previously-demultiplexed-single-end-runs)
       + [Non-demultiplexed paired-end runs](#non-demultiplexed-paired-end-runs)
-      + [For previously-demultiplexed paired-end runs](#for-previously-demultiplexed-paired-end-runs)
+      + [Previously-demultiplexed paired-end runs](#previously-demultiplexed-paired-end-runs)
    * [Contents of output directories](#contents-of-output-directories)
-   * [Configuration profiles](#configuration-profiles)
-   * [When things go wrong (interpreting errors)](#when-things-go-wrong-interpreting-errors)
-   * [A note on globs/wildcards](#a-note-on-globswildcards)
 - [Setup and testing](#setup-and-testing)
    * [Installation](#installation)
       + [Manual dependency installation](#manual-dependency-installation)
@@ -55,16 +52,16 @@ For more information on the original eDNAFlow pipeline and other software used a
    * [Required options](#required-options)
       + [Specifying sequencing run type](#specifying-sequencing-run-type)
       + [Specifying demultiplexing strategy](#specifying-demultiplexing-strategy)
-      + [Other required options](#other-required-options)
-         - [Barcode file ](#barcode-file)
+      + [Specifying sequence denoiser](#specifying-sequence-denoiser)
+      + [Other common options](#other-common-options)
          - [BLAST settings ](#blast-settings)
    * [General options](#general-options)
-   * [Sample IDs](#sample-ids)
-      + [Re-mapping custom sample IDs](#re-mapping-custom-sample-ids)
    * [Length, quality, and merge settings](#length-quality-and-merge-settings)
-   * [Sequence filtering (`ngsfilter` options)](#sequence-filtering-ngsfilter-options)
-   * [Denoising/dereplication and ZOTU inference](#denoisingdereplication-and-zotu-inference)
-   * [ZOTU curation using LULU](#zotu-curation-using-lulu)
+   * [PCR primer trimming](#pcr-primer-trimming)
+   * [Denoising/dereplication and sequence variant inference](#denoisingdereplication-and-sequence-variant-inference)
+      + [Options for usearch/vsearch](#options-for-usearchvsearch)
+      + [Options for DADA2](#options-for-dada2)
+   * [Sequence variant curation using LULU](#sequence-variant-curation-using-lulu)
    * [Assigning taxonomy](#assigning-taxonomy)
       + [BLAST settings](#blast-settings-1)
       + [Classification using insect](#classification-using-insect)
@@ -84,7 +81,14 @@ For more information on the original eDNAFlow pipeline and other software used a
          - [Other finalization options](#other-finalization-options)
       + [Output products](#output-products)
          - [Generating phyloseq objects](#generating-phyloseq-objects)
+   * [Miscellaneous options](#miscellaneous-options)
 - [Useful examples and tips](#useful-examples-and-tips)
+   * [Barcode file ](#barcode-file)
+   * [Sample IDs](#sample-ids)
+      + [Re-mapping custom sample IDs](#re-mapping-custom-sample-ids)
+   * [A note on globs/wildcards](#a-note-on-globswildcards)
+   * [When things go wrong (interpreting errors)](#when-things-go-wrong-interpreting-errors)
+   * [Configuration profiles](#configuration-profiles)
    * [Downloading NCBI BLAST databases](#downloading-ncbi-blast-databases)
    * [Making a custom BLAST database](#making-a-custom-blast-database)
    * [Parameter files](#parameter-files)
@@ -135,40 +139,38 @@ $ nextflow run -<nextflow-options> mhoban/rainbow_bridge --<rainbow_bridge-optio
 
 ## Input requirements
 
-The most basic requirements for a rainbow_bridge run are fastq-formatted sequence file(s) and [a file defining PCR primers (and where applicable, sample barcodes)](#barcode-file)<sup>\*</sup>. Sequences can be either single- or paired-end and may be raw (i.e., one fastq file per sequencing direction), already demultiplexed by the sequencer (i.e., one fastq file per sample per sequencing direction), a combination of the two, or demultiplexed by a previous run of the pipeline (in FASTA format). The demultiplexing strategy must be specified to rainbow_bridge using the `--demultiplexed-by` option. See [below](#specifying-demultiplexing-strategy) for more information.  
-
-<sup>\*</sup>The barcode file can be omitted if your fastq files have already had their primers stripped and you pass the `--no-pcr` option.
+The minimal requirements for a rainbow_bridge run are fastq-formatted sequence file(s). For most runs, you will also supply PCR primers (either via a [barcode file](#barcode-file) or command-line options) and (depending on whether sequences are demultiplexed) the barcodes used to separate sequence reads into individual samples. Sequences can be either single- or paired-end and may be raw (i.e., one fastq file per sequencing direction), already demultiplexed by the sequencer (i.e., one fastq file per sample per sequencing direction), a combination of the two, or demultiplexed by a previous run of the pipeline (in FASTA format). The demultiplexing strategy must be specified to rainbow_bridge using the `--demultiplexed-by` option. See [below](#specifying-demultiplexing-strategy) for more information.  
 
 Details about the input formats the pipeline supports:
 
 1. <a name="non-demuxed"></a>Raw data from the sequencer (i.e. non-demultiplexed). This typically consists of forward/reverse reads each in single large (optionally gzipped) fastq files. You will have one fastq file per sequencing direction, identified by some unique portion of the filename (typically R1/R2). For this type of data, the demultiplexer used in rainbow_bridge requires that you have used barcoded primers, such that sequence reads look like this:  
     ```
-    <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSER_BARCODE>
+    <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSE_BARCODE>
     ```
     For datasets using this input format, you will need a [barcode file](#barcode-file) that describes how barcode and primer combinations map to sample names.
 
 
-1. <a name="demuxed"></a>Data that has already been demultiplexed by the sequencer using Illumina (i5/i7) indices to delineate samples. You will have fastq files for each individual sample and read direction (delineated by a filename pattern like R1/R2), and sequences should still have PCR primers attached, like this:  
+1. <a name="demuxed"></a>Data that has already been demultiplexed by the sequencer using Illumina (i5/i7) indices to delineate samples. You will have fastq files for each individual sample and read direction (delineated by a filename pattern like R1/R2), and sequences may optionally still contain PCR primers, like this:  
     ```
-    <FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER>
+    (<FWD_PRIMER>)?<TARGET_SEQUENCE>(<REVERSE_PRIMER>)?
     ```
     
-    In most cases these sequences will have the Illumina indices you used to separate samples included at the end of their fastq header, like this:  
+    In many cases these sequences will have the Illumina indices used to separate samples included at the end of their fastq header, like this:  
     <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong><em>&lt;i5&gt;+&lt;i7&gt;</em></strong></pre></code>
 
-    For this input format, your [barcode file](#barcode-file) only needs to (optionally) specify PCR primers, since samples are already separated.
+    For this input format, PCR primers to be trimmed can be provided in a [barcode file](#barcode-file) or via command-line options.
 
-1. <a name="pooled"></a>"Pooled" sequences, or a combination of barcoded primers and Illumina indices. For this input format, samples are delineated by barcoded primers, but barcode combinations are reused across different Illumina index pairs. This method is supported by rainbow_bridge, but it's not recommended since it's easy for things to go wrong. Sequences will look like they do for non-demultiplexed datasets, but there will be multiple files with different i5/i7 Illumina index pairs, as for demultiplexed data:
+1. <a name="pooled"></a>"Pooled" sequences, or a combination of barcoded primers and Illumina indices. For this input format, samples are delineated by barcoded primers, but barcode combinations are reused across different Illumina index pairs. Sequences will look like they do for non-demultiplexed datasets, but there will be multiple files with different i5/i7 Illumina index pairs, as for demultiplexed data:
     
     Sequence reads
     ```
-    <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSER_BARCODE>
+    <FWD_BARCODE><FWD_PRIMER><TARGET_SEQUENCE><REVERSE_PRIMER><REVERSE_BARCODE>
     ```
     Sequence headers: 
     <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>&lt;i5&gt;+&lt;i7&gt;</strong></pre></code>  
-    For this input format, your [barcode file](#barcode-file) must be specially formatted. [See below](#pooled-barcode) for details.
+    For this input format, a [barcode file](#barcode-file) is required and must be specially formatted. [See below](#pooled-barcode) for details.
 
-1. <a name="demux-fasta"></a>Data that has been demultiplexed to individual samples and concatenated into a FASTA file in usearch format, typically by a previous run of the pipeline on non-demultiplexed sequence data (as in case 1 above, although output from cases 2 or 3 will work as well). Use this option if you want to re-run the pipeline without repeating the lengthy demultiplexing/merging/quality filtering step(s). The expected input format is a single FASTA file with each sequence labled as `<samplename>.N` where `samplename` is the name of the sample and `N` is just a sequential number, for example:
+1. <a name="demux-fasta"></a>Data that has been demultiplexed to individual samples and concatenated into a FASTA file in usearch format, typically by a previous run of the pipeline on non-demultiplexed sequence data (as in case 1 above, although output from cases 2 or 3 will work as well). Use this option if you want to re-run the pipeline without repeating the lengthy demultiplexing/splitting/merging/quality filtering step(s). The expected input format is a single FASTA file with each sequence labled as `<samplename>.N` where `samplename` is the name of the sample and `N` is just a sequential number, for example:
   
     ```fasta
     >sample1.1
@@ -195,7 +197,7 @@ Details about the input formats the pipeline supports:
 ### Specifying fastq files
 In all cases, if you're processing fastq runs, you must specify the location of your sequence reads. Generally, if you're processing runs that have *not* been demultiplexed by the sequencer, you will have either one (single-end) or two (paired-end) fastq files. If your runs *have* been demultiplexed or are pooled, you will have one fastq file per individual sample/pool per read direction. If fastq files are gzipped (i.e., they have a .gz extension), they will be decompressed automatically and the .gz extension will be stripped during processing.
 
-<a name="shared-dirs"></a>In general, it is best practice to separate your read files into separate directories by sequencing run and to keep forward/reverse reads from the same sequencing run within the same directory. If you find it necessary to put forward/reverse reads in separate directories, then those directories should lie within the same parent directory. It may still work otherwise, but things might also go haywire and I won't be responsible. The exception to this is for non-demultiplexed runs where you're specifying indivual forward/reverse files directly.
+<a name="shared-dirs"></a>In general, it is best practice to keep forward/reverse reads from the same sequencing run within the same directory. If you find it necessary to put forward/reverse reads in separate directories, then those directories should lie within the same parent directory. It may still work otherwise, but things might also go haywire and I won't be responsible. The exception to this is for non-demultiplexed runs where you're specifying indivual forward/reverse files directly.
 
 For paired-end sequencing runs, sequence read filenames must be identical apart from the pattern delineating read direction and all read pairs within a sequencing run must use the same read direction pattern (e.g., 'R1', 'R2'). Thus the following read pairs are supported: `sample1_R1.fastq/sample1_R2.fastq`, `sample1.F.fastq/sample1.R.fastq`, `sample1.1.fastq/sample1.2.fastq`, but the following pairs will fail: `sample1.1.15_R1.fastq/sample1.1.17_R2.fastq`, `sample1.R1.fastq/sample1_R2.fastq`. There are no filename restrictions for single-end sequencing runs.
 
@@ -212,7 +214,8 @@ There are a few ways you can tell rainbow_bridge where your reads are:
     <small>**`--reads [glob/dir]`**</small>: For demultiplexed/pooled runs, this is either a [glob](#a-note-on-globswildcards) indicating where all the demultiplexed reads can be found, (e.g., '../fastq/\*.fastq') or a directory, which will be searched using the pattern '\*.f\*q\*'  
 - For paired-end runs  
   - Non-demultiplexed  
-    <small>**`--fwd [file]`**</small> and <small>**`--rev [file]`**</small>: For non-demultiplexed runs, you may use these parameters to specify the forward (`--fwd`) and reverse (`--rev`) fastq files directly.  
+    <small>**`--fwd [file]`**</small> and <small>**`--rev [file]`**</small>: For non-demultiplexed runs, you may use these parameters to specify the forward (`--fwd`) and reverse (`--rev`) fastq files directly.    
+    <small>**`--reads [glob/dir]`**</small>: For demultiplexed/pooled runs, this is either a [glob](#a-note-on-globswildcards) indicating where all the demultiplexed reads can be found, (e.g., '../fastq/\*{R1,R2}\*.fastq') or a directory, which will be searched using the pattern '&lt;dir&gt;/\*{&lt;r1&gt;,&lt;r2&gt;}\*.f\*q\*' (see [below](#dirs) about using directories to find reads).
   - Demultiplexed/pooled  
     Demultiplexed/pooled sequence reads can be located directly using [globs](#a-note-on-globswildcards) or by specifying directories and (optionally) search patterns.  
 
@@ -222,11 +225,11 @@ There are a few ways you can tell rainbow_bridge where your reads are:
 
       <a name="alphabet"></a>Note that nextflow assembles reads in alphabetical order so that if you pass a glob like `/dir/*{forward,backward}*.fastq`, read files matching the 'backward' part of the glob will be erroneously treated as forward reads (since 'backward' comes before 'forward' alphabetically). rainbow_bridge will throw an error if the read order can't be determined based on the parameter values given. If you encounter this issue, you can use the `--r1` and `--r2` options to specify patterns that delineate the sequencing directions (`--r1` indicates the forward directrion, `--r2` the reverse). Thus, for the 'forward'/'backward' example above, the following options would resolve the issue and return read files in the correct order: `--reads 'dir/*{forward,backward}*.fastq' --r1 forward --r2 backward`.  
 
-      <small>**`--fwd [glob]`**</small>, <small>**`--rev [glob]`**</small> In lieu of passing a single glob to locate all reads, you may use separate globs for each read direction, e.g., `--fwd '/dir/r1/\*R1\*.fastq' --rev '/dir/r2/\*R2\*.fastq'`. The caveats mentioned above regarding [alphabetical order](#alphabet) and [directory structure](#shared-dirs) apply to these options as well.
+      <small>**`--fwd [glob]`**</small>, <small>**`--rev [glob]`**</small> In lieu of passing a single glob to locate all reads, you may use separate globs for each read direction, e.g., `--fwd '/dir/r1/*R1*.fastq' --rev '/dir/r2/*R2*.fastq'`. The caveats mentioned above regarding [alphabetical order](#alphabet) and [directory structure](#shared-dirs) apply to these options as well.
     
-    - Using directories
+    - <a name="dirs"></a>Using directories
     
-      It's possible to specify the read file location(s) using various combinations of `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2`. Internally, rainbow_bridge will use the values passed to these options to construct a [glob](#a-note-on-globswildcards) that will enable nextflow to locate the files. Note that this method assumes that files will match the pattern '\*.f\*q\*', which includes files having the extensions .fq and .fastq (with an optional .gz). If your read files have other extensions, it is advisable to use the glob method outlined [above](#globbo). Read file order will not be an issue here, since the glob is explicitly constructed using the values of `--r1` and `--r2`, but pay attention to [directory structure](#shared-dirs), as above.  
+      It's possible to specify the read file location(s) using various combinations of `--reads`, `--fwd`, `--rev`, `--r1`, and `--r2`. Internally, rainbow_bridge will use the values passed to these options to construct a [glob](#a-note-on-globswildcards) that nextflow will use to locate the files. Note that this method assumes that files will match the pattern '\*.f\*q\*', which includes files having the extensions .fq and .fastq (with an optional .gz). If your read files have other extensions, it is advisable to use the glob method outlined [above](#globbo). Read file order will not be an issue here, since the glob is explicitly constructed using the values of `--r1` and `--r2`, but pay attention to [directory structure](#shared-dirs), as above.  
 
       The internal search glob is constructed using the following options:  
       
@@ -306,7 +309,7 @@ $ nextflow run /path/to/rainbow_bridge.nf \
   [further options]
 ```
 
-### For previously-demultiplexed paired-end runs
+### Previously-demultiplexed paired-end runs
 
 For demultiplexed paired-end runs, you will have two fastq files per sample, each designated by a pattern indicating read direction (typically R1/R2, as in this example). 
 
@@ -320,118 +323,41 @@ $ nextflow run /path/to/rainbow_bridge.nf \
 ```
 ## Contents of output directories
 
-When the pipeline finishes, output from each step can be found in directories corresponding to each process in the analysis. All output will fall under one of two directories: `output` or `preprocess`. `output` will contain things like QA/QC results, ZOTU tables, and taxonomic assignments. `preprocess` contains the results of the various filtering, trimming, and merging steps (among others). The contents of output directories will by symlinked to files contained within the nextflow-generated internal `work` directory hierarchy (which you shouldn't have to access directly, except maybe in case of error). Here is an exhaustive list of all the possible output directories:
+When the pipeline finishes, output from each step can be found in directories corresponding to each process in the analysis. All output will fall under one of two directories: `output` or `preprocess`. `output` will contain things like QA/QC results, sequence variant tables, and taxonomic assignments. `preprocess` contains the results of the various filtering, trimming, and merging steps (among others). The contents of output directories will by symlinked to files contained within the nextflow-generated internal `work` directory hierarchy (which you shouldn't have to access directly, except maybe in case of error). Here is an exhaustive list of all the possible output directories:
 
 
-| Directory   | Subdirectory                        | Description                                                  | Condition                                                |
-| ----------- | ----------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------- |
-| preprocess/ | trim_merge/                          | Length/quality filtered and (for paired-end runs) merged reads |                                                          |
-|             | index_filtered/                      | Filtered/merged sequences with ambiguous indices filtered out | --remove-ambiguous-indices<br />--demultiplexed-by index/combined |
-|             | ngsfilter/                           | ngsfilter-processed reads: primer mismatch and sample annotation (if not previously demultiplexed) |                                                          |
-|             | length_filtered/                     | Length filtered                                              |                                                          |
-|             | split_samples/                       | Annotated samples split into individual files                | Sequencing run not previously demultiplexed              |
-|             | relabeled/                           | Relabeled combined FASTA files for denoiser (usearch/vsearch) input |                                                          |
-|             | merged/                              | Merged relabeled FASTA file for denoising                    |                                                          |
-| output/     | fastqc/initial/<br />fastqc/filtered/ | FastQC/MultiQC reports                                       | --fastqc                                                 |
-|             | zotus/                               | Dereplicated/denoised sequence results<br />(unique sequences, ZOTU sequences, ZOTU table) |                                                          |
-|             | blast/\*                              | BLAST results. Directory names will reflect the options passed to the blast process as well as the names of the individual databases queried against. | --blast |
-|             | lulu/                                | LULU curation results                                        | --lulu |
-|             | taxonomy/lca/\*                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --lca                                      |
-|             | taxonomy/insect/\*                    | Insect classification results. Directory name will reflect the options passed to the insect process. | --insect                                                 |
-|             | taxonomy/ncbi/new_taxdump.zip        | Compressed NCBI taxonomy dumps. |                                                  |
-|             | phyloseq/                            | Phyloseq object                                              | --phyloseq and associated options                        |
-| work/       | A bunch of nonsense                 | All internal and intermediate files processed by nextflow    |                                                          |
-| .nextflow/  | various                             | Hidden nextflow-generated internal folder                    |                                                          |
+| Directory   | Subdirectory                        | Description                                                  | Condition                                                | Denoiser |
+| ----------- | ----------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------- | ---- |
+| preprocess/ | trim_merge/                          | Length/quality filtered and (for paired-end runs) merged reads |                                                          |  usearch/vsearch  |
+|             | index_filtered/                      | Filtered/merged sequences with ambiguous indices filtered out | --remove-ambiguous-indices<br />--demultiplexed-by index/combined |  usearch/vsearch  |
+|             | ngsfilter/                           | ngsfilter-processed reads: primer mismatch and sample annotation (if not previously demultiplexed) |  --demultiplexed-by barcode<br>OR<br>primers trimmed via ngsfilter  |  usearch/vsearch  |
+|             | length_filtered/                     | Sequence reads after length filtering  |                                                          |  usearch/vsearch/dada2  |
+|             | split_samples/                       | Annotated samples split into individual files                | --demultiplexed-by barcode<br>OR<br>--demultiplexed-by combined |  usearch/vsearch  |
+|             | relabeled/                           | Relabeled combined FASTA files for denoiser (usearch/vsearch) input |                                                          |  usearch/vsearch  |
+|             | merged/                              | Merged relabeled FASTA file for denoising                    |                                                          |  usearch/vsearch  |
+|             | quality_plots/                              | Sequence read quality profile plots (PDF)   | --plot-qualities |  dada2  |
+|             | primers_trimmed/                              | Sequence reads after primer trimming      | --barcode &#91;file&#93;<br>OR<br>--fwd-primer/--reverse-primer |  dada2  |
+|             | filtered_trimmed/                              | Filtered and trimmed sequence reads      |                                                          |  dada2  |
+|             | error_plots/                              | Learned vs. expected error plots (PDF)      | --plot-errors |  dada2  |
 
-## Configuration profiles
 
-Resource availability, container subsystems, and various other aspects vary from computer to computer. To that end, nextflow allows the creation of custom named configuration profiles that can be loaded when running rainbow_bridge to customize various settings. Details about the creation of these profiles is beyond the scope of this documentations, but can be found in the [nextflow documentation](https://www.nextflow.io/docs/latest/config.html#config-profiles). By default, rainbow_bridge loads the `standard` profile, which uses the 'local' nextflow executor and limits its maximum CPUs and memory to the system limits or the values passed to the `--max-cpus` and `--max-memory` options (whichever is smaller). It also uses singularity as its default container engine. rainbow_bridge comes with the following built-in configuration profiles:
-
-| Profile name | Description |
-| ------------ | ----------- |
-| standard (loaded automatically)  | Default profile: local executor, cpus/memory set to system limits or `--max-cpus`/`--max-memory`, singularity container engine |
-| singularity  | Enables the singularity container engine |
-| podman_intel  | Enables the podman container engine with intel architecture |
-| podman_arm  | Enables the podman container engine with ARM architecture |
-
-To use any named profile when running rainbow_bridge, simply pass it using the `-profile <profile name>` option (note again the single dash, since it's a nextflow option and not a rainbow_bridge option). Note that specifying any named profile will override the `standard` profile, so that container/executor settings may need to be redefined. 
-
-rainbow_bridge will automatically load profiles found in files matching the pattern `conf/profiles/*.config` within the pipeline's installation directory. To create a custom profile, first define your profile in a file with the `.config` extension and copy it to `conf/profiles` subdirectory under the location of the rainbow_bridge script file. For example, if you've got a server called `bigiron` with 100 cpus and 700 GB of memory and you've installed rainbow_bridge to `/opt/pipelines/rainbow_bridge`, you could create a file called `bigiron.config`, and save it to `/opt/pipelines/rainbow_bridge/conf/profiles`. The `bigiron.config` file might look something like this:
-
-```
-bigiron {
-  executor {
-    name = 'local'
-    cpus = 100
-    memory = 700.GB
-  }
-}
-```
-
-As mentioned above, this profile will override the `standard` profile, and since a container system is not specified, nextflow will look for executables on the local filesystem. Fortunately, nextflow supports multiple profiles: just separate the names with a comma. For this example, if we wanted to use the `bigiron` profile with the singularity container system, we could launch rainbow_bridge using `-profile bigiron,singularity`, like this:
-
-```console
-$ nextflow run /path/to/rainbow_bridge.nf -profile bigiron,singularity <...further options...>
-```
-
-If you want to define a profile but don't have write access to the `<rainbow_bridge>/conf/profiles` directory, you can create a custom config file containing your profile, save it anywhere, and pass its filename to rainbow_bridge with the `-c` option (single dash again!). rainbow_bridge will still load any built-in profiles from `conf/profiles`. In this case, you will have to enclose your profile definition in the `profiles {}` scope, like this:
-
-```
-profiles {
-  bigiron {
-    executor {
-      name = 'local'
-      cpus = 100
-      memory = 700.GB
-    }
-  }
-}
-```
-
-And (assuming you've named the file `bigiron.config` and saved it in the directory where you're running your analysis), execute the pipeline like this:
-
-```console
-$ nextflow run /path/to/rainbow_bridge.nf -c bigiron.config -profile bigiron,singularity <...further options...>
-```
-
-## When things go wrong (interpreting errors)
-
-Occasionally your pipeline run will encounter something it doesn't know how to handle and it will fail. There are two general failure modes: silent and loud. 
-
-In some limited cases, the pipeline can fail silently. In this case it will appear to process various steps and then it will stop without any message. Sometimes you can tell something went wrong because all the status boxes are empty. We have done our best to avoid this failure mode but it's occasionally possible that you will encounter it. If you do, the best way to go about solving it is to make sure you have provided all the required command line options, your input files are all there and contain data, and any options that point to files actually point to the files you said they did. 
-
-In most cases when something goes wrong the pipeline will fail loudly and you will see something like this:
-
-![rainbow_bridge error output](images/err.png)
-
-This can be a bit intimidating at first, but there are a few ways to use this information to figure out what went wrong. First, toward the bottom of the readout, you'll see the "Command error" section (highlighted). This contains any error message that the failed process may have produced. If that's empty, there may still be some output you can look at. To see any output the process may have produced (just note that sometimes it's empty), take a look at the "Work dir" and do the following (here we're using the work dir from the above example):
-
-```console
-$ cat work/2a/7da7dd31811a49b03af88632257520/.command.out
-$ cat work/2a/7da7dd31811a49b03af88632257520/.command.err # (though this will be empty if "Command error" was empty)
-```
-
-In the example above, there was error output but nothing in the `.command.out` file. Looking at the error output, we can see that the merged FASTA file was empty. This commonly occurs when your PCR primers fail to match any sequences in the raw reads. In this case, check your barcode file to make sure you're using the correct primers for the sequencing run you're processing. In general, once you've worked out what you think has gone wrong, you can simply run the pipeline again, adjusting any relevant command-line options to hopefully fix the issue.
-
-## A note on globs/wildcards
-
-A number of rainbow_bridge command-line options accept file globs (wildcards). These are used when you want to indicate more than one file using a matching pattern. For an in-depth treatment of globs in the bash shell environment, have a look [here](https://www.baeldung.com/linux/bash-globbing). For the purposes of this pipeline though, you'll mostly use the following things:
-
-> [!NOTE]
-> When passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--reads '/storage/sequences/run1/*{R1,R2}*.fastq.gz'`). If you don't, the glob will be expanded by the shell rather than rainbow_bridge and parameter values will be incorrect.
-
-**\***: a star means 'match any string of characters of any length'  
-For example, the glob 'bc\*.tab' will match any filename that begins with 'bc', followed by a sequence of any characters, and finally ending with '.tab'  
-This pattern will match 'bc1.tab', 'bc2.tab', and 'bc_one_two_three.tab', but it will not match 'bc1.tabx'
-
-**{}**: curly braces are used for multiple possible matches.  
-The contents can be exact strings or wildcards. Anything that matches any of the given comma-separated strings using an "or" relationship (one OR the other) will be found.  
-For example, the glob 'seq\_\*{R1,R2}\*.fastq' will match 'seq_', followed by any characters, followed by EITHER 'R1' OR 'R2', followed by any characters, and finally ending with '.fastq'.  
-This pattern will match 'seq\_R1.fastq', 'seq\_001\_002\_R2.fastq', and 'seq\_123\_456\_R2\_extra_info.fastq', among many others. It will NOT match 'seqR1.fastq' (because it's missing the initial underscore following 'seq').
+| Directory   | Subdirectory                        | Description                                                  | Condition                                                | Denoiser |
+| ----------- | ----------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------- | ---- |
+| output/     | fastqc/initial/<br />fastqc/filtered/ | FastQC/MultiQC reports                                       | --fastqc                                                 |  usearch/vsearch  |
+|             | zotus/                               | Dereplicated/denoised sequence results (usearch/vsearch)<br />(unique sequences, ZOTU sequences, ZOTU table) |    |  usearch/vsearch  |
+|             | asvs/                               | Dereplicated/denoised sequence results (DADA2)<br />(ASVs, ASV tables, sequence tracking) |                                                           |  dada2  |
+|             | blast/\*                              | BLAST results. Directory names will reflect the options passed to the blast process as well as the names of the individual databases queried against. | --blast |  any  |
+|             | lulu/                                | LULU curation results                                        | --lulu |  any  |
+|             | taxonomy/lca/\*                       | Results of taxonomy collapser script(s). Directory name will reflect the options passed to the LCA process. | --lca                                      |  any  |
+|             | taxonomy/insect/\*                    | Insect classification results. Directory name will reflect the options passed to the insect process. | --insect                                                 |  any  |
+|             | taxonomy/ncbi/new_taxdump.zip        | Compressed NCBI taxonomy dumps. |                                                  |  any  |
+|             | phyloseq/                            | Phyloseq object                                              | --phyloseq and associated options                        |  any  |
+| work/       | A bunch of nonsense                 | All internal and intermediate files processed by nextflow    |                                                          |  any  |
+| .nextflow/  | various                             | Hidden nextflow-generated internal folder                    |                                                          |  any  |
 
 # Setup and testing
 
-The pipeline has only two (although technically three, if you include the java runtime) external dependencies: [nextflow](https://www.nextflow.io/) and a container system that supports Docker containers. Nextflow additionally requires a java runtime. One place to find that is [here](https://www.java.com/en/download/manual.jsp), although the [openjdk](https://openjdk.org/) package (available on multiple operating systems) can often be simpler to install. The default container system is [singularity](https://sylabs.io/singularity/), although support for [podman](https://podman.io/) is also included (and in theory any other system [supported by nextflow](https://nextflow.io/docs/latest/container.html) that can run Docker containers will also work). To run the pipeline, nextflow and singularity (or podman, etc.) have to be installed or made available for loading as modules (e.g. in the case of running it on an HPC cluster) on your system. 
+The pipeline has three basic external dependencies: a java runtime, [nextflow](https://www.nextflow.io/), and a container system that supports Docker containers. One place to find the java runtime is [here](https://www.java.com/en/download/manual.jsp), although the [openjdk](https://openjdk.org/) package (available on multiple operating systems) can often be simpler to install. The default container system is [singularity](https://sylabs.io/singularity/), although support for [podman](https://podman.io/) is also included (and in theory any other system [supported by nextflow](https://nextflow.io/docs/latest/container.html) that can run Docker containers will also work). To run the pipeline, nextflow and singularity (or podman, etc.) have to be installed or made available for loading as modules (e.g. in the case of running it on an HPC cluster) on your system. 
 
 In the `install` directory of this repository is a script that will install nextflow and singularity. It should support Ubuntu 20.04 and 22.04. For other versions and systems, you can install the components [manually following the authors' instructions](#manual-dependency-installation). You will likely need superuser permissions to install most dependencies, although nextflow can be run from within a user account.
 
@@ -494,7 +420,7 @@ To test the pipeline, clone the repository from <https://github.com/mhoban/rainb
 
 # Description of rainbow_bridge command-line options
 
-rainbow_bridge allows for a good deal of customization with regard to which and how various elements of the pipeline are run. All command-line options can be either be passed as-is or saved in a parameters file. For details on saving options in a parameters file, see [below](#specifying-parameters-in-a-parameter-file).
+rainbow_bridge allows for a good deal of customization. All command-line options can be either be passed as-is or saved in a parameters file. For details on saving options in a parameters file, see [below](#specifying-parameters-in-a-parameter-file).
 
 To see a detailed list of available command-line options, run:
 ```console
@@ -518,54 +444,11 @@ You must also specify the [demultiplexing strategy](#input-requirements) used wh
 
 <small>**`--demultiplexed-by [strategy]`**</small>:  Specify sample demultiplexing strategy used when processing sequence reads. Accepted values are `index` (Illumina indices, previously-demultiplexed, the default), `barcode` (barcoded primers, not demultiplexed), or `combined` (pooled barcoded primers across Illumina index pairs).
 
-### Other required options
+### Specifying sequence denoiser
 
-#### Barcode file 
-> [!NOTE]
-> A barcode file is optional for demultiplexed runs where PCR primers have already been stripped.
+By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch) to denoise sequence reads to ZOTUs, but the pipeline also supports [usearch](https://github.com/rcedgar/usearch12) and [DADA2](https://benjjneb.github.io/dada2/). For more information, see the [section on denoising](#denoisingdereplication-and-sequence-variant-inference).
 
-<small>**`--barcode [file/glob]`**</small>: Aside from specifying how to find your sequence reads, you must specify barcode file(s) using the `--barcode` option. If the value passed to `--barcode` is a glob (enclosed in quotes!), rainbow_bridge will use all matching barcode files for demultiplexing/primer matching. Barcode files should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to specify sample barcodes and amplicon primers. It will vary slightly based on whether your runs have been demultiplexed by the sequencer or not. Note that the pipeline can perform a few standalone tasks that do not require barcode files (e.g. collapsing taxonomy to LCA or taxonomic classification via insect).
-
-<small>**The barcode file does not require a header line (i.e., column names), but if one is included it must be prefaced with a '#' (i.e., commented out).**</small>
-
-- **Non-demultiplexed runs**: This format includes forward/reverse sample barcodes and forward/reverse PCR primers to separate sequences into the appropriate samples. Barcodes are separated with a colon and combined in a single column while primers are given in separate columns. For example:
-  #assay|sample|barcodes|forward_primer|reverse_primer|extra_information
-  ---|---|---|---|---|---
-  16S-Fish|B001|GTGTGACA:AGCTTGAC|CGCTGTTATCCCTADRGTAACT|GACCCTATGGAGCTTTAGAC|EFMSRun103_Elib90
-  16S-Fish|B002|GTGTGACA:GACAACAC|CGCTGTTATCCCTADRGTAACT|GACCCTATGGAGCTTTAGAC|EFMSRun103_Elib90
-  
-- **Demultiplexed runs**: Since sequences have already been separated into samples, this format omits the barcodes (using just a colon, ':' in their place) but includes the primers. For example:
-  #assay|sample|barcodes|forward_primer|reverse_primer|extra_information
-  ---|---|---|---|---|---
-  primer|V9_18S|:|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC
-  
-  In this case, it's not super critical what you call your 'sample' since the files are already separated.
-
-- <a name="pooled-barcode"></a>**Pooled runs**: Because pooled runs reuse barcode/primer combinations across different index pairs (here referred to as "pools"), there must be a way to associate specific pools to those barcode/primer pairs. In order to do this, the value in the first column of your barcode file must match the underscore-delimited prefix of your read files.   
-
-    For example, if your read files look like this:
-    ```
-    P1_R1.fastq       P1_R2.fastq
-    P2_R1.fastq       P2_R2.fastq
-    P3_R1.fastq       P3_R2.fastq
-    ...               ...
-    ```
-    Your barcode file should look something like this (note that the first line is ignored since it begins with '#', so the names in the header don't affect the outcome, they're just included for ease of reading):
-    #pool|sample|barcodes|forward_primer|reverse_primer|extra_information
-    ---|---|---|---|---|---
-    P1|P1_sample1|AGCT:TTGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 1
-    P1|P1_sample2|TTAG:ATTG|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 2
-    P1|P1_sample3|GATA:TAGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 3
-    P2|P2_sample1|AGCT:TTGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 1
-    P2|P2_sample2|TTAG:ATTG|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 2
-    P2|P2_sample3|GATA:TAGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 3
-    P3|P3_sample1|AGCT:TTGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 1
-    P3|P3_sample2|TTAG:ATTG|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 2
-    P3|P3_sample3|GATA:TAGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 3
-    
-    As you can see, each barcode/primer combination occurs three times, once for each sequence pool, and the first column indicates the specific pool where that sample name will be assigned.
-
-    When `ngsfilter` is run, the provided barcode file is split into multiple files and each individual split is applied to a specific read file. *If the names/column values do not match, sample names will be incorrectly assigned* and there won't be any way to figure out the right ones without re-running the whole pipeline. Thus, make sure that the value in the first column of the barcode file matches the prefix (underscore-delimited) of the read files containing the pool of interest.
+### Other common options
 
 #### BLAST settings 
 
@@ -573,55 +456,12 @@ For pipeline runs in which BLAST queries are performed, the `--blast` argument i
 
 ## General options
 <small>**`--project [project]`**</small>:    Project name, applied as a prefix to various output filenames. (default: project directory name)  
+<small>**`--single`**</small>:    Sequence runs are single-ended.  
+<small>**`--paired`**</small>:    Sequence runs are paired-ed.  
+<small>**`--demultiplexed-by [strategy]`**</small>:    Specify demultiplexing strategy (required)    
 <small>**`--save-config [file (optional)]`**</small>:    Save current command-line options to a YAML file. With no argument, saves to `options.yml`, otherwise pass filename.  
 <small>**`--publish-mode [mode]`**</small>:  Specify how nextflow places files in output directories. See [nextflow documentation](https://www.nextflow.io/docs/latest/process.html#publishdir) for supported values (default: symlink)  
 <small>**`--fastqc`**</small>:               Output FastQC reports for pre and post filter/merge steps. MultiQC is used for demultiplexed or split runs.  
-
-## Sample IDs
-
-For non-demultiplexed sequencing runs (`--demultipexed-by barcode`), sample IDs are designated using the `sample` column of the barcode file. For demultiplexed runs (`--demultipexed-by index`), sample IDs are generated using the first (shared) part of the read filename(s) before the fwd/rev (R1/R2) pattern (if applicable). For example, the following read pairs:
-
-```
-B1_S7_L001_R1_001.fastq     B1_S7_L001_R2_001.fastq
-B2_S8_L001_R1_001.fastq     B2_S8_L001_R2_001.fastq
-CL1_S2_L001_R1_001.fastq    CL1_S2_L001_R2_001.fastq
-CL2_S3_L001_R1_001.fastq    CL2_S3_L001_R2_001.fastq
-```
-
-Will result in the following sample IDs:
-
-```
-B1_S7_L001
-B2_S8_L001
-CL1_S2_L001
-CL2_S3_L001
-```
-
-### Re-mapping custom sample IDs
-By default for previously-demultiplexed runs, rainbow_bridge will interpret sample IDs from sequence read filenames as outlined above. However, you may also specify a mapping file to translate read filenames into custom sample IDs.
-
-<small>**`--sample-map [mapfile]`**</small>: A headerless tab-delimited file that maps sample names to sequence-read filenames.  
-
-The specified map file should be a tab-delimited table (*without* headers) where the first column contains the desired sample ID, the second column contains the read filename (forward read for paired-end reads), and the third column (for paired-end reads only) contains the reverse read filename. To map custom IDs to the read files in the example [above](#sample-ids), construct a map file as follows (columns are tab-separated, file has no header): 
-
-```
-sample_B1   B1_S7_L001_R1_001.fastq   B1_S7_L001_R2_001.fastq
-sample_B2   B2_S8_L001_R1_001.fastq   B2_S8_L001_R2_001.fastq
-sample_CL1  CL1_S2_L001_R1_001.fastq  CL1_S2_L001_R2_001.fastq
-sample_CL2  CL2_S3_L001_R1_001.fastq  CL2_S3_L001_R2_001.fastq 
-```
-
-This results in the following sample IDs:
-
-```
-sample_B1 
-sample_B2 
-sample_CL1
-sample_CL2
-```
-
-> ![NOTE]
-> Make sure the filenames in your sample map match the complete filenames (base names) as they exist on-disk (e.g., if they are gzipped, be sure to include the '.gz' extension in your sample map). This differs from previous versions of the pipeline in which the .gz extension needed to be stripped from the sample ID map.
 
 ## Length, quality, and merge settings
 These settings allow you to set values related to quality filtering and paired-end merging.
@@ -631,41 +471,66 @@ These settings allow you to set values related to quality filtering and paired-e
 <small>**`--min-align-len [num]`**</small>:   Minimum sequence overlap when merging forward/reverse reads (default: 12)  
 <small>**`--min-len [num]`**</small>:         Minimum overall sequence length (default: 50)  
 
-## Sequence filtering (`ngsfilter` options)
-These settings control options passed to the `ngsfilter` tool and include allowable PCR primer mismatch and whether to retain sequences with ambiguous Illumina indices.
+## PCR primer trimming
+These settings control how PCR primers are (optionally) trimmed from sequence reads. For non-demultiplexed and combined datasets (`--demultiplexed-by barcode/combined`), this will be done automatically during the demultiplexing step. For demultiplexed datasets processed with `usearch` or `vsearch`, this will optionally be done with `ngsfilter`. For demultiplexed datasets processed with `dada2`, it will be done using `cutadapt`.
 
+<small>**`--barcode [file/glob]`**</small>: Barcode file containing PCR primers. When used for primer trimming (as opposed to demultiplexing), this file should be formatted as for [previously-demultiplexed sequencing runs](#demuxed-run).  
+<small>**`--fwd-primer [primer sequence]`**</small>: Nucleotide sequence of forward PCR primer.  
+<small>**`--reverse-primer [primer sequence]`**</small>: Nucleotide sequence of reverse PCR primer.  
 <small>**`--primer-mismatch [num]`**</small>:  Allowed number of mismatched primer bases (default: 2)  
-<small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed or pooled sequencing runs, remove reads that have ambiguous indices (i.e. they have bases other than AGCT). Illumina indices must be included in fastq headers:  
-    <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAAWGTGG+TTCNAAGA</strong></code></pre>
-<small>**`--no-pcr`**</small>: Skip primer/barcode match and removal (ngsfilter step) for sequencing runs where metabarcoding primers are already removed.   
-<small>**`--demuxed-fasta [file]`**</small>:  Skip demultiplexing step and use supplied FASTA (must be in usearch/vsearch format). See [above](#demux-fasta).  \
-<small>**`--demuxed-example`**</small>:  Spit out example usearch/vsearch demultiplexed FASTA format  
-<small>**`--demux-only`**</small>:  Stop after demultiplexing and splitting raw reads  
+<small>**`--free-primers`**</small>: Do not anchor primer sequences to the beginning and/or end of fastq sequences when trimming with `cutadapt`.  
 
-## Denoising/dereplication and ZOTU inference
-These options control how (and with what tool) sequences are denoised and ZOTUs are inferred By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch), but [usearch](https://github.com/rcedgar/usearch12) is also supported.
+> ![NOTE]
+> Only one of `--barcode` OR `--fwd-primer/--reverse-primer` may be passed. 
 
-<small>**`--denoiser [usearch/vsearch]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'vsearch' (default: vsearch)    
-<small>**`--min-abundance [num]`**</small>:  Minimum sequence abundance for ZOTU determination; sequences with abundances below the specified threshold will be discarded during the denoising process (default: 8)   
+## Denoising/dereplication and sequence variant inference
+These options control how (and with what tool) sequences are denoised and sequence variants are inferred. By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch), but [usearch](https://github.com/rcedgar/usearch12) and [DADA2](https://benjjneb.github.io/dada2/) are also supported.
+
+<small>**`--denoiser [usearch/vsearch/dada2]`**</small>:  Sets the tool used for denoising & chimera removal. Accepted options: 'usearch', 'vsearch', 'dada2' (default: vsearch)    
+### Options for usearch/vsearch
+
+<small>**`--min-abundance [num]`**</small>:  Minimum sequence abundance for sequence variant determination; sequences with abundances below the specified threshold will be discarded during the denoising process (default: 8)   
 <small>**`--alpha [num]`**</small>: Alpha parameter passed to the UNOISE3 algorithm (see the [unoise2 paper for more info](https://doi.org/10.1101/081257)) (default: 2.0)  
 <small>**`--zotu-identity [num]`**</small>: Fractional pairwise identity used to match raw reads to ZOTUs, equivalent to `vsearch` `--id`/`usearch` `-id` parameters (default: 0.97)  
 <small>**`--chimera-ref [file]`**</small>: FASTA file to use in reference-based chimera detection (if omitted, denovo chimera detection will be used). Only supported with `vsearch`.  
 
-## ZOTU curation using LULU
+### Options for DADA2
 
-rainbow_bridge includes the option to curate ZOTUs using [lulu](https://github.com/tobiasgf/lulu). For a more detailed explantion of these parameters please see the [LULU documentation](https://github.com/tobiasgf/lulu).
+<small>**`--plot-qualities`**</small>: Plot quality score profiles per sample (fwd/rev for paired-end reads).  
+<small>**`--plot-only`**</small>: Terminate pipeline after plotting quality scores.  
+<small>**`--plot-errors`**</small>: Plot learned vs. expected errors.  
+<small>**`--plot-qualities-n`**</small>: The number of records to sample from fastq files when plotting quality profiles (default: 500,000).  
+<small>**`--dada-truncate [num]`**</small>: Truncate reads after specified number of bases. Values passed to this option will apply to both forward and reverse reads (default: no truncation).  
+<small>**`--dada-trunc-f [num]`**</small>: Truncate forward reads after specified number of bases (default: no truncation).  
+<small>**`--dada-trunc-r` [num]**</small>: Truncate reverse reads after specified number of bases (default: no truncation).  
+<small>**`--dada-trunc-q [num]`**</small>: Truncate reads at the first instance of a quality score less than or equal to specified value (default: 2).  
+<small>**`--dada-max-n [num]`**</small>: After truncation, sequences with more than specified number of Ns will be discarded (note thatdada does not allow Ns, default: 0).  
+<small>**`--dada-max-ee [num]`**</small>: Discard reads with with higher than specified number of "expected errors". Values passed to this option will apply to both forward and reverse reads (default: no maximum).  
+<small>**`--dada-max-ee-f [num]`**</small>: Discard forward reads with with higher than specified number of "expected errors" (default: no maximum).  
+<small>**`--dada-max-ee-r [num]`**</small>: Discard reverse reads with with higher than specified number of "expected errors" (default: no maximum).  
+<small>**`--dada-remove-phix`**</small>: Discard reads matching known phiX sequences.  
+<small>**`--dada-trim-left [num]`**</small>: Remove specified number of nucleotides from the beginning of each read (default 0).  
+<small>**`--dada-trim-right [num]`**</small>: Remove specified number of nucleotides from the end of each read (default 0).  
+<small>**`--dada-max-len [num]`**</small>: Remove reads longer than specified length (default: no maximum).  
+<small>**`--dada-min-len [num]`**</small>: Remove reads shorter than specified length (default: 20).  
+<small>**`--dada-min-q [num]`**</small>: Remove post-truncation reads containing quality scores under specified value (default: 0).  
+<small>**`--dada-chimera-method [consensus/pooled/per-sample]`**</small>: Chimera-detection method used (default: consensus). See DADA2 documentation for more information.  
 
-<small>**`--lulu`**</small>:  Curate ZOTUs using LULU  
+## Sequence variant curation using LULU
+
+rainbow_bridge includes the option to curate sequence variants using [lulu](https://github.com/tobiasgf/lulu). For a more detailed explantion of these parameters please see the [LULU documentation](https://github.com/tobiasgf/lulu).
+
+<small>**`--lulu`**</small>:  Curate sequence variants using LULU  
 <small>**`--lulu-min-ratio-type [num]`**</small>: LULU minimum ratio type (accepted values: 'min', 'avg', default: 'min')  
 <small>**`--lulu-min-ratio [num]`**</small>: LULU minimum ratio (default: 1)  
-<small>**`--lulu-min-match [num]`**</small>: LULU minimum threshold of sequence similarity to consider ZOTUs as spurious. Choose higher values when using markers with lower genetic variation and/or few expected PCR and sequencing errors (default: 84)  
+<small>**`--lulu-min-match [num]`**</small>: LULU minimum threshold of sequence similarity to consider sequence variants as spurious. Choose higher values when using markers with lower genetic variation and/or few expected PCR and sequencing errors (default: 84)  
 <small>**`--lulu-min-rc [num]`**</small>: LULU minimum relative co-occurence rate (default: 0.95)  
 
 ## Assigning taxonomy
 
-These options relate to assignment/collapsing of taxonomy by ZOTU sequence. Initial taxonomic assignment is performed using BLAST and/or insect and further refined using lowest common ancestor (LCA) collapse.  
+These options relate to assignment/collapsing of taxonomy by sequence variant. Initial taxonomic assignment is performed using BLAST and/or insect and further refined using lowest common ancestor (LCA) collapse.  
 
-BLAST is an alignment-based approach that uses a reference database (such as NCBI [GenBank](https://www.ncbi.nlm.nih.gov/genbank/)) to match ZOTUs to sequences with known taxonomic identity. [insect](https://github.com/shaunpwilkinson/insect) is a phylogenetic (tree-based) approach to taxonomic assignment. It is particularly useful for assigning higher-order (e.g. phylum, order) taxonomy to ZOTUs that are otherwise unidentified by BLAST. In the LCA method, BLAST results for each ZOTU are compared to one another and a decision is made whether or not to collapse to the next highest taxonomic rank based on a user-defined variability threshold among those results. 
+BLAST is an alignment-based approach that uses a reference database (such as NCBI [GenBank](https://www.ncbi.nlm.nih.gov/genbank/)) to match sequence variants to sequences with known taxonomic identity. [insect](https://github.com/shaunpwilkinson/insect) is a phylogenetic (tree-based) approach to taxonomic assignment. It is particularly useful for assigning higher-order (e.g. phylum, order) taxonomy to sequence variants that are otherwise unidentified by BLAST. In the LCA method, BLAST results for each sequence variant are compared to one another and a decision is made whether or not to collapse to the next highest taxonomic rank based on a user-defined variability threshold among those results. 
 
 ### BLAST settings
 
@@ -698,7 +563,7 @@ Multiple BLAST databases:
 It is possible to query sequences against multiple BLAST databases. Nextflow does not support multiple values for the same option on the command line (e.g., `workflow.nf --opt val1 --opt val2`), but it *does* support them when using [parameter files](#specifying-parameters-in-a-parameter-file). Thus, if you want to use multiple custom databases, you'll need to pass them as a list in your parameter file ([see here](#setting-multiple-values-for-the-same-option) for an example). The pipeline will run BLAST queries against each database separately and merge the results into a common output file.    
 
 All BLAST options:  
-<small>**`--blast`**</small>: Query ZOTU sequences against a provided BLAST database.  
+<small>**`--blast`**</small>: Query sequence variants against a provided BLAST database.  
 <small>**`--blast-db [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db.  
 <small>**`--blast-taxdb [archive]`**</small>: Specify a local taxdb archive. The file passed to this argument must be a .tar.gz archive containing the NCBI taxdb files (`taxdb.btd`, `taxdb.bti`, `taxonomy4blast.sqlite3`). By default, taxdb files present alongside BLAST database files will be used.  
 <small>**`--blast-taxa [taxa]`**</small>: Filter your BLAST query by a specific taxon or taxa. The value of this option should be a taxon name (e.g., "Metazoa", "Actinopteri"). Multiple taxa can be passed if separated by commas (e.g., "Metazoa,Rhodophyta") and taxon names are case-insensitive.  
@@ -726,7 +591,7 @@ $ blastn -gapopen 15 -gapextend 25 -html
 
 ### Classification using insect
 
-These options control taxonomy assignment using the [insect](https://github.com/shaunpwilkinson/insect) algorithm. To run insect on your sequences, you must specify either one of the [pre-trained](https://github.com/shaunpwilkinson/insect#classifying-sequences) classifier models OR one that you've trained yourself. Insect also takes various parameters to tweak how it does its assignments.
+These options control taxonomy assignment using the [insect](https://github.com/shaunpwilkinson/insect) algorithm. To run insect on your sequences, use either one of the [pre-trained](https://github.com/shaunpwilkinson/insect#classifying-sequences) classifier models or one that you've trained yourself. Insect also takes various parameters to tweak how it does its assignments.
 
 <small>**`--insect [classifier]`**</small>:  Perform taxonomy assignment using insect. Accepted values of [classifier] are:  
 
@@ -749,7 +614,7 @@ These options control taxonomy assignment using the [insect](https://github.com/
 
 <small>**`--standalone-taxonomy`**</small>: Run standalone insect classification/LCA (requires `--insect` or `--lca` option)  
 <small>**`--insect-sequences [file]`**</small>: (Only with --standalone-taxonomy) FASTA file containing sequences to be classified  
-<small>**`--zotu-table [file]`**</small>: (Only with --standalone-taxonomy) ZOTU table file (e.g., output from the denoising process)  
+<small>**`--seq-table [file]`**</small>: (Only with --standalone-taxonomy) sequence table file (e.g., output from the denoising process)  
 <small>**`--insect-threshold [num]`**</small>:  Minimum Akaike weight for the recursive classification procedure to continue toward the leaves of the tree (default: 0.8)  
 <small>**`--insect-offset [num]`**</small>: Log-odds score offset parameter governing whether the minimum score is met at each node (default: 0)  
 <small>**`--insect-min-count [num]`**</small>:  Minimum number of training sequences belonging to a selected child node for the classification to progress (default: 5)  
@@ -759,7 +624,7 @@ These options control taxonomy assignment using the [insect](https://github.com/
 
 Options for the lowest common ancestor (LCA) method of taxonomy refinement.
 
-The LCA method will selectively collapse BLAST assignments to their lowest common ancestor based on user-defined variability and certainty thresholds. This script first filters BLAST results according to minimum quality thresholds (percent identity: `--lca-pid`, query coverage: `--lca-qcov`, and e-value: `--lca-evalue`). For cases where ZOTU sequences return multiple matches to the same sequence ID, the matches are summarized by the best combination of match scores. Then, results whose percent identity differs from the best result by more than a user-defined amount (`--lca-diff`) are discarded. Finally, ZOTUs with taxonomic assignments that are consistent across remaining BLAST results will receive species-level taxonomy. Otherwise, the taxonomy of that ZOTU will be collapsed to the lowest common ancestor of remaining BLAST results (if using NCBI taxonomy, the NCBI taxid for the common ancestor will also be retrieved). Two files are produced: a collapsed taxonomy table and an intermediate table retaining all ZOTUs passing minimum quality thresholds. The intermediate table may be useful in determining why particular ZOTUs were collapsed.
+The LCA method will selectively collapse BLAST assignments to their lowest common ancestor based on user-defined variability and certainty thresholds. This script first filters BLAST results according to minimum quality thresholds (percent identity: `--lca-pid`, query coverage: `--lca-qcov`, and e-value: `--lca-evalue`). For cases where there are multiple BLAST matches for the same sequence variant to the same NCBI sequence ID, the matches are summarized by the best combination of match scores. Then, results whose percent identity differs from the best result by more than a user-defined amount (`--lca-diff`) are discarded. Finally, sequence variants with taxonomic assignments that are consistent across remaining BLAST results will receive species-level taxonomy. Otherwise, the taxonomy of that sequence variant will be collapsed to the lowest common ancestor of remaining BLAST results (if using NCBI taxonomy, the NCBI taxid for the common ancestor will also be retrieved). Two files are produced: a collapsed taxonomy table and an intermediate table retaining all sequence variants passing minimum quality thresholds. The intermediate table may be useful in determining why particular variants were collapsed.
 
 #### LCA options
 
@@ -768,7 +633,7 @@ The following command-line options are available for the LCA collapse method:
 <small>**`--lca`**</small>: Collapse assigned BLAST results by lowest common ancestor (LCA)  
 <small>**`--standalone-taxonomy`**</small>: Run standalone LCA / insect classification (requires `--insect` or `--lca` option)  
 <small>**`--blast-file [file]`**</small>: (Only with --standalone-taxonomy) BLAST result table (e.g., output from the blast process)  
-<small>**`--zotu-table [file]`**</small>: (Only with --standalone-taxonomy) ZOTU table file (e.g., output from the denoising process)  
+<small>**`--seq-table [file]`**</small>: (Only with --standalone-taxonomy) sequence table file (e.g., output from the denoising process)  
 <small>**`--lca-lineage [file]`**</small>: Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage (for use with custom BLAST db)  
 <small>**`--dropped [str]`**</small>: Placeholder string for dropped taxonomic levels (default: 'dropped'). "NA" for blank/NA  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy refinement (default: 100)  
@@ -854,14 +719,14 @@ To use a custom taxonomic lineage, pass this tabular lineage file to rainbow_bri
 ### Standalone taxonomic assignment/collapse
 rainbow_bridge can run the LCA collapse and/or insect classification processes independent of the rest of the pipeline (either or both processes may be run). This is useful for experimenting with different parameter valuess without having to re-run the entire pipeline. This can be done using the `--standalone-taxonomy` option alongside `--lca` and/or `--insect [option]` and any specific options you wish to pass to [LCA](#lca-collapse) or [insect](#classification-using-insect). 
 
-When running LCA in standalone mode, in addition to `--standalone-taxonomy`, you must supply a BLAST result file with the `--blast-file` option. You may also optionally provide a ZOTU table using the `--zotu-table` option. 
+When running LCA in standalone mode, in addition to `--standalone-taxonomy`, you must supply a BLAST result file with the `--blast-file` option. You may also optionally provide a sequence variant table using the `--seq-table` option. 
 
-When running insect in standalone mode, in addition to `--standalone-taxonomy` you must supply a FASTA file with the `--insect-sequences` option. This file contains the sequences to classify using insect. As for standalone LCA, a ZOTU table is also accepted using the `--zotu-table` option. 
+When running insect in standalone mode, in addition to `--standalone-taxonomy` you must supply a FASTA file with the `--insect-sequences` option. This file contains the sequences to classify using insect. As for standalone LCA, a sequence variant table is also accepted using the `--seq-table` option. 
 
-In both cases, the output from the assignment/LCA operations can be found in the usual place (`output/taxonomy/<insect|lca>/<settings>`). If a ZOTU table is supplied, the finalized (combined) output can be found in `output/final/standalone`.
+In both cases, the output from the assignment/LCA operations can be found in the usual place (`output/taxonomy/<insect|lca>/<settings>`). If a sequence variant table is supplied, the finalized (combined) output can be found in `output/final/standalone`.
 
 ## Splitting fastq input for increased parallelization
-To improve performance, large input files can be split into multiple smaller files and processed in parallel. This option is only available for either pooled runs or runs that have *not* previously been demultiplexed. With the `--split` option, rainbow_bridge will break up the input reads into smaller files (with the number of reads per file customizable as explained below) and process them in parallel the same way that demultiplexed runs are processed. 
+To improve demultiplexing performance, large input files can be split into multiple smaller files and processed in parallel. This option is only available for either pooled runs or runs that have *not* previously been demultiplexed. With the `--split` option, rainbow_bridge will break up the input reads into smaller files (with the number of reads per file customizable as explained below) and process them in parallel the same way that demultiplexed runs are processed. 
 
 <small>**`--split`**</small>:    Split input fastq files and process in parallel   
 <small>**`--split-by [num]`**</small>: Number of sequences per split fastq chunk (default: 100000)  
@@ -869,8 +734,8 @@ To improve performance, large input files can be split into multiple smaller fil
 ## Resource allocation
 These options allow you to allocate resources (CPUs and memory) to rainbow_bridge processes.
 
-<small>**`--max-memory [mem]`**</small>:  Maximum memory available to nextflow processes, e.g., '8.GB' (default: maximum available system memory)  
-<small>**`--max-cpus [num]`**</small>:  Maximum cores available to nextflow processes (default: maximum available system CPUs)  
+<small>**`--max-memory [mem]`**</small>:  Maximum memory available to nextflow processes, e.g., '8.GB' (default: 6 GB)  
+<small>**`--max-cpus [num]`**</small>:  Maximum cores available to nextflow processes (default: 1 CPU)  
 <small>**`--max-time [time]`**</small>:  Maximum time allocated to each pipeline process, e.g., '2.h' (default: 10d)  
 <small>**`--max-retries [num]`**</small>:  The maxmimum number of times (default: 1) rainbow_bridge will attempt to re-execute a process that fails due to resource limitations. Resource allocation requests will be multiplied by the number of retry attempts.  
 
@@ -881,7 +746,7 @@ Within rainbow_bridge, different processes are allocated different amount of bas
 Options to control how singularity behaves. 
 
 <small>**`--bind-dir [dir]`**</small>:  Space-separated list of directories to bind within singularity images (must be surrounded by quotations if more than one directory). This is passed to the -B option of `singularity run`. In most cases any filenames passed to the pipeline will be auto-bound within singularity instances, but you might try this option if you're getting 'file not found' errors.  
-<small>**`--singularity-cache [dir]`**</small>:  Location to store downloaded singularity images. May also be specified with the environment variable $NXF_SINGULARITY_CACHEDIR. 
+<small>**`--singularity-cache [dir]`**</small>:  Location to store downloaded singularity images. Defaults to the value of the environment variable $NXF_SINGULARITY_CACHEDIR. 
 
 ## Output products and finalization
 
@@ -912,7 +777,7 @@ Using this map file, any sequences assigned to phylum 'Rhodophyta' or classes 'P
 |   family   |   Bovidae  |   filter  |
 |   family   |   Canidae  |   filter  |
 
-Using this filter map, all ZOTUs assigned to kingdoms 'Metazoa' or 'Plantae' will be retained and all ZOTUs assigned to families 'Bovidae' or 'Canidae' will be filtered out.  
+Using this filter map, all sequence variants assigned to kingdoms 'Metazoa' or 'Plantae' will be retained and all sequence variants assigned to families 'Bovidae' or 'Canidae' will be filtered out.  
 
 <small>**`--taxon-priority [lca/insect]`**</small>: If both LCA and insect methods were used, the final taxonomic table will be merged. Use this option to specify which method should take priority if assignments disagree. Possible options: 'lca' or 'insect'.
 
@@ -920,7 +785,7 @@ Using this filter map, all ZOTUs assigned to kingdoms 'Metazoa' or 'Plantae' wil
 
 These options provide different ways to deal with possible contaminates in your dataset. The pipeline currently supports the following methods:
 
- * Remove all taxa (ZOTUs) found in negative control samples.
+ * Remove all taxa (sequence variants) found in negative control samples.
  * Subtract read counts of taxa found in negative control samples from all samples.
  * Use the R package [decontam](https://github.com/benjjneb/decontam) to control for potential decontamination. 
 
@@ -929,8 +794,8 @@ The first two options require a list of negative control sample IDs and the thir
 The following command line options are available:  
 
 <small>**`--controls [file]`**</small>: Specify sample names of negative field/extraction/filtration controls. Argument is a text file containing one sample ID per line.  
-<small>**`--control-action [action]`**</small>: Action to perform on negative controls. Available options are 'remove' (remove all ZOTUs found in negative controls), 'subtract' (subtract read counts of ZOTUs found in negative controls), and 'decontam' (use the R package [decontam](https://github.com/benjjneb/decontam) to control for possible contamination) (default: 'remove')  
-<small>**`--control-threshold [num]`**</small>: For the `remove` action, the minimum read count at which to retain potential contaminates (i.e., for ZOTUs found in negative controls, retain if fewer than specified number of reads). For the `decontam` action, this value is passed to the the `isContaminant` function in decontam. See [package documentation](https://benjjneb.github.io/decontam/vignettes/decontam_intro.html) for more information. (default: 0/0.1)  
+<small>**`--control-action [action]`**</small>: Action to perform on negative controls. Available options are 'remove' (remove all sequence variants found in negative controls), 'subtract' (subtract read counts of sequence variants found in negative controls), and 'decontam' (use the R package [decontam](https://github.com/benjjneb/decontam) to control for possible contamination) (default: 'remove')  
+<small>**`--control-threshold [num]`**</small>: For the `remove` action, the minimum read count at which to retain potential contaminates (i.e., for sequence variants found in negative controls, retain if fewer than specified number of reads). For the `decontam` action, this value is passed to the the `isContaminant` function in decontam. See [package documentation](https://benjjneb.github.io/decontam/vignettes/decontam_intro.html) for more information. (default: 0/0.1)  
 <small>**`--decontam-method [method]`**</small>: (for action = 'decontam' only') Method used for determining contaminates. Value is passed to the `method` argument of the `isContaminant` function in decontam. See [package documentation](https://benjjneb.github.io/decontam/vignettes/decontam_intro.html) for more information. (default: 'auto')  
 <small>**`--dna-concentration [file]`**</small>: (for action = 'decontam' only') Tabular file containing DNA concentrations of each sample in ng/ul. A file in .csv or .tsv format with two columns: `sample` and `concentration`. The first column contains sample IDs and the second column contains DNA concentrations. Passed to the `conc` argument of the `isContaminant` function in decontam. See [package documentation](https://benjjneb.github.io/decontam/vignettes/decontam_intro.html) for more information.  
 
@@ -948,8 +813,8 @@ These options provide the ability to filter output by absolute and relative sequ
 
 #### Other finalization options
 
-<small>**`--lca-table`**</small>: Produce final ZOTU table merged with LCA taxonomy only.  
-<small>**`--insect-table`**</small>: Produce final ZOTU table merged with insect taxonomy only.  
+<small>**`--lca-table`**</small>: Produce final sequence variant table merged with LCA taxonomy only.  
+<small>**`--insect-table`**</small>: Produce final sequence variant table merged with insect taxonomy only.  
 
 ### Output products
 
@@ -959,15 +824,203 @@ rainbow_bridge supports generation of [phyloseq](https://joey711.github.io/phylo
 
 <small>**`--phyloseq`**</small>: Create a phyloseq object from pipeline output (requires the `--lca` option).  
 <small>**`--metadata [file]`**</small>: A comma- or tab-separated sample metadata table (required). This can contain any arbitrary sample information, but it must have a header and the first column (preferably called 'sample') must contain sample IDs.  
-<small>**`--taxonomy [taxonomy]`**</small>: Taxonomic classification scheme. This can be one of either `lca` (to use LCA taxonomy, the default), `insect` (for insect taxonomy), `combined` (for the finalized combined taxonomy table), or the filename of a comma/tab-separated taxonomy table. If user-supplied, the taxonomy table must consist of a column containing ZOTU IDs (e.g., 'Zotu1', 'Zotu2', etc.) followed by any number of arbitrary columns of taxonomic classification (e.g., domain, kingdom, phylum, etc.). The column headers can have any name you'd like, but the first column has to be ZOTU IDs.  
+<small>**`--taxonomy [taxonomy]`**</small>: Taxonomic classification scheme. This can be one of either `lca` (to use LCA taxonomy, the default), `insect` (for insect taxonomy), `combined` (for the finalized combined taxonomy table), or the filename of a comma/tab-separated taxonomy table. If user-supplied, the taxonomy table must consist of a column containing sequence variant IDs (e.g., 'Zotu1', 'Zotu2', etc.) followed by any number of arbitrary columns of taxonomic classification (e.g., domain, kingdom, phylum, etc.). The column headers can have any name you'd like, but the first column has to be sequence variant IDs.  
 <small>**`--tree`**</small>: Generate a phylogenetic tree to include in the phyloseq object.  
-<small>**`--optimize-tree`**</small>: Attempt to optimize tree inference. This may take a long time, particularly if there are many ZOTU sequences.
+<small>**`--optimize-tree`**</small>: Attempt to optimize tree inference. This may take a long time, particularly if there are many sequence variants.
+
+## Miscellaneous options
+
+<small>**`--remove-ambiguous-indices`**</small>:  For previously-demultiplexed or pooled sequencing runs, remove reads that have ambiguous indices (i.e. they have bases other than AGCT). Illumina indices must be included in fastq headers:  
+    <pre><code>@M02308:1:000000000-KVHGP:1:1101:17168:2066 1:N:0:<strong>CAAWGTGG+TTCNAAGA</strong></code></pre>
+<!-- <small>**`--trim-primers`**</small>: Skip primer/barcode match and removal (ngsfilter step) for sequencing runs where metabarcoding primers are already removed.  -->
+<small>**`--demuxed-fasta [file]`**</small>:  Skip demultiplexing step and use supplied FASTA (must be in usearch/vsearch format). See [above](#demux-fasta).  \
+<small>**`--demuxed-example`**</small>:  Spit out example usearch/vsearch demultiplexed FASTA format  
+<small>**`--demux-only`**</small>:  Stop after demultiplexing and splitting raw reads  
 
 # Useful examples and tips
 
+## Barcode file 
+
+For combined/barcoded sequencing runs (`--demultiplexed-by barcode/combined`), a barcode file is required. For demultiplexed runs (`--demultiplexed-by index`), a barcode file can optionally be supplied to trim PCR primers. 
+
+<small>**`--barcode [file/glob]`**</small>: Location of a tab-separted barcode file (to be passed to ngsfilter or parsed for forward/reverse primer sequences). If the value passed to `--barcode` is a glob (enclosed in quotes!), rainbow_bridge will use all matching barcode files for demultiplexing/primer matching. Barcode files should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to define sample barcodes and amplicon primers. It will be different based on whether or not your reads are demultiplexed.
+
+<small>**The barcode file does not require a header line (i.e., column names), but if one is included it must be prefaced with a '#'.**</small>
+
+- **Non-demultiplexed runs**: This format includes forward/reverse sample barcodes and forward/reverse PCR primers to separate sequences into the appropriate samples. Barcodes are separated with a colon and combined in a single column while primers are given in separate columns. For example:
+  #assay|sample|barcodes|forward_primer|reverse_primer|extra_information
+  ---|---|---|---|---|---
+  16S-Fish|B001|GTGTGACA:AGCTTGAC|CGCTGTTATCCCTADRGTAACT|GACCCTATGGAGCTTTAGAC|EFMSRun103_Elib90
+  16S-Fish|B002|GTGTGACA:GACAACAC|CGCTGTTATCCCTADRGTAACT|GACCCTATGGAGCTTTAGAC|EFMSRun103_Elib90
+  
+- <a name="demuxed-run"></a>**Demultiplexed runs**: Since sequences have already been separated into samples, this format omits the barcodes (using just a colon, ':' in their place) but includes the primers. For example:
+  #assay|sample|barcodes|forward_primer|reverse_primer|extra_information
+  ---|---|---|---|---|---
+  primer|V9_18S|:|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC
+  
+  In this case, it's not super critical what you call your 'sample' since the files are already separated.
+
+- <a name="pooled-barcode"></a>**Pooled runs**: Because pooled runs reuse barcode/primer combinations across different index pairs (here referred to as "pools"), there must be a way to associate specific pools to those barcode/primer pairs. In order to do this, the value in the first column of your barcode file must match the underscore-delimited prefix of your read files.   
+
+    For example, if your read files look like this:
+    ```
+    P1_R1.fastq       P1_R2.fastq
+    P2_R1.fastq       P2_R2.fastq
+    P3_R1.fastq       P3_R2.fastq
+    ...               ...
+    ```
+    Your barcode file should look something like this (note that the first line is ignored since it begins with '#', so the names in the header don't affect the outcome, they're just included for ease of reading):
+    #pool|sample|barcodes|forward_primer|reverse_primer|extra_information
+    ---|---|---|---|---|---
+    P1|P1_sample1|AGCT:TTGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 1
+    P1|P1_sample2|TTAG:ATTG|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 2
+    P1|P1_sample3|GATA:TAGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 3
+    P2|P2_sample1|AGCT:TTGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 1
+    P2|P2_sample2|TTAG:ATTG|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 2
+    P2|P2_sample3|GATA:TAGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 3
+    P3|P3_sample1|AGCT:TTGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 1
+    P3|P3_sample2|TTAG:ATTG|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 2
+    P3|P3_sample3|GATA:TAGA|GTACACACCGCCCGTC|TGATCCTTCTGCAGGTTCACCTAC|barcode/primer combo 3
+    
+    As you can see, each barcode/primer combination occurs three times, once for each sequence pool, and the first column indicates the specific pool where that sample name will be assigned.
+
+    When `ngsfilter` is run, the provided barcode file is split into multiple files and each individual split is applied to a specific read file. *If the names/column values do not match, sample names will be incorrectly assigned* and there won't be any way to figure out the right ones without re-running the whole pipeline. Thus, make sure that the value in the first column of the barcode file matches the prefix (underscore-delimited) of the read files containing the pool of interest.
+
+## Sample IDs
+
+For non-demultiplexed sequencing runs (`--demultipexed-by barcode`), sample IDs are designated using the `sample` column of the barcode file. For demultiplexed runs (`--demultipexed-by index`), sample IDs are generated using the first (shared) part of the read filename(s) before the fwd/rev (R1/R2) pattern (if applicable). For example, the following read pairs:
+
+```
+B1_S7_L001_R1_001.fastq     B1_S7_L001_R2_001.fastq
+B2_S8_L001_R1_001.fastq     B2_S8_L001_R2_001.fastq
+CL1_S2_L001_R1_001.fastq    CL1_S2_L001_R2_001.fastq
+CL2_S3_L001_R1_001.fastq    CL2_S3_L001_R2_001.fastq
+```
+
+Will result in the following sample IDs:
+
+```
+B1_S7_L001
+B2_S8_L001
+CL1_S2_L001
+CL2_S3_L001
+```
+
+### Re-mapping custom sample IDs
+By default for previously-demultiplexed runs, rainbow_bridge will interpret sample IDs from sequence read filenames as outlined above. However, you may also specify a mapping file to translate read filenames into custom sample IDs.
+
+<small>**`--sample-map [mapfile]`**</small>: A headerless tab-delimited file that maps sample names to sequence-read filenames.  
+
+The specified map file should be a tab-delimited table (*without* headers) where the first column contains the desired sample ID, the second column contains the read filename (forward read for paired-end reads), and the third column (for paired-end reads only) contains the reverse read filename. To map custom IDs to the read files in the example [above](#sample-ids), construct a map file as follows (columns are tab-separated, file has no header): 
+
+```
+sample_B1   B1_S7_L001_R1_001.fastq   B1_S7_L001_R2_001.fastq
+sample_B2   B2_S8_L001_R1_001.fastq   B2_S8_L001_R2_001.fastq
+sample_CL1  CL1_S2_L001_R1_001.fastq  CL1_S2_L001_R2_001.fastq
+sample_CL2  CL2_S3_L001_R1_001.fastq  CL2_S3_L001_R2_001.fastq 
+```
+
+This results in the following sample IDs:
+
+```
+sample_B1 
+sample_B2 
+sample_CL1
+sample_CL2
+```
+
+> ![NOTE]
+> Make sure the filenames in your sample map match the complete filenames (base names) as they exist on-disk (e.g., if they are gzipped, be sure to include the '.gz' extension in your sample map). This differs from previous versions of the pipeline in which the .gz extension needed to be stripped from the sample ID map.
+
+## A note on globs/wildcards
+
+A number of rainbow_bridge command-line options accept file globs (wildcards). These are used when you want to indicate more than one file using a matching pattern. For an in-depth treatment of globs in the bash shell environment, have a look [here](https://www.baeldung.com/linux/bash-globbing). For the purposes of this pipeline though, you'll mostly use the following things:
+
+> [!NOTE]
+> When passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--reads '/storage/sequences/run1/*{R1,R2}*.fastq.gz'`). If you don't, the glob will be expanded by the shell rather than rainbow_bridge and parameter values will be incorrect.
+
+**\***: a star means 'match any string of characters of any length'  
+For example, the glob 'bc\*.tab' will match any filename that begins with 'bc', followed by a sequence of any characters, and finally ending with '.tab'  
+This pattern will match 'bc1.tab', 'bc2.tab', and 'bc_one_two_three.tab', but it will not match 'bc1.tabx'
+
+**{}**: curly braces are used for multiple possible matches.  
+The contents can be exact strings or wildcards. Anything that matches any of the given comma-separated strings using an "or" relationship (one OR the other) will be found.  
+For example, the glob 'seq\_\*{R1,R2}\*.fastq' will match 'seq_', followed by any characters, followed by EITHER 'R1' OR 'R2', followed by any characters, and finally ending with '.fastq'.  
+This pattern will match 'seq\_R1.fastq', 'seq\_001\_002\_R2.fastq', and 'seq\_123\_456\_R2\_extra_info.fastq', among many others. It will NOT match 'seqR1.fastq' (because it's missing the initial underscore following 'seq').
+
+## When things go wrong (interpreting errors)
+
+Occasionally your pipeline run will encounter something it doesn't know how to handle and it will fail. There are two general failure modes: silent and loud. 
+
+In some limited cases, the pipeline can fail silently. In this case it will appear to process various steps and then it will stop without any message. Sometimes you can tell something went wrong because all the status boxes are empty. We have done our best to avoid this failure mode but it's occasionally possible that you will encounter it. If you do, the best way to go about solving it is to make sure you have provided all the required command line options, your input files are all there and contain data, and any options that point to files actually point to the files you said they did. 
+
+In most cases when something goes wrong the pipeline will fail loudly and you will see something like this:
+
+![rainbow_bridge error output](images/err.png)
+
+This can be a bit intimidating at first, but there are a few ways to use this information to figure out what went wrong. First, toward the bottom of the readout, you'll see the "Command error" section (highlighted). This contains any error message that the failed process may have produced. If that's empty, there may still be some output you can look at. To see any output the process may have produced (just note that sometimes it's empty), take a look at the "Work dir" and do the following (here we're using the work dir from the above example):
+
+```console
+$ cat work/2a/7da7dd31811a49b03af88632257520/.command.out
+$ cat work/2a/7da7dd31811a49b03af88632257520/.command.err # (though this will be empty if "Command error" was empty)
+```
+
+In the example above, there was error output but nothing in the `.command.out` file. Looking at the error output, we can see that the merged FASTA file was empty. This commonly occurs when your PCR primers fail to match any sequences in the raw reads. In this case, check your barcode file to make sure you're using the correct primers for the sequencing run you're processing. In general, once you've worked out what you think has gone wrong, you can simply run the pipeline again, adjusting any relevant command-line options to hopefully fix the issue.
+
+## Configuration profiles
+
+Resource availability, container subsystems, and various other aspects vary from computer to computer. To that end, nextflow allows the creation of custom named configuration profiles that can be loaded when running rainbow_bridge to customize various settings. Details about the creation of these profiles is beyond the scope of this documentations, but can be found in the [nextflow documentation](https://www.nextflow.io/docs/latest/config.html#config-profiles). By default, rainbow_bridge loads the `standard` profile, which uses the 'local' nextflow executor and limits its maximum CPUs and memory to the system limits or the values passed to the `--max-cpus` and `--max-memory` options (whichever is smaller). It also uses singularity as its default container engine. rainbow_bridge comes with the following built-in configuration profiles:
+
+| Profile name | Description |
+| ------------ | ----------- |
+| standard (loaded automatically)  | Default profile: local executor, cpus/memory set to system limits or `--max-cpus`/`--max-memory`, singularity container engine |
+| singularity  | Enables the singularity container engine |
+| podman_intel  | Enables the podman container engine with intel architecture |
+| podman_arm  | Enables the podman container engine with ARM architecture |
+
+To use any named profile when running rainbow_bridge, simply pass it using the `-profile <profile name>` option (note again the single dash, since it's a nextflow option and not a rainbow_bridge option). Note that specifying any named profile will override the `standard` profile, so that container/executor settings may need to be redefined. 
+
+rainbow_bridge will automatically load profiles found in files matching the pattern `conf/profiles/*.config` within the pipeline's installation directory. To create a custom profile, first define your profile in a file with the `.config` extension and copy it to `conf/profiles` subdirectory under the location of the rainbow_bridge script file. For example, if you've got a server called `bigiron` with 100 cpus and 700 GB of memory and you've installed rainbow_bridge to `/opt/pipelines/rainbow_bridge`, you could create a file called `bigiron.config`, and save it to `/opt/pipelines/rainbow_bridge/conf/profiles`. The `bigiron.config` file might look something like this:
+
+```
+bigiron {
+  executor {
+    name = 'local'
+    cpus = 100
+    memory = 700.GB
+  }
+}
+```
+
+As mentioned above, this profile will override the `standard` profile, and since a container system is not specified, nextflow will look for executables on the local filesystem. Fortunately, nextflow supports multiple profiles: just separate the names with a comma. For this example, if we wanted to use the `bigiron` profile with the singularity container system, we could launch rainbow_bridge using `-profile bigiron,singularity`, like this:
+
+```console
+$ nextflow run /path/to/rainbow_bridge.nf -profile bigiron,singularity <...further options...>
+```
+
+If you want to define a profile but don't have write access to the `<rainbow_bridge>/conf/profiles` directory, you can create a custom config file containing your profile, save it anywhere, and pass its filename to rainbow_bridge with the `-c` option (single dash again!). rainbow_bridge will still load any built-in profiles from `conf/profiles`. In this case, you will have to enclose your profile definition in the `profiles {}` scope, like this:
+
+```
+profiles {
+  bigiron {
+    executor {
+      name = 'local'
+      cpus = 100
+      memory = 700.GB
+    }
+  }
+}
+```
+
+And (assuming you've named the file `bigiron.config` and saved it in the directory where you're running your analysis), execute the pipeline like this:
+
+```console
+$ nextflow run /path/to/rainbow_bridge.nf -c bigiron.config -profile bigiron,singularity <...further options...>
+```
+
 ## Downloading NCBI BLAST databases
 
-If you choose to BLAST your ZOTUs, you'll need to provide a path to a local BLAST database. This can be either a custom database made from your own sequences or one of the databases supplied by NCBI (e.g., 'nt', 'core_nt', etc.). Below is an example of how to download the nucleotide (nt) database from NCBI's servers. This applies to any database available from NCBI (just replace 'nt' with the name of the database you want to download). These examples use singularity, but the commands following 'singularity run' are universal:
+If you choose to BLAST your sequence variants, you'll need to provide a path to a local BLAST database. This can be either a custom database made from your own sequences or one of the databases supplied by NCBI (e.g., 'nt', 'core_nt', etc.). Below is an example of how to download the nucleotide (nt) database from NCBI's servers. This applies to any database available from NCBI (just replace 'nt' with the name of the database you want to download). These examples use singularity, but the commands following 'singularity run' are universal:
 
 1. Download the official [BLAST+ container](https://github.com/ncbi/blast_plus_docs#show-blast-databases-available-for-download-from-ncbi) with Singularity:
    ```console
@@ -1139,14 +1192,15 @@ And in json:
 
 
 ## Notification
-Nextflow allows the user to be notified upon completion or failure of the pipeline run. To do this, simply pass your email address with the `-N` option when running rainbow_bridge.nf (again, note the single dash). For example, if you want to launch the pipeline using an options file and receive an email when the run completes:
+Nextflow allows the user to be notified upon completion or failure of the pipeline run. To do this, simply pass your email address with the `-N` option when running the pipeline (again, note the single dash for a nextflow option). For example, if you want to launch the pipeline using a parameter file and receive an email when the run completes:
 
 ```console
 $ nextflow run /path/to/rainbow_bridge.nf -params-file options.yml -N someguy@nobody.com
 ```
 
 # Workflow
-This flowchart illustrates the general workflow of the rainbow_bridge pipeline (if your browser doesn't support javascript or [mermaid](https://mermaid.js.org/) or some other necessary thing, you'll just see the code describing the flowchart rather than the flowchart itself).
+This flowchart illustrates the general workflow of the rainbow_bridge pipeline. Note that the DADA2 steps aren't yet included in this flowchart, so that's why you don't see them here. If your browser doesn't support javascript or [mermaid](https://mermaid.js.org/) or some other necessary thing, you'll just see the code describing the flowchart rather than the flowchart itself.
+
 ```mermaid
 flowchart TB
   raw[/"Raw fastq reads"/]
@@ -1209,7 +1263,7 @@ flowchart TB
   customblast[/"BLAST database(s)"/]
   subgraph blast["Taxonomy assignment via BLAST"]
     xxxb1["f"]:::hidden
-    b1["Assign taxonomy to ZOTU sequences (blastn)"]
+    b1["Assign taxonomy to sequence variants (blastn)"]
   end
 
   insect("Taxonomy assignment via insect<br>(R/insect)")
@@ -1221,11 +1275,11 @@ flowchart TB
     tax1["Collapse taxonomy to<br>lowest-common ancestor (LCA)"]
   end
 
-  subgraph lulu["ZOTU curation (R/lulu)"]
+  subgraph lulu["Sequence variant curation (R/lulu)"]
     xxxl["f"]:::hidden
     l1["Generate match list (blastn)"]
     l2["LULU curation (lulu)"]
-    l3["Curated ZOTU table"]
+    l3["Curated sequence table"]
   end
 
   subgraph finalization["Finalization (R)"]

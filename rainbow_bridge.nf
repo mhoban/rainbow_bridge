@@ -153,7 +153,7 @@ def check_params() {
     }
 
     if (params.insect) {
-      if (!helper.file_exists(params.insectSequences)) {
+      if (!helper.file_exists(params.insectSequences) && !helper.is_url(params)) {
         exit(1,colors.red("The supplied FASTA file \"${params.insectSequences}\" does not exist"))
       }
     }
@@ -236,9 +236,12 @@ def check_params() {
   // make sure insect parameter is valid: either a file or one of the pretrained models
   if (params.insect) {
     if (!helper.insect_classifiers.containsKey(params.insect.toLowerCase())) {
-      if (!helper.file_exists(params.insect)) {
-        println(colors.red("Value passed to ") + colors.bred("--insect") + colors.red(" must be one of the supported builtins or an RDS file"))
-        println(colors.red("containing a trained insect classifier model."))
+      if (!helper.file_exists(params.insect) && !helper.is_url(params.insect)) {
+        println(
+          colors.red("Value passed to ") + colors.bred("--insect") + 
+          colors.red(" must be one of the supported builtins or an RDS file/URL") +
+          colors.red(" containing a trained insect classifier model.")
+        )
         println(colors.red("See rainbow_bridge.nf ") + colors.bred("--help") + colors.red(" for supported builtin models"))
         exit(1)
       }
@@ -1482,11 +1485,11 @@ workflow {
     // do insect
     if (params.insect) {
       // load sequences fasta
-      zotus = Channel.fromPath(params.insectSequences, checkIfExists: true)
+      sequences = Channel.fromPath(params.insectSequences, checkIfExists: true)
 
       // load the classifier model
-      if (helper.file_exists(params.insect)) {
-        classifier = Channel.fromPath(params.insect)
+      if (helper.file_exists(params.insect) || helper.is_url(params.insect)) {
+        classifier = Channel.fromPath(params.insect, glob:false)
       } else {
         // download the classifier model if it's one of the supported ones
         // previous sanity checks ensure the model is in our helper map
@@ -1498,7 +1501,7 @@ workflow {
 
       // run the insect classification
       classifier |
-        combine(zotus) |
+        combine(sequences) |
         combine(ncbi_dumps) |
         insect 
       insect_taxonomy = insect.out.taxonomy
@@ -2197,8 +2200,8 @@ workflow {
     // run the insect classifier, if so desired
     if (params.insect) {
       // load the classifier model
-      if (helper.file_exists(params.insect)) {
-        classifier = Channel.fromPath(params.insect)
+      if (helper.file_exists(params.insect) || helper.is_url(params.insect)) {
+        classifier = Channel.fromPath(params.insect, glob:false)
       } else {
         // download the classifier model if it's one of the supported ones
         // previous sanity checks ensure the model is in our helper map

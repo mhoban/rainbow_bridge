@@ -245,6 +245,7 @@ option_list <- list(
   make_option(c("-p", "--pid"), action="store", default=NA, type='double', help="Minimum percent match ID threshold"),
   make_option(c("-d", "--diff"), action="store", default=NA, type='double', help="Percent ID difference threshold for matching query coverage"),
   make_option(c("-f", "--filter-max-qcov"), action="store_true", default=FALSE, type='logical', help="Retain only records with the highest query coverage"),
+  make_option(c("-l", "--lineage-priority"), action="store_true", default=FALSE, type='logical', help="Give priority to custom lineage file (over NCBI)"),
   make_option(c("-t", "--taxon-filter"), action="callback", default=NA, type='character', help="Regex to filter taxa (e.g., uncultured/synthetic/environmental sequences)",callback=na_opt),
   make_option(c("-c", "--case-insensitive"), action="store_true", default=FALSE, type='logical', help="Perform case-insensitve taxon filtering"),
   make_option(c("-i", "--intermediate"), action="callback", default=NA, type='character', help="Store intermediate filtered BLAST results in specified file",callback=na_opt),
@@ -273,21 +274,14 @@ opt <- parse_args(
     usage="%prog [options] <blast_result> <taxonomic_lineage>"
   ), 
   convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 2, 
+  positional_arguments = c(1,2), 
   args = opt_args
 )
 
-# check that files in positional args all exist and bail on failure
-fe <- file_exists(opt$args)
-if (any(!fe)) {
-  bad <- fe[!fe]
-  msg <- str_c(str_glue("Missing/bad filename: {names(bad)}"),collapse="\n")
-  stop(msg)
-}
-
 # get options
 blast_file <- opt$args[1]
-lineage_dump <- opt$args[2]
+lineage_dump <- opt$args[2] # will be NA if no second arg
+lineage_priority <- opt$options$lineage_priority
 output_table <- opt$options$output
 taxid_lineage_dump <- opt$options$taxid_lineage
 nodes_dump <- opt$options$nodes
@@ -302,6 +296,11 @@ intermediate <- opt$options$intermediate
 semicolon <- opt$options$semicolon
 drop_blank <- opt$options$drop_blank
 dropped <- opt$options$dropped
+filter_max_qcov <- opt$options$filter_max_qcov
+
+if (!file_exists(blast_file)) {
+  stop(str_c(str_glue("Supplies BLASt results file does not exist: {blast_file}"),collapse="\n"))
+}
 
 if (str_to_lower(dropped) == "na") {
   dropped <- NA_character_
@@ -378,15 +377,19 @@ if (check_ncbi_dump("rankedlineage.dmp",10)) {
     col_names = c("taxid",ncbi_ranks),
     progress=FALSE,
     show_col_types = FALSE
-  ) 
+  ) %>%
+  mutate(priority = !lineage_priority, ncbi = TRUE)
+
 } else {
-  stop(str_glue("File {lineage_dump} is not a valid NCBI lineage dump"))
+  stop(str_glue("For some reason, the available rankedlineage.dmp file is not a valid NCBI lineage dump"))
 }
 
 # if we have a custom lineage and it has girth
 if (file_exists(lineage_dump) & file_size(lineage_dump) > 0) {
   # load it
-  custom_lineage <- load_table(lineage_dump,progress=FALSE,show_col_types=FALSE)
+  custom_lineage <- load_table(lineage_dump,progress=FALSE,show_col_types=FALSE) %>%
+    mutate(priority = TRUE, ncbi = FALSE)
+
   if ('taxid' %in% names(custom_lineage)) {
     # select taxid first if that column exists
     custom_lineage <- custom_lineage %>%
@@ -405,7 +408,8 @@ if (file_exists(lineage_dump) & file_size(lineage_dump) > 0) {
 lineage <- bind_rows(ncbi_lineage,custom_lineage) %>%
   select(taxid,everything())
 # and arrange with taxid as the first column
-lineage_ranks <- names(lineage)[-1]
+nn <- colnames(lineage)
+lineage_ranks <- nn[which(!(nn %in% c('taxid','priority','ncbi')))]
 
 # bail if we have any duplicate taxids
 if (any(duplicated(lineage$taxid))) {
@@ -443,12 +447,19 @@ filtered <- filtered %>%
   # group by zotu
   group_by(zotu) %>%
   # conditionally retain only the highest query coverage within each zotu
-  { if (opt$options$filter_max_qcov) filter(.,qcov == max(qcov)) else . } %>%
+  { if (filter_max_qcov) filter(.,qcov == max(qcov)) else . } %>%
   # now calculate difference between each and the max pident within each zotu
   mutate(diff = abs(pident - max(pident))) %>%
   # discard anything with a difference over the threshold within each zotu
   filter(diff < diff_thresh) %>%
-  ungroup() 
+  # if we want to keep only results that match our custom lineage, do that
+  mutate(keep = case_when(
+    lineage_priority & any(priority) ~ priority,
+    .default = TRUE
+  )) %>% 
+  filter(keep) %>%
+  ungroup() %>%
+  select(-c(keep,priority))
 
 # filter taxa using supplied regex
 if (!is.na(taxon_filter)) {
@@ -479,11 +490,11 @@ collapsed <- filtered %>%
   summarise(
     across(all_of(lineage_ranks),~ifelse(n_distinct(.x) == 1,first(.x),dropped)),
     unique_hits=unique_hits[1],
-    taxid = (\(tids) {
+    taxid = (\(tids,ncbi) {
       if (n_distinct(tids) == 1) {
         return(setNames(unique(tids),"species"))
       } else {
-        if (lca) {
+        if (lca && all(ncbi)) {
           # get taxid of LCA
           lt <- lca_getter$lca(tids,ranks = lineage_ranks)
           # make sure the resulting taxid has a name
@@ -493,7 +504,13 @@ collapsed <- filtered %>%
           return(setNames(NA,""))
         }
       }
-    })(taxid)
+    })(taxid,ncbi),
+    taxon_source = case_when(
+      all(ncbi) ~ 'ncbi',
+      n() == 1 & none(ncbi) ~ 'custom',
+      any(ncbi) & any(!ncbi) ~ 'combined',
+      .default = 'unknown'
+    )
   ) %>%
   ungroup() %>%
   mutate(

@@ -505,9 +505,9 @@ collapsed <- filtered %>%
         }
       }
     })(taxid,ncbi),
-    taxon_source = case_when(
+    taxid_source = case_when(
       all(ncbi) ~ 'ncbi',
-      n() == 1 & none(ncbi) ~ 'custom',
+      n() == 1 & all(!ncbi) ~ 'custom',
       any(ncbi) & any(!ncbi) ~ 'combined',
       .default = 'unknown'
     )
@@ -525,7 +525,7 @@ collapsed <- filtered %>%
   arrange(parse_number(zotu)) %>%
   # try to order the column hierarchically, matching the order of NCBI taxonomic hierarchy
   # if we have ranks not in the list, they'll end up at the end, but they'll still be there
-  select(zotu,na.omit(match(hierarchy,colnames(.))),everything(),unique_hits,taxid,taxid_rank)
+  select(zotu,na.omit(match(hierarchy,colnames(.))),everything(),unique_hits,taxid,taxid_rank,taxid_source)
 
 
 # save the collapsed output table

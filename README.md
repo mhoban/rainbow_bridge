@@ -637,7 +637,8 @@ The following command-line options are available for the LCA collapse method:
 <small>**`--standalone-taxonomy`**</small>: Run standalone LCA / insect classification (requires `--insect` or `--lca` option)  
 <small>**`--blast-file [file]`**</small>: (Only with --standalone-taxonomy) BLAST result table (e.g., output from the blast process)  
 <small>**`--seq-table [file]`**</small>: (Only with --standalone-taxonomy) sequence table file (e.g., output from the denoising process)  
-<small>**`--lca-lineage [file]`**</small>: Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage (for use with custom BLAST db)  
+<small>**`--lca-lineage [file]`**</small>: Tabular file (TSV/CSV) matching taxonomic IDs (taxids) to taxonomic lineage (for use with custom BLAST db)  
+<small>**`--lineage-priority`**</small>: Matches to taxa in the custom lineage file will receive priority over NCBI lineage when performing LCA collapse
 <small>**`--dropped [str]`**</small>: Placeholder string for dropped taxonomic levels (default: 'dropped'). "NA" for blank/NA  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy refinement (default: 100)  
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy refinement (default: 97)  

@@ -2074,219 +2074,224 @@ workflow {
             set { to_dereplicate }
         }
       }
-      // build the input channel, run dereplication, and set to a channel we can use again
-      Channel.of(params.project) |
-        combine(to_dereplicate) |
-        combine(Channel.fromPath(params.chimeraRef)) |
-        dereplicate |
-        set { dereplicated }
+      
+      if (!params.preprocessOnly) {
+        // build the input channel, run dereplication, and set to a channel we can use again
+        Channel.of(params.project) |
+          combine(to_dereplicate) |
+          combine(Channel.fromPath(params.chimeraRef)) |
+          dereplicate |
+          set { dereplicated }
 
-      dereplicated.result |
-        set { dereplicated }
+        dereplicated.result |
+          set { dereplicated }
+      }
     }
       
-    if (params.blast || params.insect || params.lca) {
-      // load and extract NCBI taxonomy
-      Channel.fromPath(params.ncbiTaxdump,glob:false) |
-        combine(Channel.of(ncbi_taxdumps).toList()) |
-        extract_ncbi_taxonomy 
-      // collate extracted files into a list channel
-      ncbi_dumps = extract_ncbi_taxonomy.out.file |
-        toList
-    }
+    if (!params.preprocessOnly) { 
+      if (params.blast || params.insect || params.lca) {
+        // load and extract NCBI taxonomy
+        Channel.fromPath(params.ncbiTaxdump,glob:false) |
+          combine(Channel.of(ncbi_taxdumps).toList()) |
+          extract_ncbi_taxonomy 
+        // collate extracted files into a list channel
+        ncbi_dumps = extract_ncbi_taxonomy.out.file |
+          toList
+      }
 
-    // get sequences and sequence table
-    if (params.denoiser == "dada2") {
-      dada_remove_chimeras.out.asv_table | 
-        set { seq_table }
-      dada_remove_chimeras.out.fasta | 
-        set { sequences }
-    } else {
-      dereplicated |
-        map { sid, uniques, zotus, zotutable -> zotutable } |
-        set { seq_table }
-      dereplicated |
-        map { sid, uniques, zotus, zotutable -> zotus } |
-        set { sequences }
-    }
+      // get sequences and sequence table
+      if (params.denoiser == "dada2") {
+        dada_remove_chimeras.out.asv_table | 
+          set { seq_table }
+        dada_remove_chimeras.out.fasta | 
+          set { sequences }
+      } else {
+        dereplicated |
+          map { sid, uniques, zotus, zotutable -> zotutable } |
+          set { seq_table }
+        dereplicated |
+          map { sid, uniques, zotus, zotutable -> zotus } |
+          set { sequences }
+      }
 
 
-    // run blast query, unless skipped
-    if (params.blast) {
-      // def only works on its own line
-      // possibly related to NF issue #804: https://github.com/nextflow-io/nextflow/issues/804
+      // run blast query, unless skipped
+      if (params.blast) {
+        // def only works on its own line
+        // possibly related to NF issue #804: https://github.com/nextflow-io/nextflow/issues/804
 
-      // make --blast-db value a list, if it's not already
-      def blasts = params.blast
-      if (!helper.is_list(blasts))
-        blasts = [blasts]
+        // make --blast-db value a list, if it's not already
+        def blasts = params.blast
+        if (!helper.is_list(blasts))
+          blasts = [blasts]
 
-      // get unique blast dbs
-      blasts = blasts.unique(false)
+        // get unique blast dbs
+        blasts = blasts.unique(false)
 
-      // collect list of blast database files, grouped by database name
-      Channel.fromPath(blasts) | 
-        map { [ it.Name, file("${it}.*") ] } | 
-        set { blastdb } 
+        // collect list of blast database files, grouped by database name
+        Channel.fromPath(blasts) | 
+          map { [ it.Name, file("${it}.*") ] } | 
+          set { blastdb } 
 
-      if (!helper.file_exists(params.lcaLineage)) {
-        // make channel for taxdb files (whether or not they actually exist)
+        if (!helper.file_exists(params.lcaLineage)) {
+          // make channel for taxdb files (whether or not they actually exist)
 
-        // get taxdb if specified on command line
-        if (params.blastTaxdb) {
-          // stage/download file and extract
-          // glob:false required for URLs to work properly
-          Channel.fromPath(params.blastTaxdb,glob:false) | 
-            combine(Channel.of(ncbi_taxdbs).toList()) |
-            extract_ncbi_taxdb
-          // flatten to list
-          extract_ncbi_taxdb.out.file |
-            toList |
-            set { tdb }
-          // combine with blast db channel
-          blastdb = blastdb.combine(tdb)
+          // get taxdb if specified on command line
+          if (params.blastTaxdb) {
+            // stage/download file and extract
+            // glob:false required for URLs to work properly
+            Channel.fromPath(params.blastTaxdb,glob:false) | 
+              combine(Channel.of(ncbi_taxdbs).toList()) |
+              extract_ncbi_taxdb
+            // flatten to list
+            extract_ncbi_taxdb.out.file |
+              toList |
+              set { tdb }
+            // combine with blast db channel
+            blastdb = blastdb.combine(tdb)
+          } else {
+            // otherwise just assume taxdb files live under each blast db
+            Channel.fromPath(blasts, checkIfExists: false) |
+              map { b -> [b.Name, ncbi_taxdbs.collect{ file("${b.Parent}/${it}") } ] } |
+              set { tdb }
+            blastdb = blastdb.join(tdb)
+          }
         } else {
-          // otherwise just assume taxdb files live under each blast db
-          Channel.fromPath(blasts, checkIfExists: false) |
-            map { b -> [b.Name, ncbi_taxdbs.collect{ file("${b.Parent}/${it}") } ] } |
+          Channel.value( [ ncbi_taxdbs.collect{ file(it) } ] ) |
             set { tdb }
-          blastdb = blastdb.join(tdb)
+          blastdb = blastdb.combine(tdb)
         }
+
+        // create the blast input channel
+        sequences | 
+          combine(blastdb) | 
+          set { blast_input }
+
+        // default taxid filter values are blank
+        def blast_filter_method = ''
+        blast_taxids = Channel.of(["",""])
+
+        // get taxids to include/exclude if requested
+        if (params.blastTaxa || params.blastExcludeTaxa) {
+          def taxa = params.blastTaxa ? params.blastTaxa : params.blastExcludeTaxa
+          blast_filter_method = params.blastTaxa ? 'taxids' : 'negative_taxids'
+          Channel.of(taxa.split(",")).collect().toList() |
+            combine(ncbi_dumps) | 
+            lookup_blast_taxids |
+            toList |
+            combine(Channel.of(blast_filter_method)) |
+            set { blast_taxids }
+        } 
+        // run the blast query
+        blast(blast_input.combine(blast_taxids))
+
+        // merge blast results from different databases
+        blast.out.result |
+          collect |
+          merge_blast |
+          set { blast_result }
+      }
+
+      // make lulu blast database and do lulu curation
+      if (params.lulu) {
+        Channel.of(params.project) | 
+          combine(sequences) | 
+          combine(seq_table) |
+          lulu_blast |
+          lulu
+      }
+
+      // run the insect classifier, if so desired
+      if (params.insect) {
+        // load the classifier model
+        if (helper.file_exists(params.insect) || helper.is_url(params.insect)) {
+          classifier = Channel.fromPath(params.insect, glob:false)
+        } else {
+          // download the classifier model if it's one of the supported ones
+          // previous sanity checks ensure the model is in our helper map
+          def m = params.insect.toLowerCase()
+          def url = helper.insect_classifiers[m]
+          // glob:false is necessary because the urls have question marks in them
+          classifier = Channel.fromPath(url, glob:false)
+        }
+
+        // run the insect classification
+        classifier |
+          combine(sequences) |
+          combine(ncbi_dumps) |
+          insect
+        insect_taxonomy = insect.out.taxonomy
       } else {
-        Channel.value( [ ncbi_taxdbs.collect{ file(it) } ] ) |
-          set { tdb }
-        blastdb = blastdb.combine(tdb)
+        insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy")
       }
 
-      // create the blast input channel
-      sequences | 
-        combine(blastdb) | 
-        set { blast_input }
-
-      // default taxid filter values are blank
-      def blast_filter_method = ''
-      blast_taxids = Channel.of(["",""])
-
-      // get taxids to include/exclude if requested
-      if (params.blastTaxa || params.blastExcludeTaxa) {
-        def taxa = params.blastTaxa ? params.blastTaxa : params.blastExcludeTaxa
-        blast_filter_method = params.blastTaxa ? 'taxids' : 'negative_taxids'
-        Channel.of(taxa.split(",")).collect().toList() |
-          combine(ncbi_dumps) | 
-          lookup_blast_taxids |
-          toList |
-          combine(Channel.of(blast_filter_method)) |
-          set { blast_taxids }
-      } 
-      // run the blast query
-      blast(blast_input.combine(blast_taxids))
-
-      // merge blast results from different databases
-      blast.out.result |
-        collect |
-        merge_blast |
-        set { blast_result }
-    }
-
-    // make lulu blast database and do lulu curation
-    if (params.lulu) {
-      Channel.of(params.project) | 
-        combine(sequences) | 
-        combine(seq_table) |
-        lulu_blast |
-        lulu
-    }
-
-    // run the insect classifier, if so desired
-    if (params.insect) {
-      // load the classifier model
-      if (helper.file_exists(params.insect) || helper.is_url(params.insect)) {
-        classifier = Channel.fromPath(params.insect, glob:false)
+      // run taxonomy assignment/collapse script if so requested
+      if (params.lca && params.blast) {
+        // then we smash it together with the blast results
+        // and run the LCA process
+        blast_result |
+          combine(ncbi_dumps) |
+          collapse_taxonomy
+        lca_taxonomy = collapse_taxonomy.out.taxonomy
       } else {
-        // download the classifier model if it's one of the supported ones
-        // previous sanity checks ensure the model is in our helper map
-        def m = params.insect.toLowerCase()
-        def url = helper.insect_classifiers[m]
-        // glob:false is necessary because the urls have question marks in them
-        classifier = Channel.fromPath(url, glob:false)
+        lca_taxonomy = Channel.fromPath("nofile-lca-taxonomy")
       }
 
-      // run the insect classification
-      classifier |
-        combine(sequences) |
-        combine(ncbi_dumps) |
-        insect
-      insect_taxonomy = insect.out.taxonomy
-    } else {
-      insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy")
-    }
-
-    // run taxonomy assignment/collapse script if so requested
-    if (params.lca && params.blast) {
-      // then we smash it together with the blast results
-      // and run the LCA process
-      blast_result |
-        combine(ncbi_dumps) |
-        collapse_taxonomy
-      lca_taxonomy = collapse_taxonomy.out.taxonomy
-    } else {
-      lca_taxonomy = Channel.fromPath("nofile-lca-taxonomy")
-    }
-
-    if (params.lulu) {
-      lulu.out.result |
-        map { it[0] } |
-        set { curated_zotu_table }
-    } else {
-      curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table")
-    }
-
-    // combine and finalize outputs
-    if (params.lca || params.insect) {
-      seq_table |
-        combine(curated_zotu_table) |
-        combine(lca_taxonomy) |
-        combine(insect_taxonomy) |
-        finalize
-    }
-
-    // create phyloseq output
-    if (params.phyloseq) {
-      def physeq = true
-      switch (params.taxonomy) {
-        case "lca":
-          if (params.lca) {
-            ph_taxonomy = lca_taxonomy
-          } else {
-            physeq = false
-          }
-          break
-        case "insect":
-          if (params.insect) {
-            ph_taxonomy = insect_taxonomy
-          } else {
-            physeq = false
-          }
-          break
-        case "combined":
-          if (params.insect || params.lca) {
-            ph_taxonomy = finalize.out.taxonomy
-          } else {
-            physeq = false
-          }
-          break
-        default:
-          if (helper.file_exists(params.taxonomy)) {
-            ph_taxonomy = Channel.fromPath(params.taxonomy)
-          } else {
-            physeq = false
-          }
-          break
+      if (params.lulu) {
+        lulu.out.result |
+          map { it[0] } |
+          set { curated_zotu_table }
+      } else {
+        curated_zotu_table = Channel.fromPath("nofile-curated-zotu-table")
       }
-      if (physeq) {
-        // construct the phyloseq output
-        metadata = Channel.fromPath(params.metadata)
-        phyloseq(seq_table,ph_taxonomy,metadata,sequences)
+
+      // combine and finalize outputs
+      if (params.lca || params.insect) {
+        seq_table |
+          combine(curated_zotu_table) |
+          combine(lca_taxonomy) |
+          combine(insect_taxonomy) |
+          finalize
+      }
+
+      // create phyloseq output
+      if (params.phyloseq) {
+        def physeq = true
+        switch (params.taxonomy) {
+          case "lca":
+            if (params.lca) {
+              ph_taxonomy = lca_taxonomy
+            } else {
+              physeq = false
+            }
+            break
+          case "insect":
+            if (params.insect) {
+              ph_taxonomy = insect_taxonomy
+            } else {
+              physeq = false
+            }
+            break
+          case "combined":
+            if (params.insect || params.lca) {
+              ph_taxonomy = finalize.out.taxonomy
+            } else {
+              physeq = false
+            }
+            break
+          default:
+            if (helper.file_exists(params.taxonomy)) {
+              ph_taxonomy = Channel.fromPath(params.taxonomy)
+            } else {
+              physeq = false
+            }
+            break
+        }
+        if (physeq) {
+          // construct the phyloseq output
+          metadata = Channel.fromPath(params.metadata)
+          phyloseq(seq_table,ph_taxonomy,metadata,sequences)
+        }
       }
     }
   }

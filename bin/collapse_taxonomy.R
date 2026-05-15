@@ -379,10 +379,7 @@ if (check_ncbi_dump("rankedlineage.dmp",10)) {
     show_col_types = FALSE
   ) %>%
   mutate(priority = !lineage_priority, ncbi = TRUE)
-
-} else {
-  stop(str_glue("For some reason, the available rankedlineage.dmp file is not a valid NCBI lineage dump"))
-}
+} 
 
 # if we have a custom lineage and it has girth
 if (file_exists(lineage_dump) & file_size(lineage_dump) > 0) {
@@ -407,6 +404,10 @@ if (file_exists(lineage_dump) & file_size(lineage_dump) > 0) {
 # smash the two lineages together
 lineage <- bind_rows(ncbi_lineage,custom_lineage) %>%
   select(taxid,everything())
+
+if (nrow(lineage) == 0) {
+  stop("No taxonomic lineage data was found")
+}
 # and arrange with taxid as the first column
 nn <- colnames(lineage)
 lineage_ranks <- nn[which(!(nn %in% c('taxid','priority','ncbi')))]

@@ -191,7 +191,8 @@ class helper {
 
     General taxonomy operations:
       --standalone-taxonomy         Run LCA and/or insect in standalone mode (independent of pipeline)
-      --ncbi-taxdump [file]         Local copy of the NCBI new_taxdump.zip archive (leave blank to download)
+      --ncbi-taxdump [file]         Local copy of the NCBI new_taxdump.zip archive (default: downloaded from NCBI server)
+      --no-taxdump                  Suppress download of NCBI taxonomy dumps archive
 
     LCA taxonomy collapse:
       --lca                         Collapse assigned BLAST results by least common ancestor (LCA)

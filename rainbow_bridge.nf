@@ -228,6 +228,14 @@ def check_params() {
       println(colors.red("--lca-diff argument must be a number greater than zero."))
       exit(1)
     }
+
+    if (params.noTaxdump && !helper.file_exists(params.lcaLineage)) {
+      println(
+        colors.red("A custom lineage file (set with ") + colors.bred("--lca-lineage") +
+        colors.red(") is required when ") + colors.bred("--no-taxdump") + colors.red(" is passed")
+      )
+      exit(1)
+    }
   }
 
   // make sure insect parameter is valid: either a file or one of the pretrained models
@@ -1454,14 +1462,18 @@ workflow {
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
 
-    // load and extract NCBI taxonomy
-    Channel.fromPath(params.ncbiTaxdump,glob:false) |
-      combine(Channel.of(ncbi_taxdumps).toList()) |
-      extract_ncbi_taxonomy 
+    if (!params.noTaxdump) {
+      // load and extract NCBI taxonomy
+      Channel.fromPath(params.ncbiTaxdump,glob:false) |
+        combine(Channel.of(ncbi_taxdumps).toList()) |
+        extract_ncbi_taxonomy 
 
-    // collate extracted files into a list channel
-    ncbi_dumps = extract_ncbi_taxonomy.out.file |
-      toList
+      // collate extracted files into a list channel
+      ncbi_dumps = extract_ncbi_taxonomy.out.file |
+        toList
+    } else {
+      ncbi_dumps = Channel.of(ncbi_taxdumps.collect { file(it) })
+    }
 
     // do lca
     if (params.lca) {
@@ -2083,14 +2095,19 @@ workflow {
         set { dereplicated }
     }
       
-    if (params.blast || params.insect || params.lca) {
-      // load and extract NCBI taxonomy
-      Channel.fromPath(params.ncbiTaxdump,glob:false) |
-        combine(Channel.of(ncbi_taxdumps).toList()) |
-        extract_ncbi_taxonomy 
-      // collate extracted files into a list channel
-      ncbi_dumps = extract_ncbi_taxonomy.out.file |
-        toList
+    if (params.blastTaxa || params.blastExcludeTaxa || params.insect || params.lca) {
+      if (!params.noTaxdump) {
+        // load and extract NCBI taxonomy
+        Channel.fromPath(params.ncbiTaxdump,glob:false) |
+          combine(Channel.of(ncbi_taxdumps).toList()) |
+          extract_ncbi_taxonomy 
+
+        // collate extracted files into a list channel
+        ncbi_dumps = extract_ncbi_taxonomy.out.file |
+          toList
+      } else {
+        ncbi_dumps = Channel.of([ ncbi_taxdumps.collect { file(it) } ])
+      }
     }
 
     // get sequences and sequence table

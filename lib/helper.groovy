@@ -112,6 +112,7 @@ class helper {
       --split                      Split input fastq files and process in parallel
                                    (not compatible with --demultiplexed-by index)
       --split-by                   Number of sequences per split fastq chunk (default: ${params.splitBy})
+      --preprocess-only            Stop after running preprocessing steps (before denoising)
       --sample-map [mapfile]       (Optional) A headerless tab-separated file mapping sample names to sequence-read
                                    filenames. Paired-end runs include both forward and reverse reads. Example map:
                                    ---
@@ -265,7 +266,6 @@ class helper {
       --demuxed-fasta [file]        Skip demultiplexing step and use supplied FASTA 
                                     (must be in usearch/vsearch format)
       --demuxed-example             Spit out example usearch/vsearch demultiplexed FASTA format
-      --demux-only                  Stop after demultiplexing and splitting raw reads
       --primer-mismatch             Allowed number of mismatched primer bases 
                                     (default: ${params.primerMismatch})
       --no-primers                  Skip primer matching (ngsfilter/cutadapt) altogether. 

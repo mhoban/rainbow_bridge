@@ -151,14 +151,17 @@ LCA <- R6Class(
 
 # ordered hierarchy of taxa used by NCBI (and others)
 # we should probably assemble this programatically, but they don't make it easy
-hierarchy <- c( 
-  "domain", "superkingdom", "supergroup", "kingdom", "subkingdom", "superphylum", "phylum", "division",
-  "subphylum", "subdivision", "infraphylum", "superclass", "class", "subclass", "infraclass",
-  "cohort", "subcohort", "superorder", "order", "suborder", "infraorder", "parvorder",
-  "superfamily", "family", "subfamily", "tribe", "subtribe", "genus", "subgenus",
-  "section", "subsection", "series", "subseries", "species group", "species subgroup",
-  "species", "forma specialis", "subspecies", "varietas", "subvariety", "forma",
-  "serogroup", "serotype", "strain", "isolate" 
+# so we steal it from the TaxonKit source code
+hierarchy <- c(
+  "domain","superkingdom","realm","empire","kingdom","subkingdom","infrakingdom","parvkingdom","superphylum","superdivision",
+  "phylum","division","subphylum","subdivision","infraphylum","infradivision","microphylum","microdivision","superclass","class",
+  "subclass","infraclass","parvclass","superlegion","legion","sublegion","infralegion","supercohort","cohort","subcohort","infracohort",
+  "gigaorder","magnorder","megaorder","grandorder","capaxorder","mirorder","hyperorder","superorder","order","nanorder","hypoorder",
+  "minorder","suborder","infraorder","parvorder","gigafamily","megafamily","grandfamily","hyperfamily","superfamily","epifamily","group",
+  "family","subfamily","infrafamily","supertribe","tribe","subtribe","infratribe","genus","subgenus","section","subsection","series",
+  "subseries","superspecies","species group","species subgroup","species","subspecies","forma specialis","pathovar","pathogroup","serogroup",
+  "biotype","serotype","genotype","variety","varietas","morph","aberration","subvariety","subvarietas","submorph","subaberration","form",
+  "forma","subform","subforma","strain","isolate"
 )
 
 nice_formatter <- function(object) {
@@ -222,18 +225,18 @@ best_score <- function(x,...) {
     ungroup()
 }
 
-# validate NCBI lineage dump
-check_ncbi_lineage <- function(f) {
-  hdr <- read_lines(f,n_max = 1) %>%
-    str_split_1("\t")
-  if (length(hdr) == 20) {
-    if (hdr[1] == "1" & hdr[3] == "root" & last(hdr) == "|") {
+# quick and dirty way to validate NCBI dump based on column number
+check_ncbi_dump <- function(f,n) {
+  if (file_exists(f)) {
+    hdr <- read_lines(f,n_max = 1) %>%
+      str_split_1("\t")
+    hdr <- hdr[hdr != '|']
+      if (length(hdr) == n) {
       return(TRUE)
     } 
-  } 
+  }
   return(FALSE)
 }
-
 
 # set up option list
 option_list <- list(
@@ -358,37 +361,64 @@ if (semicolon) {
 }
 
 
-# lineage file is the NCBI dump
-if (str_to_lower(path_file(lineage_dump)) == "rankedlineage.dmp") {
-  if (check_ncbi_lineage(lineage_dump)) {
-    # load the NCBI lineage dump, the underscores in lineage_cols lets us skip columns
-    # because NCBI uses '\t|\t' as their delimiter and we'd have a bunch of columns that just contain a pipe
-    # treat the 'taxon' column as the species column since blast always returns species-level taxids
-    ncbi_ranks <- c("species","_","genus","family","order","class","phylum","kingdom","domain")
-    lineage_cols <- str_c("i_", str_c( if_else(ncbi_ranks == "_","_","c"), collapse="_" ), "_")
-    lineage_ranks <- ncbi_ranks[which(ncbi_ranks != "_")]
-    lineage <- read_tsv(
-      lineage_dump,
-      col_types = lineage_cols,
-      col_names = c("taxid",lineage_ranks),
-      progress=FALSE,
-      show_col_types = FALSE
-    ) 
-  } else {
-    stop(str_glue("File {lineage_dump} is not a valid NCBI lineage dump"))
-  }
+ncbi_lineage <- tibble()
+custom_lineage <- tibble()
+
+# if we have a valid NCBI lineage dump
+if (check_ncbi_dump("rankedlineage.dmp",10)) {
+  # load the NCBI lineage dump, the underscores in lineage_cols lets us skip columns
+  # because NCBI uses '\t|\t' as their delimiter and we'd have a bunch of columns that just contain a pipe
+  # treat the 'taxon' column as the species column since blast always returns species-level taxids
+  ncbi_ranks <- c("species","_","genus","family","order","class","phylum","kingdom","domain")
+  lineage_cols <- str_c("i_", str_c( if_else(ncbi_ranks == "_","_","c"), collapse="_" ), "_")
+  ncbi_ranks <- ncbi_ranks[which(ncbi_ranks != "_")]
+  ncbi_lineage <- read_tsv(
+    "rankedlineage.dmp",
+    col_types = lineage_cols,
+    col_names = c("taxid",ncbi_ranks),
+    progress=FALSE,
+    show_col_types = FALSE
+  ) 
 } else {
-  lineage <- load_table(lineage_dump,progress=FALSE,show_col_types=FALSE) %>%
-    rename(taxid=1)
-  if (!is.numeric(lineage$taxid)) {
+  stop(str_glue("File {lineage_dump} is not a valid NCBI lineage dump"))
+}
+
+# if we have a custom lineage and it has girth
+if (file_exists(lineage_dump) & file_size(lineage_dump) > 0) {
+  # load it
+  custom_lineage <- load_table(lineage_dump,progress=FALSE,show_col_types=FALSE)
+  if ('taxid' %in% names(custom_lineage)) {
+    # select taxid first if that column exists
+    custom_lineage <- custom_lineage %>%
+      select(taxid,everything())
+  } else {
+    # otherwise rename the first column to taxid and hope it does what we want it to
+    custom_lineage <- custom_lineage %>% 
+      rename(taxid=1)
+  }
+  if (!is.numeric(custom_lineage$taxid)) {
     stop("First column of lineage table must be numeric taxon ID")
   }
-  lineage_ranks <- colnames(lineage)[-1]
+}
+
+# smash the two lineages together
+lineage <- bind_rows(ncbi_lineage,custom_lineage) %>%
+  select(taxid,everything())
+# and arrange with taxid as the first column
+lineage_ranks <- names(lineage)[-1]
+
+# bail if we have any duplicate taxids
+if (any(duplicated(lineage$taxid))) {
+  stop("Combined custom/NCBI taxonomic lineage table has duplicate taxids") 
+}
+# bail if we have any blank taxids
+if (any(is.na(lineage$taxid))) {
+  stop("Combined custom/NCBI taxonomic lineage table has blank taxids") 
 }
 
 
 # get new taxids for any merged taxa, if relevant
-if (file_exists(merged_dump)) {
+if (check_ncbi_dump(merged_dump,2)) {
   merged <- read_tsv(merged_dump,col_types="i_i_",col_names=c("old_taxid","new_taxid"),progress=FALSE, show_col_types=FALSE)
           
   filtered <- filtered %>%
@@ -436,7 +466,7 @@ if (drop_blank) {
 lca <- FALSE
 # initialize LCA class if we're using it
 # we do this if we have nodes.dmp or taxidlineage.dmp
-if (file_exists(nodes_dump) | file_exists(taxid_lineage_dump)) {
+if (check_ncbi_dump(nodes_dump,18) | check_ncbi_dump(taxid_lineage_dump,2)) {
   lca_getter <- LCA$new(nodes = nodes_dump, merged = merged_dump, taxid_lineage = taxid_lineage_dump)
   lca <- TRUE
 }

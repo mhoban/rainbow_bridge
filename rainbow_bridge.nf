@@ -228,7 +228,7 @@ def check_params() {
       println(colors.red("--lca-diff argument must be a number greater than zero."))
       exit(1)
     }
-    if (params.lcaLineage && !helper.file_exists(params.lcaLineage)) {
+    if (params.lcaLineage && (params.lcaLineage != 'nofile-lca-lineage' && !helper.file_exists(params.lcaLineage))) {
       exit(1,colors.red("The supplied lineage file \"${params.lcaLineage}\" does not exist"))
     }
   }

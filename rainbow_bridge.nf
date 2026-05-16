@@ -185,7 +185,7 @@ def check_params() {
       exit(1)
     }
 
-    // make --blast-db param into a list, if it isn't
+    // make --blast param into a list, if it isn't
     def blasts = params.blast
     if (!helper.is_list(blasts))
       blasts = [blasts]
@@ -195,7 +195,7 @@ def check_params() {
 
     // make sure we've got at least one db
     if (!blasts.size()) {
-      println(colors.red("You must pass at least one value to --blast-db"))
+      println(colors.red("You must pass at least one value to --blast"))
       exit(1)
     } else {
       // make sure all dbs exist
@@ -1106,13 +1106,7 @@ process blast {
   blast_options['evalue'] = params.evalue
   blast_options['qcov_hsp_perc'] = params.qcov
   blast_options['max_target_seqs'] = params.maxQueryResults
-  // blast_options['best_hit_score_edge'] = 0.05
-  // blast_options['best_hit_overhang'] = 0.25
-
-  // collapse them into a single string
-  def blast_opt_str = blast_options
-    .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
-    .join(" ")
+  blast_options['task'] = params.blastTask
 
   // get any --blastn-xxx arguments that may exist
   def blastn_map = task.ext.blastn_map
@@ -1125,16 +1119,17 @@ process blast {
     blastn_map[method] = ([taxids,tt] - "").join(",")
   } 
 
-  def blastn_args = blastn_map
+  // collapse them into a single string
+  def blast_opt_str = (blast_options + blastn_map)
     .collect { k, v -> v == true ? "-${k}" : "-${k} ${v}" }
-    .join(" ") 
+    .join(" ")
   """
   # record blast settings
   echo "percent-identity: ${params.percentIdentity}" > settings.yml
   echo "evalue: ${params.evalue}" >> settings.yml
   echo "qcov: ${params.qcov}" >> settings.yml
   echo "max-query-results: ${params.maxQueryResults}" >> settings.yml
-  if [ -n "${blastn_args}" ]; then
+  if [ ${blastn_map.size()} -gt 0 ]; then
     echo "blastn-options:" >> settings.yml
     echo -e "${task.ext.blastn_map.collect { k, v -> "  ${k}: ${v}"}.join("\\n")}" >> settings.yml
   fi
@@ -1146,7 +1141,7 @@ process blast {
   blastn \\
     -db "${db_name}" \\
     -outfmt "6 qseqid sseqid staxid ssciname scomname sskingdom pident length qlen slen mismatch gapopen gaps qstart qend sstart send stitle evalue bitscore qcovs qcovhsp" \\
-    ${blast_opt_str} ${blastn_args} \\
+    ${blast_opt_str} \\
     -query ${zotus_fasta} -num_threads ${task.cpus} \\
     > blast_result.tsv
   """
@@ -2129,7 +2124,7 @@ workflow {
         // def only works on its own line
         // possibly related to NF issue #804: https://github.com/nextflow-io/nextflow/issues/804
 
-        // make --blast-db value a list, if it's not already
+        // make --blast value a list, if it's not already
         def blasts = params.blast
         if (!helper.is_list(blasts))
           blasts = [blasts]

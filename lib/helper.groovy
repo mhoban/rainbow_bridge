@@ -142,25 +142,22 @@ class helper {
       --min-len [num]               Minimum overall sequence length (default: ${params.minLen})
 
     BLAST settings:
-      --blast                       Query zOTUs against a BLAST database
-      --blast-db [blastdb]          Location of BLAST database (path AND name).
+      --blast [blastdb]             Location of BLAST database (path AND name).
                                     e.g., '/drive1/blast/custom_db', where the database files are named
                                     things like custom_db.ndb, custom_db.nhr, custom_db.nin, etc.
                                     To specify multiple BLAST databases, pass them as a list in a
                                     parameters file (see README for more information).
-      --blast-taxdb [file]          Specify NCBI taxdb.tar.gz file. 
+      --blast-taxdb [file]?         Specify NCBI taxdb.tar.gz file. 
                                     By default, the pipeline will use any taxdb files that are found
-                                    alongside the specified BLAST databases. If this option is passed,
-                                    the supplied taxdb will be used for ALL blast databases. 
-                                    If a taxdb is missing, it can be downloaded by passing this argument 
-                                    with the URL of the taxdb archive on the NCBI website:
-                                    (https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz)
+                                    alongside the existing BLAST databases. Pass this option without
+                                    arguments to download taxdb from the NCBI servers. Otherwise, provide
+                                    a path to a local copy of taxdb.tar.gz.
       --blast-taxa [taxa]           Limit BLAST query to the specified taxa. Multiple taxa can be passed
                                     as a comma-separated list.
       --blast-exclude-taxa [taxa]   Exclude specified taxa from BLAST search. Multiple taxa can be passed
                                     as a comma-separated list.
                                     NOTE: only one of --blast-taxa or --blast-exclude-taxa may be given.
-      --blastn-task [task]          Set blast+ task (default: "blastn")
+      --blast-task [task]           Set blast+ task (default: "blastn")
       --max-query-results [num]     Maxmimum number of BLAST results to return per zOTU (default: 10)
       --percent-identity [num]      Minimum percent identity of matches to report (default: 95)
       --evalue [num]                Expectation value threshold for saving hits (default: 0.001)

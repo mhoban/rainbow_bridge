@@ -63,6 +63,7 @@ For more information on the original eDNAFlow pipeline and other software used a
       + [Options for DADA2](#options-for-dada2)
    * [Sequence variant curation using LULU](#sequence-variant-curation-using-lulu)
    * [Assigning taxonomy](#assigning-taxonomy)
+      + [General taxonomic assignment options](#general-taxonomic-assignment-options)
       + [BLAST settings](#blast-settings-1)
       + [Classification using insect](#classification-using-insect)
       + [LCA collapse](#lca-collapse)
@@ -535,6 +536,13 @@ These options relate to assignment/collapsing of taxonomy by sequence variant. I
 
 BLAST is an alignment-based approach that uses a reference database (such as NCBI [GenBank](https://www.ncbi.nlm.nih.gov/genbank/)) to match sequence variants to sequences with known taxonomic identity. [insect](https://github.com/shaunpwilkinson/insect) is a phylogenetic (tree-based) approach to taxonomic assignment. It is particularly useful for assigning higher-order (e.g. phylum, order) taxonomy to sequence variants that are otherwise unidentified by BLAST. In the LCA method, BLAST results for each sequence variant are compared to one another and a decision is made whether or not to collapse to the next highest taxonomic rank based on a user-defined variability threshold among those results. 
 
+### General taxonomic assignment options
+
+<small>**`--standalone-taxonomy`**</small>: Run standalone insect classification/LCA (requires `--insect` or `--lca` option)  
+<small>**`--ncbi-taxdump [file]`**</small>: Local copy of the NCBI new_taxdump.zip archive (default: downloaded from NCBI server)  
+<small>**`--no-taxdump`**</small>: Suppress downloading of NCBI taxonomy dumps. If this option is passed with `--lca`, a custom lineage (`--lca-lineage`) is required.  
+
+
 ### BLAST settings
 
 These settings allow you to control how BLAST searches are performed and specify the location of search databases. The only required option (unless BLAST queries are being skipped) is the location of a local BLAST database, which is set using the command line option `--blast-db`. Other options in this category allow you to control BLAST search criteria directly (e.g., e-value, percent match, etc.). For further explanation of these options beyond what is described here, see the [blast+ documentation](https://www.ncbi.nlm.nih.gov/books/NBK279690/).
@@ -551,7 +559,7 @@ BLAST databases use numerical NCBI taxonomy IDs (taxids) to assign taxonomy to s
 
   - taxdb files (`taxdb.btd`, `taxdb.bti`, and `taxonomy4blast.sqlite3`) present alongside the database(s) passed using `--blast-db` will be used for queries of those supplied databases. 
     * If you're using one of the NCBI nucleotide databases (e.g., `nt`, `nt_core`, etc.), you most likely already have these files present and won't have to worry about any of this.
-  - BLAST taxonomy files can be explicitly specified using the `--blast-taxdb` option. The option value must point to the `taxdb.tar.gz` archive file containing the relevant files. Note that it is possible to pass URLs to this argument and the file will be downloaded. To download the taxonomy database directly from NCBI, use `--blast-taxdb https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz`.
+  - The BLAST taxonomy database can be loaded from a local file or downloaded from NCBI's serverse using the `--blast-taxdb` option. Pass with no argument to download or provide the path to `taxdb.tar.gz` to use a local version.
 
 Requiring/excluding specific taxonomic groups from BLAST searches:  
 NCBI BLAST queries can be limited so that only certain taxa are searched/returned or that certain taxa are excluded from the results. This works both for "terminal" taxa (species) and higher-level taxa like families or orders. Multiple taxa can be given in a comma-separated list.  
@@ -568,8 +576,8 @@ It is possible to query sequences against multiple BLAST databases. Nextflow doe
 All BLAST options:  
 <small>**`--blast`**</small>: Query sequence variants against a provided BLAST database.  
 <small>**`--blast-db [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db.  
-<small>**`--blast-taxdb [archive]`**</small>: Specify a local taxdb archive. The file passed to this argument must be a .tar.gz archive containing the NCBI taxdb files (`taxdb.btd`, `taxdb.bti`, `taxonomy4blast.sqlite3`). By default, taxdb files present alongside BLAST database files will be used.  
-<small>**`--blast-taxa [taxa]`**</small>: Filter your BLAST query by a specific taxon or taxa. The value of this option should be a taxon name (e.g., "Metazoa", "Actinopteri"). Multiple taxa can be passed if separated by commas (e.g., "Metazoa,Rhodophyta") and taxon names are case-insensitive.  
+<small>**`--blast-taxdb [archive]?`**</small>: Specify a local taxdb archive or download from NCBI servers. Pass with no argument to download or provide a path to `taxdb.tar.gz` to use a local copy. By default, rainbow_bridge assumes taxonomy database files exist alongside BLAST database files.  
+<small>**`--blast-taxa [taxa]`**</small>: Limit your BLAST query to a specific taxon or taxa. The value of this option should be a taxon name (e.g., "Metazoa", "Actinopteri"). Multiple taxa can be passed if separated by commas (e.g., "Metazoa,Rhodophyta") and taxon names are case-insensitive.  
 <small>**`--blast-exclude-taxa [taxa]`**</small>: Exclude taxa from BLAST search. Option values have the same requirements as `--blast-taxa`.  
 
 BLAST options passed to the NCBI `blastn` tool:  
@@ -637,7 +645,8 @@ The following command-line options are available for the LCA collapse method:
 <small>**`--standalone-taxonomy`**</small>: Run standalone LCA / insect classification (requires `--insect` or `--lca` option)  
 <small>**`--blast-file [file]`**</small>: (Only with --standalone-taxonomy) BLAST result table (e.g., output from the blast process)  
 <small>**`--seq-table [file]`**</small>: (Only with --standalone-taxonomy) sequence table file (e.g., output from the denoising process)  
-<small>**`--lca-lineage [file]`**</small>: Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage (for use with custom BLAST db)  
+<small>**`--lca-lineage [file]`**</small>: Tabular file (TSV/CSV) matching taxonomic IDs (taxids) to taxonomic lineage (for use with custom BLAST db)  
+<small>**`--lineage-priority`**</small>: Matches to taxa in the custom lineage file will receive priority over NCBI lineage when performing LCA collapse
 <small>**`--dropped [str]`**</small>: Placeholder string for dropped taxonomic levels (default: 'dropped'). "NA" for blank/NA  
 <small>**`--lca-qcov [num]`**</small>:  Minimum query coverage for LCA taxonomy refinement (default: 100)  
 <small>**`--lca-pid [num]`**</small>:  Minimum percent identity for LCA taxonomy refinement (default: 97)  

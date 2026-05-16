@@ -172,9 +172,9 @@ def check_params() {
 
   // sanity check blast database
   if (params.blast) {
-    // if --blast-taxdb is passed, check that it's a .tar.gz archive
-    if (params.blastTaxdb && !(params.blastTaxdb =~ /(?i)\.tar\.gz$/)) {
-      println(colors.bred("--blast-taxdb") + colors.red(" must be a .tar.gz archive"))
+    // if --blast-taxdb is passed, check that it's a .tar.gz archive or true
+    if (params.blastTaxdb && (params.blastTaxdb !== true && !(params.blastTaxdb =~ /(?i)\.tar\.gz$/) )) {
+      println(colors.bred("--blast-taxdb") + colors.red(" must have no argument or be passed the path to a .tar.gz archive"))
       exit(1)
     }
 
@@ -228,8 +228,13 @@ def check_params() {
       println(colors.red("--lca-diff argument must be a number greater than zero."))
       exit(1)
     }
-    if (params.lcaLineage && !helper.file_exists(params.lcaLineage)) {
-      exit(1,colors.red("The supplied lineage file \"${params.lcaLineage}\" does not exist"))
+
+    if (params.noTaxdump && !helper.file_exists(params.lcaLineage)) {
+      println(
+        colors.red("A custom lineage file (set with ") + colors.bred("--lca-lineage") +
+        colors.red(") is required when ") + colors.bred("--no-taxdump") + colors.red(" is passed")
+      )
+      exit(1)
     }
   }
 
@@ -1187,7 +1192,7 @@ process merge_blast {
   publishDir { "${params.outDir}/blast" }, mode: params.publishMode
 
   input:
-    path 'staged/*.tsv'
+    path 'staged/??????????.tsv'
 
   output:
     path 'blast_result_merged.tsv'
@@ -1265,7 +1270,7 @@ process collapse_taxonomy {
   publishDir { "${params.outDir}/taxonomy/lca" }
 
   input:
-    tuple path(blast_result), path(dmp)
+    tuple path(blast_result), path(dmp), path(lineage)
 
   output:
     path("lca_taxonomy.tsv"), emit: taxonomy
@@ -1277,7 +1282,6 @@ process collapse_taxonomy {
   def pf = []
   params.lcaFilterMaxQcov && pf << "--filter-max-qcov"
   params.lcaCaseInsensitive && pf << "--case-insensitive"
-  def lineage = params.lcaLineage ?: 'rankedlineage.dmp'
   """
   # save settings
   echo "lca-qcov: ${params.lcaQcov}" > settings.yml
@@ -1450,21 +1454,26 @@ workflow {
   check_params()
 
   def directions = []
-  // files to extract from ncbi archives
+  // NCBI archives and the files to extract from them
   def ncbi_taxdumps = ['merged.dmp','nodes.dmp','taxidlineage.dmp','rankedlineage.dmp', 'names.dmp']
+  def ncbi_taxdb = 'https://ftp.ncbi.nlm.nih.gov/blast/db/taxdb.tar.gz'
   def ncbi_taxdbs = ['taxdb.bti','taxdb.btd','taxonomy4blast.sqlite3']
 
   // do standalone taxonomy assignment
   if (params.standaloneTaxonomy) {
 
-    // load and extract NCBI taxonomy
-    Channel.fromPath(params.ncbiTaxdump,glob:false) |
-      combine(Channel.of(ncbi_taxdumps).toList()) |
-      extract_ncbi_taxonomy 
+    if (!params.noTaxdump) {
+      // load and extract NCBI taxonomy
+      Channel.fromPath(params.ncbiTaxdump,glob:false) |
+        combine(Channel.of(ncbi_taxdumps).toList()) |
+        extract_ncbi_taxonomy 
 
-    // collate extracted files into a list channel
-    ncbi_dumps = extract_ncbi_taxonomy.out.file |
-      toList
+      // collate extracted files into a list channel
+      ncbi_dumps = extract_ncbi_taxonomy.out.file |
+        toList
+    } else {
+      ncbi_dumps = Channel.of(ncbi_taxdumps.collect { file(it) })
+    }
 
     // do lca
     if (params.lca) {
@@ -1473,6 +1482,7 @@ workflow {
 
       blast_result | 
         combine(ncbi_dumps) | 
+        combine(Channel.fromPath(params.lcaLineage)) |
         collapse_taxonomy
 
       // pull out lca table
@@ -2089,14 +2099,19 @@ workflow {
     }
       
     if (!params.preprocessOnly) { 
-      if (params.blast || params.insect || params.lca) {
-        // load and extract NCBI taxonomy
-        Channel.fromPath(params.ncbiTaxdump,glob:false) |
-          combine(Channel.of(ncbi_taxdumps).toList()) |
-          extract_ncbi_taxonomy 
-        // collate extracted files into a list channel
-        ncbi_dumps = extract_ncbi_taxonomy.out.file |
-          toList
+      if (params.blastTaxa || params.blastExcludeTaxa || params.insect || params.lca) {
+        if (!params.noTaxdump) {
+          // load and extract NCBI taxonomy
+          Channel.fromPath(params.ncbiTaxdump,glob:false) |
+            combine(Channel.of(ncbi_taxdumps).toList()) |
+            extract_ncbi_taxonomy 
+
+          // collate extracted files into a list channel
+          ncbi_dumps = extract_ncbi_taxonomy.out.file |
+            toList
+        } else {
+          ncbi_dumps = Channel.of([ ncbi_taxdumps.collect { file(it) } ])
+        }
       }
 
       // get sequences and sequence table
@@ -2133,33 +2148,25 @@ workflow {
           map { [ it.Name, file("${it}.*") ] } | 
           set { blastdb } 
 
-        if (!helper.file_exists(params.lcaLineage)) {
-          // make channel for taxdb files (whether or not they actually exist)
-
-          // get taxdb if specified on command line
-          if (params.blastTaxdb) {
-            // stage/download file and extract
-            // glob:false required for URLs to work properly
-            Channel.fromPath(params.blastTaxdb,glob:false) | 
-              combine(Channel.of(ncbi_taxdbs).toList()) |
-              extract_ncbi_taxdb
-            // flatten to list
-            extract_ncbi_taxdb.out.file |
-              toList |
-              set { tdb }
-            // combine with blast db channel
-            blastdb = blastdb.combine(tdb)
-          } else {
-            // otherwise just assume taxdb files live under each blast db
-            Channel.fromPath(blasts, checkIfExists: false) |
-              map { b -> [b.Name, ncbi_taxdbs.collect{ file("${b.Parent}/${it}") } ] } |
-              set { tdb }
-            blastdb = blastdb.join(tdb)
-          }
-        } else {
-          Channel.value( [ ncbi_taxdbs.collect{ file(it) } ] ) |
+        // get taxdb if specified on command line
+        if (params.blastTaxdb) {
+          // stage/download file and extract
+          // glob:false required for URLs to work properly
+          Channel.fromPath(params.blastTaxdb === true ? ncbi_taxdb : params.blastTaxdb,glob:false) | 
+            combine(Channel.of(ncbi_taxdbs).toList()) |
+            extract_ncbi_taxdb
+          // flatten to list
+          extract_ncbi_taxdb.out.file |
+            toList |
             set { tdb }
+          // combine with blast db channel
           blastdb = blastdb.combine(tdb)
+        } else {
+          // otherwise just assume taxdb files live under each blast db
+          Channel.fromPath(blasts, checkIfExists: false) |
+            map { b -> [b.Name, ncbi_taxdbs.collect{ file("${b.Parent}/${it}") } ] } |
+            set { tdb }
+          blastdb = blastdb.join(tdb)
         }
 
         // create the blast input channel
@@ -2231,6 +2238,7 @@ workflow {
         // and run the LCA process
         blast_result |
           combine(ncbi_dumps) |
+          combine(Channel.fromPath(params.lcaLineage)) |
           collapse_taxonomy
         lca_taxonomy = collapse_taxonomy.out.taxonomy
       } else {

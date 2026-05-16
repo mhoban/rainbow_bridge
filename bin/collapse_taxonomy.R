@@ -151,14 +151,17 @@ LCA <- R6Class(
 
 # ordered hierarchy of taxa used by NCBI (and others)
 # we should probably assemble this programatically, but they don't make it easy
-hierarchy <- c( 
-  "domain", "superkingdom", "supergroup", "kingdom", "subkingdom", "superphylum", "phylum", "division",
-  "subphylum", "subdivision", "infraphylum", "superclass", "class", "subclass", "infraclass",
-  "cohort", "subcohort", "superorder", "order", "suborder", "infraorder", "parvorder",
-  "superfamily", "family", "subfamily", "tribe", "subtribe", "genus", "subgenus",
-  "section", "subsection", "series", "subseries", "species group", "species subgroup",
-  "species", "forma specialis", "subspecies", "varietas", "subvariety", "forma",
-  "serogroup", "serotype", "strain", "isolate" 
+# so we steal it from the TaxonKit source code
+hierarchy <- c(
+  "domain","superkingdom","realm","empire","kingdom","subkingdom","infrakingdom","parvkingdom","superphylum","superdivision",
+  "phylum","division","subphylum","subdivision","infraphylum","infradivision","microphylum","microdivision","superclass","class",
+  "subclass","infraclass","parvclass","superlegion","legion","sublegion","infralegion","supercohort","cohort","subcohort","infracohort",
+  "gigaorder","magnorder","megaorder","grandorder","capaxorder","mirorder","hyperorder","superorder","order","nanorder","hypoorder",
+  "minorder","suborder","infraorder","parvorder","gigafamily","megafamily","grandfamily","hyperfamily","superfamily","epifamily","group",
+  "family","subfamily","infrafamily","supertribe","tribe","subtribe","infratribe","genus","subgenus","section","subsection","series",
+  "subseries","superspecies","species group","species subgroup","species","subspecies","forma specialis","pathovar","pathogroup","serogroup",
+  "biotype","serotype","genotype","variety","varietas","morph","aberration","subvariety","subvarietas","submorph","subaberration","form",
+  "forma","subform","subforma","strain","isolate"
 )
 
 nice_formatter <- function(object) {
@@ -222,18 +225,18 @@ best_score <- function(x,...) {
     ungroup()
 }
 
-# validate NCBI lineage dump
-check_ncbi_lineage <- function(f) {
-  hdr <- read_lines(f,n_max = 1) %>%
-    str_split_1("\t")
-  if (length(hdr) == 20) {
-    if (hdr[1] == "1" & hdr[3] == "root" & last(hdr) == "|") {
+# quick and dirty way to validate NCBI dump based on column number
+check_ncbi_dump <- function(f,n) {
+  if (file_exists(f)) {
+    hdr <- read_lines(f,n_max = 1) %>%
+      str_split_1("\t")
+    hdr <- hdr[hdr != '|']
+      if (length(hdr) == n) {
       return(TRUE)
     } 
-  } 
+  }
   return(FALSE)
 }
-
 
 # set up option list
 option_list <- list(
@@ -242,6 +245,7 @@ option_list <- list(
   make_option(c("-p", "--pid"), action="store", default=NA, type='double', help="Minimum percent match ID threshold"),
   make_option(c("-d", "--diff"), action="store", default=NA, type='double', help="Percent ID difference threshold for matching query coverage"),
   make_option(c("-f", "--filter-max-qcov"), action="store_true", default=FALSE, type='logical', help="Retain only records with the highest query coverage"),
+  make_option(c("-l", "--lineage-priority"), action="store_true", default=FALSE, type='logical', help="Give priority to custom lineage file (over NCBI)"),
   make_option(c("-t", "--taxon-filter"), action="callback", default=NA, type='character', help="Regex to filter taxa (e.g., uncultured/synthetic/environmental sequences)",callback=na_opt),
   make_option(c("-c", "--case-insensitive"), action="store_true", default=FALSE, type='logical', help="Perform case-insensitve taxon filtering"),
   make_option(c("-i", "--intermediate"), action="callback", default=NA, type='character', help="Store intermediate filtered BLAST results in specified file",callback=na_opt),
@@ -270,21 +274,14 @@ opt <- parse_args(
     usage="%prog [options] <blast_result> <taxonomic_lineage>"
   ), 
   convert_hyphens_to_underscores = TRUE,
-  positional_arguments = 2, 
+  positional_arguments = c(1,2), 
   args = opt_args
 )
 
-# check that files in positional args all exist and bail on failure
-fe <- file_exists(opt$args)
-if (any(!fe)) {
-  bad <- fe[!fe]
-  msg <- str_c(str_glue("Missing/bad filename: {names(bad)}"),collapse="\n")
-  stop(msg)
-}
-
 # get options
 blast_file <- opt$args[1]
-lineage_dump <- opt$args[2]
+lineage_dump <- opt$args[2] # will be NA if no second arg
+lineage_priority <- opt$options$lineage_priority
 output_table <- opt$options$output
 taxid_lineage_dump <- opt$options$taxid_lineage
 nodes_dump <- opt$options$nodes
@@ -299,6 +296,11 @@ intermediate <- opt$options$intermediate
 semicolon <- opt$options$semicolon
 drop_blank <- opt$options$drop_blank
 dropped <- opt$options$dropped
+filter_max_qcov <- opt$options$filter_max_qcov
+
+if (!file_exists(blast_file)) {
+  stop(str_c(str_glue("Supplies BLASt results file does not exist: {blast_file}"),collapse="\n"))
+}
 
 if (str_to_lower(dropped) == "na") {
   dropped <- NA_character_
@@ -358,37 +360,70 @@ if (semicolon) {
 }
 
 
-# lineage file is the NCBI dump
-if (str_to_lower(path_file(lineage_dump)) == "rankedlineage.dmp") {
-  if (check_ncbi_lineage(lineage_dump)) {
-    # load the NCBI lineage dump, the underscores in lineage_cols lets us skip columns
-    # because NCBI uses '\t|\t' as their delimiter and we'd have a bunch of columns that just contain a pipe
-    # treat the 'taxon' column as the species column since blast always returns species-level taxids
-    ncbi_ranks <- c("species","_","genus","family","order","class","phylum","kingdom","domain")
-    lineage_cols <- str_c("i_", str_c( if_else(ncbi_ranks == "_","_","c"), collapse="_" ), "_")
-    lineage_ranks <- ncbi_ranks[which(ncbi_ranks != "_")]
-    lineage <- read_tsv(
-      lineage_dump,
-      col_types = lineage_cols,
-      col_names = c("taxid",lineage_ranks),
-      progress=FALSE,
-      show_col_types = FALSE
-    ) 
+ncbi_lineage <- tibble()
+custom_lineage <- tibble()
+
+# if we have a valid NCBI lineage dump
+if (check_ncbi_dump("rankedlineage.dmp",10)) {
+  # load the NCBI lineage dump, the underscores in lineage_cols lets us skip columns
+  # because NCBI uses '\t|\t' as their delimiter and we'd have a bunch of columns that just contain a pipe
+  # treat the 'taxon' column as the species column since blast always returns species-level taxids
+  ncbi_ranks <- c("species","_","genus","family","order","class","phylum","kingdom","domain")
+  lineage_cols <- str_c("i_", str_c( if_else(ncbi_ranks == "_","_","c"), collapse="_" ), "_")
+  ncbi_ranks <- ncbi_ranks[which(ncbi_ranks != "_")]
+  ncbi_lineage <- read_tsv(
+    "rankedlineage.dmp",
+    col_types = lineage_cols,
+    col_names = c("taxid",ncbi_ranks),
+    progress=FALSE,
+    show_col_types = FALSE
+  ) %>%
+  mutate(priority = !lineage_priority, ncbi = TRUE)
+} 
+
+# if we have a custom lineage and it has girth
+if (file_exists(lineage_dump) & file_size(lineage_dump) > 0) {
+  # load it
+  custom_lineage <- load_table(lineage_dump,progress=FALSE,show_col_types=FALSE) %>%
+    mutate(priority = TRUE, ncbi = FALSE)
+
+  if ('taxid' %in% names(custom_lineage)) {
+    # select taxid first if that column exists
+    custom_lineage <- custom_lineage %>%
+      select(taxid,everything())
   } else {
-    stop(str_glue("File {lineage_dump} is not a valid NCBI lineage dump"))
+    # otherwise rename the first column to taxid and hope it does what we want it to
+    custom_lineage <- custom_lineage %>% 
+      rename(taxid=1)
   }
-} else {
-  lineage <- load_table(lineage_dump,progress=FALSE,show_col_types=FALSE) %>%
-    rename(taxid=1)
-  if (!is.numeric(lineage$taxid)) {
+  if (!is.numeric(custom_lineage$taxid)) {
     stop("First column of lineage table must be numeric taxon ID")
   }
-  lineage_ranks <- colnames(lineage)[-1]
+}
+
+# smash the two lineages together
+lineage <- bind_rows(ncbi_lineage,custom_lineage) %>%
+  select(taxid,everything())
+
+if (nrow(lineage) == 0) {
+  stop("No taxonomic lineage data was found")
+}
+# and arrange with taxid as the first column
+nn <- colnames(lineage)
+lineage_ranks <- nn[which(!(nn %in% c('taxid','priority','ncbi')))]
+
+# bail if we have any duplicate taxids
+if (any(duplicated(lineage$taxid))) {
+  stop("Combined custom/NCBI taxonomic lineage table has duplicate taxids") 
+}
+# bail if we have any blank taxids
+if (any(is.na(lineage$taxid))) {
+  stop("Combined custom/NCBI taxonomic lineage table has blank taxids") 
 }
 
 
 # get new taxids for any merged taxa, if relevant
-if (file_exists(merged_dump)) {
+if (check_ncbi_dump(merged_dump,2)) {
   merged <- read_tsv(merged_dump,col_types="i_i_",col_names=c("old_taxid","new_taxid"),progress=FALSE, show_col_types=FALSE)
           
   filtered <- filtered %>%
@@ -413,12 +448,19 @@ filtered <- filtered %>%
   # group by zotu
   group_by(zotu) %>%
   # conditionally retain only the highest query coverage within each zotu
-  { if (opt$options$filter_max_qcov) filter(.,qcov == max(qcov)) else . } %>%
+  { if (filter_max_qcov) filter(.,qcov == max(qcov)) else . } %>%
   # now calculate difference between each and the max pident within each zotu
   mutate(diff = abs(pident - max(pident))) %>%
   # discard anything with a difference over the threshold within each zotu
   filter(diff < diff_thresh) %>%
-  ungroup() 
+  # if we want to keep only results that match our custom lineage, do that
+  mutate(keep = case_when(
+    lineage_priority & any(priority) ~ priority,
+    .default = TRUE
+  )) %>% 
+  filter(keep) %>%
+  ungroup() %>%
+  select(-c(keep,priority))
 
 # filter taxa using supplied regex
 if (!is.na(taxon_filter)) {
@@ -436,7 +478,7 @@ if (drop_blank) {
 lca <- FALSE
 # initialize LCA class if we're using it
 # we do this if we have nodes.dmp or taxidlineage.dmp
-if (file_exists(nodes_dump) | file_exists(taxid_lineage_dump)) {
+if (check_ncbi_dump(nodes_dump,18) | check_ncbi_dump(taxid_lineage_dump,2)) {
   lca_getter <- LCA$new(nodes = nodes_dump, merged = merged_dump, taxid_lineage = taxid_lineage_dump)
   lca <- TRUE
 }
@@ -449,11 +491,11 @@ collapsed <- filtered %>%
   summarise(
     across(all_of(lineage_ranks),~ifelse(n_distinct(.x) == 1,first(.x),dropped)),
     unique_hits=unique_hits[1],
-    taxid = (\(tids) {
+    taxid = (\(tids,ncbi) {
       if (n_distinct(tids) == 1) {
         return(setNames(unique(tids),"species"))
       } else {
-        if (lca) {
+        if (lca && all(ncbi)) {
           # get taxid of LCA
           lt <- lca_getter$lca(tids,ranks = lineage_ranks)
           # make sure the resulting taxid has a name
@@ -463,7 +505,13 @@ collapsed <- filtered %>%
           return(setNames(NA,""))
         }
       }
-    })(taxid)
+    })(taxid,ncbi),
+    taxid_source = case_when(
+      all(ncbi) ~ 'ncbi',
+      n() == 1 & all(!ncbi) ~ 'custom',
+      any(ncbi) & any(!ncbi) ~ 'combined',
+      .default = 'unknown'
+    )
   ) %>%
   ungroup() %>%
   mutate(
@@ -478,7 +526,7 @@ collapsed <- filtered %>%
   arrange(parse_number(zotu)) %>%
   # try to order the column hierarchically, matching the order of NCBI taxonomic hierarchy
   # if we have ranks not in the list, they'll end up at the end, but they'll still be there
-  select(zotu,na.omit(match(hierarchy,colnames(.))),everything(),unique_hits,taxid,taxid_rank)
+  select(zotu,na.omit(match(hierarchy,colnames(.))),everything(),unique_hits,taxid,taxid_rank,taxid_source)
 
 
 # save the collapsed output table

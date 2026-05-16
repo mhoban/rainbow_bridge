@@ -192,13 +192,15 @@ class helper {
 
     General taxonomy operations:
       --standalone-taxonomy         Run LCA and/or insect in standalone mode (independent of pipeline)
-      --ncbi-taxdump [file]         Local copy of the NCBI new_taxdump.zip archive (leave blank to download)
+      --ncbi-taxdump [file]         Local copy of the NCBI new_taxdump.zip archive (default: downloaded from NCBI server)
+      --no-taxdump                  Suppress download of NCBI taxonomy dumps archive
 
     LCA taxonomy collapse:
       --lca                         Collapse assigned BLAST results by least common ancestor (LCA)
       --blast-file [file]           Blast result table (only for standalone LCA assignment)
-      --seq-table [file]           zOTU table file (only for standalone LCA assignment)
-      --lca-lineage [file]          Tabular file (TSV/CSV) matching taxnomic IDs (taxids) to taxonomic lineage 
+      --seq-table [file]            zOTU table file (only for standalone LCA assignment)
+      --lca-lineage [file]          Tabular file (TSV/CSV) matching taxonomic IDs (taxids) to taxonomic lineage 
+      --lineage-priority            Give priority (over NCBI) to taxa in the custom lineage file
       --lca-qcov [num]              Minimum query coverage for LCA taxonomy assignment (default: 100)
       --lca-evalue [num]            Maximum e-value for LCA taxonomy refinement (default: 0.001)
       --lca-pid [num]               Minimum percent identity for LCA taxonomy assignment (default: 97)

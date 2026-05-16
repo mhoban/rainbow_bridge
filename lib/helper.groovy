@@ -58,29 +58,6 @@ class helper {
       [Collection, Object[]].any { it.isAssignableFrom(object.getClass())  }
   }
 
-	static public void demuxed_example() {
-		System.out.println("""
-		>sample1.1
-		AGCGTCCGATGACTGACTGACTAGCT
-		>sample1.2
-		TACGTACGATCGACGAGTCTACGACTACTGAC
-		>sample1.3
-		TGACTGATCGTACTATCAGAGCTATCATCGACTATCATCGATC
-		>sample2.1
-		ATCGTACTACTAGCGACGAGTCATCACGACGTACTAGTCGA
-		>sample2.2
-		CATGCGACGTACGTACTATCATCATCGAGCAGCTATATATCGATGGTACTAGCTGAC
-		>sample2.3
-		TGACTGATCGTACTATCAGAGCTATCATCGACTATCATCGATC
-		>sample3.1
-		AGCGTCCGATGACTGACTGACTAGCT
-		>sample3.2
-		ATCGTACTACTAGCGACGAGTCATCACGACGTACTAGTCGA
-		>sample3.3
-		CATGCGACGTACGTACTATCATCATCGAGCAGCTATATATCGATGGTACTAGCTGAC
-		""".stripIndent())
-	}
-
   static public void usage(params) {
 		System.out.println("""
     Usage: rainbow_bridge.nf [options]
@@ -265,9 +242,8 @@ class helper {
     Demultiplexing and sequence matching:
       --remove-ambiguous-indices    Removes reads with ambiguous indices in the header (i.e., not A,G,C,T)
                                     (only applies to previously-demultiplexed runs with indices in header)
-      --demuxed-fasta [file]        Skip demultiplexing step and use supplied FASTA 
+      --sequences [file]            Skip demultiplexing step and use supplied FASTA 
                                     (must be in usearch/vsearch format)
-      --demuxed-example             Spit out example usearch/vsearch demultiplexed FASTA format
       --primer-mismatch             Allowed number of mismatched primer bases 
                                     (default: ${params.primerMismatch})
       --no-primers                  Skip primer matching (ngsfilter/cutadapt) altogether. 

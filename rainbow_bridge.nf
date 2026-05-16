@@ -47,12 +47,6 @@ def check_params() {
     exit(0)
   }
 
-  // give example of what a demultiplexed FASTA file looks like
-  if (params.demuxedExample) {
-    helper.demuxed_example()
-    exit(0)
-  }
-
   // check PCR primers
   if (params.fwdPrimer || params.reversePrimer) {
     // only allow primers or barcode
@@ -96,7 +90,7 @@ def check_params() {
   }
 
   // make sure the right version of single,paired,demultiplexed is passed
-  if (!helper.file_exists(params.demuxedFasta) && !params.standaloneTaxonomy && params.single == params.paired) {
+  if (!helper.file_exists(params.sequences) && !params.standaloneTaxonomy && params.single == params.paired) {
     if (!params.single) {
       println(colors.red("One of either ") + colors.bred("--single") + colors.red(" or ") + colors.bred("--paired") + colors.red(" MUST be passed"))
     } else {
@@ -1548,7 +1542,7 @@ workflow {
     // if there isn't an already-demultiplexed FASTA file
     // figure out where the sequence reads are, make sure they're
     // in the right order, and remap sample IDs (if requested)
-    if (!helper.file_exists(params.demuxedFasta)) {
+    if (!helper.file_exists(params.sequences)) {
       if (params.single) {
         // if params.reads is a directory, make it a glob
         def reads_files = params.reads
@@ -1875,12 +1869,12 @@ workflow {
       dada_track_reads(to_track)
 
     } else { // run the u/vsearch pipeline
-      if (helper.file_exists(params.demuxedFasta)) {
+      if (helper.file_exists(params.sequences)) {
         // we've already demultiplexed and relabeled sequences
         // (presumably from an earlier run of the pipeline), so we can jump to here
 
         // load the fasta file in usearch/vsearch format
-        Channel.fromPath(params.demuxedFasta, checkIfExists: true) |
+        Channel.fromPath(params.sequences, checkIfExists: true) |
           set { to_dereplicate }
       } else {
         // otherwise do all the various processing bits

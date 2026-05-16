@@ -111,8 +111,7 @@ $ nextflow run mhoban/rainbow_bridge \
   --demultiplexed-by index \
   --reads 'reads/*{R1,R2}*.fastq.gz' \
   --barcode barcode.tsv \
-  --blast \
-  --blast-db /path/to/blast/core_nt \
+  --blast /path/to/blast/core_nt \
   --lca
 ```
 
@@ -453,7 +452,7 @@ By default, rainbow_bridge uses [vsearch](https://github.com/torognes/vsearch) t
 
 #### BLAST settings 
 
-For pipeline runs in which BLAST queries are performed, the `--blast` argument is required and you must identify the database(s) being used. This is done using the `--blast-db` option. See [below](#blast-settings-1) for details on how to do this and how to configure BLAST searches. 
+For pipeline runs in which BLAST queries are performed, the `--blast` argument identifies the database(s) being used. See [below](#blast-settings-1) for details on how to do this and how to configure BLAST searches. 
 
 ## General options
 <small>**`--project [project]`**</small>:    Project name, applied as a prefix to various output filenames. (default: project directory name)  
@@ -545,19 +544,17 @@ BLAST is an alignment-based approach that uses a reference database (such as NCB
 
 ### BLAST settings
 
-These settings allow you to control how BLAST searches are performed and specify the location of search databases. The only required option (unless BLAST queries are being skipped) is the location of a local BLAST database, which is set using the command line option `--blast-db`. Other options in this category allow you to control BLAST search criteria directly (e.g., e-value, percent match, etc.). For further explanation of these options beyond what is described here, see the [blast+ documentation](https://www.ncbi.nlm.nih.gov/books/NBK279690/).
-
-First, the command-line option `--blast` must be given to tell rainbow_bridge to run a BLAST search.
+These settings allow you to control how BLAST searches are performed and specify the location of search databases. The only required option is the location of a local BLAST database, which is set using the command line option `--blast`. Other options in this category allow you to control BLAST search criteria directly (e.g., e-value, percent match, etc.). For further explanation of these options beyond what is described here, see the [blast+ documentation](https://www.ncbi.nlm.nih.gov/books/NBK279690/).
 
 The following options are available:  
 
 Specifying your database:  
-<small>**`--blast-db [blast db name]`**</small>: Location of a BLAST database (path *and* name). For example, if the NCBI `nt` database resides at `/usr/local/blast`, use `--blast-db /usr/local/blast/nt`. If you have a custom database called `custom_blast` in `/home/user/customblast`, pass `--blast-db /home/user/customblast/custom_blast`. The "name" of the database is the same as the value passed to the `-out` parameter of `makeblastdb`. If you are unsure of the name of a particular blast database, a good way to identify it is that it's the base name of the .ndb file. For example, if you have a directory with a `fishes.ndb` file, the name of the BLAST database will just be `fishes`.  
+<small>**`--blast [blast db name]`**</small>: Location of a BLAST database (path *and* name). For example, if the NCBI `nt` database resides at `/usr/local/blast`, use `--blast /usr/local/blast/nt`. If you have a custom database called `custom_blast` in `/home/user/customblast`, pass `--blast /home/user/customblast/custom_blast`. The "name" of the database is the same as the value passed to the `-out` parameter of `makeblastdb`. If you are unsure of the name of a particular blast database, a good way to identify it is that it's the base name of the .ndb file. For example, if you have a directory with a `fishes.ndb` file, the name of the BLAST database will just be `fishes`.  
 
 Taxonomic name resolution:  
 BLAST databases use numerical NCBI taxonomy IDs (taxids) to assign taxonomy to sequences. In order for your results to contain the actual scientific names associated with those taxids, the NCBI BLAST taxonomy database (taxdb) must be available to the pipeline. This can be achieved in several ways:   
 
-  - taxdb files (`taxdb.btd`, `taxdb.bti`, and `taxonomy4blast.sqlite3`) present alongside the database(s) passed using `--blast-db` will be used for queries of those supplied databases. 
+  - taxdb files (`taxdb.btd`, `taxdb.bti`, and `taxonomy4blast.sqlite3`) present alongside the database(s) passed using `--blast` will be used for queries of those supplied databases. 
     * If you're using one of the NCBI nucleotide databases (e.g., `nt`, `nt_core`, etc.), you most likely already have these files present and won't have to worry about any of this.
   - The BLAST taxonomy database can be loaded from a local file or downloaded from NCBI's serverse using the `--blast-taxdb` option. Pass with no argument to download or provide the path to `taxdb.tar.gz` to use a local version.
 
@@ -574,14 +571,13 @@ Multiple BLAST databases:
 It is possible to query sequences against multiple BLAST databases. Nextflow does not support multiple values for the same option on the command line (e.g., `workflow.nf --opt val1 --opt val2`), but it *does* support them when using [parameter files](#specifying-parameters-in-a-parameter-file). Thus, if you want to use multiple custom databases, you'll need to pass them as a list in your parameter file ([see here](#setting-multiple-values-for-the-same-option) for an example). The pipeline will run BLAST queries against each database separately and merge the results into a common output file.    
 
 All BLAST options:  
-<small>**`--blast`**</small>: Query sequence variants against a provided BLAST database.  
-<small>**`--blast-db [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db.  
+<small>**`--blast [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db.  
 <small>**`--blast-taxdb [archive]?`**</small>: Specify a local taxdb archive or download from NCBI servers. Pass with no argument to download or provide a path to `taxdb.tar.gz` to use a local copy. By default, rainbow_bridge assumes taxonomy database files exist alongside BLAST database files.  
 <small>**`--blast-taxa [taxa]`**</small>: Limit your BLAST query to a specific taxon or taxa. The value of this option should be a taxon name (e.g., "Metazoa", "Actinopteri"). Multiple taxa can be passed if separated by commas (e.g., "Metazoa,Rhodophyta") and taxon names are case-insensitive.  
 <small>**`--blast-exclude-taxa [taxa]`**</small>: Exclude taxa from BLAST search. Option values have the same requirements as `--blast-taxa`.  
 
 BLAST options passed to the NCBI `blastn` tool:  
-<small>**`--blastn-task [task]`**</small>:  Set blast+ task (default: "blastn"). NCBI `blastn` option: `-task`.  
+<small>**`--blast-task [task]`**</small>:  Set blast+ task (default: "blastn"). NCBI `blastn` option: `-task`.  
 <small>**`--max-query-results [num]`**</small>:  Maximum number of BLAST results to return per query sequence (default: 10). See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter, but mayble also see [here](https://academic.oup.com/bioinformatics/article/35/15/2699/5259186) for a follow-up discussion. NCBI `blastn` option: `-max_target_seqs`.   
 <small>**`--percent-identity [num]`**</small>:  Minimum percent identity of matches (default: 95). NCBI `blastn` option: `-perc_identity`.  
 <small>**`--evalue [num]`**</small>:  BLAST e-value threshold (default: 0.001). NCBI `blastn` option: `-evalue`.   
@@ -1135,7 +1131,7 @@ $ ls -l
 -rw-rw-r-- 1 justaguy justaguy    42 Mar 12 14:27 taxid_map
 ```
 
-In order to use this custom database with rainbow_bridge, if these files reside in a directory called `/users/justaguy/blast`, the value you would pass to `--blast-db` would be `/users/justaguy/blast/custom_database`
+In order to use this custom database with rainbow_bridge, if these files reside in a directory called `/users/justaguy/blast`, the value you would pass to `--blast` would be `/users/justaguy/blast/custom_database`
 
 ## Parameter files
 
@@ -1149,8 +1145,7 @@ barcode: data/barcode.tsv
 remove-ambiguous-indices: true
 lca: true
 primer-mismatch: 3
-blast: true
-blast-db: /opt/blast/nt
+blast: /opt/blast/nt
 ```
 
 and the same thing in json format:
@@ -1163,8 +1158,7 @@ and the same thing in json format:
   "remove-ambiguous-indices": true,
   "lca": true,
   "primer-mismatch": 3,
-  "blast": true,
-  "blast-db": "/opt/blast/nt"
+  "blast": "/opt/blast/nt"
 }
 ```
 
@@ -1186,17 +1180,16 @@ $ nextflow run /path/to/rainbow_bridge.nf \
   --remove-ambiguous-indices \
   --lca \
   --primer-mismatch 3 \
-  --blast \
-  --blast-db /opt/blast/nt
+  --blast /opt/blast/nt
 ```
 
 ### Setting multiple values for the same option
-One advantage of using a parameter file vs. just passing options on the command line is the ability to pass multiple values for the same option (something that isn't supported by nextflow otherwise). In practice, this is only useful for the `--blast-db` option, but if you've got multiple BLAST databases, it becomes critical. To pass multiple values to an option, simply put them in a parameter file and pass them as a list. 
+One advantage of using a parameter file vs. just passing options on the command line is the ability to pass multiple values for the same option (something that isn't supported by nextflow otherwise). In practice, this is only useful for the `--blast` option, but if you've got multiple BLAST databases, it becomes critical. To pass multiple values to an option, simply put them in a parameter file and pass them as a list. 
 
-This is what that looks like in YAML (using `--blast-db` as the example option):  
+This is what that looks like in YAML (using `--blast` as the example option):  
 
 ```yaml
-blast-db:
+blast:
   - /opt/blast/fishes
   - /opt/blast/crabs
   - /opt/blast/snails
@@ -1206,7 +1199,7 @@ And in json:
 
 ```json
 {
-  "blast-db": [
+  "blast": [
     "/opt/blast/fishes",
     "/opt/blast/crabs",
     "/opt/blast/snails"

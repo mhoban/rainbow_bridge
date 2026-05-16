@@ -1749,7 +1749,7 @@ workflow {
       if (helper.file_exists(params.sampleMap)) {
         Channel.fromPath(params.sampleMap) |
           splitCsv(sep: "\t") |
-          map{ [ it[1..-1].collect{ file(it).baseName }.join("-"), it[0] ] } | 
+          map{ it[0] =~ /^#/ ? null : [ it[1..-1].collect{ file(it).baseName }.join("-"), it[0] ] } | 
           set { sample_map }
         reads |
           map{ id, pair -> [ pair.collect{ file(it).baseName }.join("-"), pair ] } |

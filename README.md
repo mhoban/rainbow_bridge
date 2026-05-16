@@ -86,7 +86,7 @@ For more information on the original eDNAFlow pipeline and other software used a
 - [Useful examples and tips](#useful-examples-and-tips)
    * [Barcode file ](#barcode-file)
    * [Sample IDs](#sample-ids)
-      + [Re-mapping custom sample IDs](#re-mapping-custom-sample-ids)
+      + [Mapping custom sample IDs](#mapping-custom-sample-ids)
    * [A note on globs/wildcards](#a-note-on-globswildcards)
    * [When things go wrong (interpreting errors)](#when-things-go-wrong-interpreting-errors)
    * [Configuration profiles](#configuration-profiles)
@@ -917,21 +917,25 @@ CL1_S2_L001
 CL2_S3_L001
 ```
 
-### Re-mapping custom sample IDs
-By default for previously-demultiplexed runs, rainbow_bridge will interpret sample IDs from sequence read filenames as outlined above. However, you may also specify a mapping file to translate read filenames into custom sample IDs.
+### Mapping custom sample IDs
+For demultiplexed sequencing runs, rainbow_bridge will interpret sample IDs from sequence read filenames as outlined above. However, you may also provide a mapping file in order to translate read filenames into custom sample IDs.
 
-<small>**`--sample-map [mapfile]`**</small>: A headerless tab-delimited file that maps sample names to sequence-read filenames.  
+<small>**`--sample-map [mapfile]`**</small>: A tab-delimited file that maps sample names to sequence-read filenames.  
 
-The specified map file should be a tab-delimited table (*without* headers) where the first column contains the desired sample ID, the second column contains the read filename (forward read for paired-end reads), and the third column (for paired-end reads only) contains the reverse read filename. To map custom IDs to the read files in the example [above](#sample-ids), construct a map file as follows (columns are tab-separated, file has no header): 
+The sample map should be a tab-delimited table where the first column contains the desired sample ID, the second column contains the read filename (forward read for paired-end reads), and the third column (for paired-end reads only) contains the reverse read filename. This file may have headers, but (as for barcode files) the header line must be preceded with '#'. 
 
+With the example [above](#sample-ids), a map file might look something like this: 
+
+`mapfile.tsv`
 ```
+#sample     read1                     read2
 sample_B1   B1_S7_L001_R1_001.fastq   B1_S7_L001_R2_001.fastq
 sample_B2   B2_S8_L001_R1_001.fastq   B2_S8_L001_R2_001.fastq
 sample_CL1  CL1_S2_L001_R1_001.fastq  CL1_S2_L001_R2_001.fastq
 sample_CL2  CL2_S3_L001_R1_001.fastq  CL2_S3_L001_R2_001.fastq 
 ```
 
-This results in the following sample IDs:
+Running rainbow_bridge with the option `--sample-map mapfile.tsv` will result in outputs having the following sample IDs:
 
 ```
 sample_B1 
@@ -941,14 +945,14 @@ sample_CL2
 ```
 
 > ![NOTE]
-> Make sure the filenames in your sample map match the complete filenames (base names) as they exist on-disk (e.g., if they are gzipped, be sure to include the '.gz' extension in your sample map). This differs from previous versions of the pipeline in which the .gz extension needed to be stripped from the sample ID map.
+> Make sure the filenames in your sample map match the filenames of your sequence reads as they exist on-disk (e.g., if they are gzipped, be sure to include the '.gz' extension in your sample map). Filenames may be absolute paths or basenames, since any preceding directory information will be ignored.
 
 ## A note on globs/wildcards
 
 A number of rainbow_bridge command-line options accept file globs (wildcards). These are used when you want to indicate more than one file using a matching pattern. For an in-depth treatment of globs in the bash shell environment, have a look [here](https://www.baeldung.com/linux/bash-globbing). For the purposes of this pipeline though, you'll mostly use the following things:
 
 > [!NOTE]
-> When passing file globs as command-line options, make sure that you enclose them in quotes (e.g., `--reads '/storage/sequences/run1/*{R1,R2}*.fastq.gz'`). If you don't, the glob will be expanded by the shell rather than rainbow_bridge and parameter values will be incorrect.
+> When passing file globs as arguments to command-line options, make sure that you enclose them in quotes (e.g., `--reads '/storage/sequences/run1/*{R1,R2}*.fastq.gz'`). If you don't, the glob will be expanded by the shell rather than rainbow_bridge and parameter values will be incorrect.
 
 **\***: a star means 'match any string of characters of any length'  
 For example, the glob 'bc\*.tab' will match any filename that begins with 'bc', followed by a sequence of any characters, and finally ending with '.tab'  
@@ -957,7 +961,16 @@ This pattern will match 'bc1.tab', 'bc2.tab', and 'bc_one_two_three.tab', but it
 **{}**: curly braces are used for multiple possible matches.  
 The contents can be exact strings or wildcards. Anything that matches any of the given comma-separated strings using an "or" relationship (one OR the other) will be found.  
 For example, the glob 'seq\_\*{R1,R2}\*.fastq' will match 'seq_', followed by any characters, followed by EITHER 'R1' OR 'R2', followed by any characters, and finally ending with '.fastq'.  
-This pattern will match 'seq\_R1.fastq', 'seq\_001\_002\_R2.fastq', and 'seq\_123\_456\_R2\_extra_info.fastq', among many others. It will NOT match 'seqR1.fastq' (because it's missing the initial underscore following 'seq').
+This pattern will match 'seq\_R1.fastq', 'seq\_001\_002\_R2.fastq', and 'seq\_123\_456\_R2\_extra_info.fastq', among many others. It will NOT match 'seqR1.fastq' (because it's missing the initial underscore following 'seq').  
+This is the type of glob that is mostly typically used with the `--reads` option when processing paired-end sequencing runs. 
+
+The following command will work for many paired runs:
+
+```console
+$ nextflow run mhoban/rainbow_bridge \
+  --reads '/path/to/reads/*{R1,R2}*.fastq.gz' \
+  <more rainbow_bridge options>
+```
 
 ## When things go wrong (interpreting errors)
 

@@ -62,7 +62,7 @@ class helper {
 		System.out.println("""
     Usage: rainbow_bridge.nf [options]
 
-    Nextflow options (note single leading dash):
+    Useful nextflow options (note single leading dash):
       -params-file [file]          Load rainbow_bridge options from YAML or json parameters file
       -N [email address]           Notify by email on pipeline completion or error
 
@@ -90,15 +90,15 @@ class helper {
                                    (not compatible with --demultiplexed-by index)
       --split-by                   Number of sequences per split fastq chunk (default: ${params.splitBy})
       --preprocess-only            Stop after running preprocessing steps (before denoising)
-      --sample-map [mapfile]       (Optional) A headerless tab-separated file mapping sample names to sequence-read
+      --sample-map [mapfile]       (Optional) A tab-delimited file mapping sample names to sequence-read
                                    filenames. Paired-end runs include both forward and reverse reads. Example map:
                                    ---
-                                   sample1	B1_S7_L001_R1_001.fastq	B1_S7_L001_R2_001.fastq
-                                   sample2	B2_S8_L001_R1_001.fastq	B2_S8_L001_R2_001.fastq
-                                   sample3	CL1_S2_L001_R1_001.fastq	CL1_S2_L001_R2_001.fastq
-                                   sample4	CL2_S3_L001_R1_001.fastq	CL2_S3_L001_R2_001.fastq 
+                                   #sample  read1                        read2
+                                   sample1  B1_S7_L001_R1_001.fastq.gz   B1_S7_L001_R2_001.fastq.gz
+                                   sample2  B2_S8_L001_R1_001.fastq.gz   B2_S8_L001_R2_001.fastq.gz
+                                   sample3  CL1_S2_L001_R1_001.fastq.gz  CL1_S2_L001_R2_001.fastq.gz
+                                   sample4  CL2_S3_L001_R1_001.fastq.gz  CL2_S3_L001_R2_001.fastq.gz 
                                    ---
-                                   NOTE: if your fastq files are gzipped, DO NOT include the .gz extension in filenames
 
     For single-end sequencing runs:
       --single                     Specify single-ended sequencing run (required)
@@ -117,7 +117,7 @@ class helper {
       --fwd [glob], --rev [glob]   Resolve forward and reverse reads directly using globs
                                    e.g., --fwd 'r1/*R1*.fastq' --rev 'r2/*R2*.fastq'
 
-    Specify location of paired-end reads with directories, using the following patterns:
+    To specify the location of paired-end reads with directories, rainbow_bridge will use the following patterns:
       <reads>/*{<r1>,<r2>}*.f*q*
       <reads>/{<fwd>,<rev>}/*{<r1>,<r2>}*.f*q*
       {<fwd>,<rev>}/*{<r1>,<r2>}*.f*q*

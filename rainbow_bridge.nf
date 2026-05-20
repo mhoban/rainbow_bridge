@@ -2379,14 +2379,11 @@ workflow {
         classifier |
           combine(query_sequences) |
           combine(ncbi_dumps) |
-          view |
           insect
         if (params.splitSequences) {
           insect.out.taxonomy |
             toList |
-            view |
             merge_split_insect |
-            view |
             set { insect_taxonomy }
         } else {
           insect_taxonomy = insect.out.taxonomy

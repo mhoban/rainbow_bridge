@@ -65,6 +65,12 @@ For more information on the original eDNAFlow pipeline and other software used a
    * [Assigning taxonomy](#assigning-taxonomy)
       + [General taxonomic assignment options](#general-taxonomic-assignment-options)
       + [BLAST settings](#blast-settings-1)
+         - [Taxonomic name resolution](#taxonomic-name-resolution)
+         - [Requiring or excluding taxonomic groups from BLAST searches](#requiring-or-excluding-taxonomic-groups-from-blast-searches)
+         - [Multiple BLAST databases](#multiple-blast-databases)
+         - [All BLAST options](#all-blast-options)
+            * [BLAST options passed to the NCBI `blastn` tool](#blast-options-passed-to-the-ncbi-blastn-tool)
+            * [Customizing other BLAST options](#customizing-other-blast-options)
       + [Classification using insect](#classification-using-insect)
       + [LCA collapse](#lca-collapse)
          - [LCA options](#lca-options)
@@ -540,6 +546,10 @@ BLAST is an alignment-based approach that uses a reference database (such as NCB
 <small>**`--standalone-taxonomy`**</small>: Run standalone insect classification/LCA (requires `--insect` or `--lca` option)  
 <small>**`--ncbi-taxdump [file]`**</small>: Local copy of the NCBI new_taxdump.zip archive (default: downloaded from NCBI server)  
 <small>**`--no-taxdump`**</small>: Suppress downloading of NCBI taxonomy dumps. If this option is passed with `--lca`, a custom lineage (`--lca-lineage`) is required.  
+<small>**`--split-sequences`**</small>: Split sequence variant file and run BLAST and/or insect in parallel. ASVs/ZOTUs FASTA file will be broken up into individual chunks and each chunk will be run through BLAST and/or insect (depending on user selection)  
+<small>**`--split-sequences-by [num]`**</small>: Number of chunks (ASVs/ZOTUs) to include in each split query (default: 200 sequences)  
+<small>**`--split-cpus [num]`**</small>: Number of CPUs to allocate to each individual parallel BLAST and/or insect process (must be less than the value of `--max-cpus`) (default: 1)  
+<small>**`--split-memory [mem]`**</small>: Amount of memory to allocate to each individual parallel BLAST and/or insect process (must be less than the value of `--max-memory`) (default: 2 GB)  
 
 
 ### BLAST settings
@@ -551,14 +561,14 @@ The following options are available:
 Specifying your database:  
 <small>**`--blast [blast db name]`**</small>: Location of a BLAST database (path *and* name). For example, if the NCBI `nt` database resides at `/usr/local/blast`, use `--blast /usr/local/blast/nt`. If you have a custom database called `custom_blast` in `/home/user/customblast`, pass `--blast /home/user/customblast/custom_blast`. The "name" of the database is the same as the value passed to the `-out` parameter of `makeblastdb`. If you are unsure of the name of a particular blast database, a good way to identify it is that it's the base name of the .ndb file. For example, if you have a directory with a `fishes.ndb` file, the name of the BLAST database will just be `fishes`.  
 
-Taxonomic name resolution:  
+#### Taxonomic name resolution
 BLAST databases use numerical NCBI taxonomy IDs (taxids) to assign taxonomy to sequences. In order for your results to contain the actual scientific names associated with those taxids, the NCBI BLAST taxonomy database (taxdb) must be available to the pipeline. This can be achieved in several ways:   
 
   - taxdb files (`taxdb.btd`, `taxdb.bti`, and `taxonomy4blast.sqlite3`) present alongside the database(s) passed using `--blast` will be used for queries of those supplied databases. 
     * If you're using one of the NCBI nucleotide databases (e.g., `nt`, `nt_core`, etc.), you most likely already have these files present and won't have to worry about any of this.
   - The BLAST taxonomy database can be loaded from a local file or downloaded from NCBI's serverse using the `--blast-taxdb` option. Pass with no argument to download or provide the path to `taxdb.tar.gz` to use a local version.
 
-Requiring/excluding specific taxonomic groups from BLAST searches:  
+#### Requiring or excluding taxonomic groups from BLAST searches
 NCBI BLAST queries can be limited so that only certain taxa are searched/returned or that certain taxa are excluded from the results. This works both for "terminal" taxa (species) and higher-level taxa like families or orders. Multiple taxa can be given in a comma-separated list.  
 To limit searches to specific taxa, use the `--blast-taxa` option. For example, if you want a BLAST search to include only animals and red algae, pass the option `--blast-taxa metazoa,rhodophyta`.  
 To exclude taxa from a search, use the `--blast-exclude-taxa` option. For example, `--blast-exclude-taxa bacteria` will exclude all bacteria from a search.   
@@ -567,23 +577,23 @@ Taxon names passed to either option are case-insensitive (i.e,. "Bacteria" and "
 > [!NOTE]
 > If you pass a taxon to `--blast-taxa` that doesn't exist in the BLAST database you're using, you will get an error. In that case you'll see "BLAST Database error: Taxonomy ID(s) not found in the XXX database" in the "Command error" section of the pipeline output (where "XXX" is the name of the BLAST database). If you pass a taxon that just doesn't exist (e.g., "hamburger"), you won't get any errors, the BLAST query just won't be filtered.
 
-Multiple BLAST databases:  
+#### Multiple BLAST databases
 It is possible to query sequences against multiple BLAST databases. Nextflow does not support multiple values for the same option on the command line (e.g., `workflow.nf --opt val1 --opt val2`), but it *does* support them when using [parameter files](#specifying-parameters-in-a-parameter-file). Thus, if you want to use multiple custom databases, you'll need to pass them as a list in your parameter file ([see here](#setting-multiple-values-for-the-same-option) for an example). The pipeline will run BLAST queries against each database separately and merge the results into a common output file.    
 
-All BLAST options:  
+#### All BLAST options
 <small>**`--blast [blastdb]`**</small>: Specify the location of a BLAST database. The value of this option must be the path and name of a blast database (the 'name' is the basename of the files with the .n\*\* extensions), e.g., /drives/blast/custom_db.  
 <small>**`--blast-taxdb [archive]?`**</small>: Specify a local taxdb archive or download from NCBI servers. Pass with no argument to download or provide a path to `taxdb.tar.gz` to use a local copy. By default, rainbow_bridge assumes taxonomy database files exist alongside BLAST database files.  
 <small>**`--blast-taxa [taxa]`**</small>: Limit your BLAST query to a specific taxon or taxa. The value of this option should be a taxon name (e.g., "Metazoa", "Actinopteri"). Multiple taxa can be passed if separated by commas (e.g., "Metazoa,Rhodophyta") and taxon names are case-insensitive.  
 <small>**`--blast-exclude-taxa [taxa]`**</small>: Exclude taxa from BLAST search. Option values have the same requirements as `--blast-taxa`.  
 
-BLAST options passed to the NCBI `blastn` tool:  
+##### BLAST options passed to the NCBI `blastn` tool
 <small>**`--blast-task [task]`**</small>:  Set blast+ task (default: "blastn"). NCBI `blastn` option: `-task`.  
 <small>**`--max-query-results [num]`**</small>:  Maximum number of BLAST results to return per query sequence (default: 10). See [here](https://academic.oup.com/bioinformatics/article/35/9/1613/5106166) for important information about this parameter, but mayble also see [here](https://academic.oup.com/bioinformatics/article/35/15/2699/5259186) for a follow-up discussion. NCBI `blastn` option: `-max_target_seqs`.   
 <small>**`--percent-identity [num]`**</small>:  Minimum percent identity of matches (default: 95). NCBI `blastn` option: `-perc_identity`.  
 <small>**`--evalue [num]`**</small>:  BLAST e-value threshold (default: 0.001). NCBI `blastn` option: `-evalue`.   
 <small>**`--qcov [num]`**</small>:  Minimum percent query coverage (default: 100). NCBI `blastn` option: `-qcov_hsp_perc`.     
 
-Customizing other BLAST options:  
+##### Customizing other BLAST options
 Any [supported command-line option](https://www.ncbi.nlm.nih.gov/books/NBK279684/#_appendices_Options_for_the_commandline_a_) can be passed to the NCBI `blastn` tool by prefacing the option name with `--blastn-` when calling rainbow_bridge:  
 <small>**`--blastn-<blastn_option> [arg]`**</small>:  Pass `<blastn_option>` (and optional orgument) to `blastn` tool.    
 
@@ -591,7 +601,7 @@ For example, the following call:
 ```console
 $ nextflow run /path/to/rainbow_bridge.nf --blastn-gapopen 15 --blastn-gapextend 25 --blastn-html
 ```
-Will result in `blastn` being executed like this:
+Will cause `blastn` to be executed like this:
 ```console
 $ blastn -gapopen 15 -gapextend 25 -html
 ```

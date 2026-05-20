@@ -168,6 +168,10 @@ class helper {
       --standalone-taxonomy         Run LCA and/or insect in standalone mode (independent of pipeline)
       --ncbi-taxdump [file]         Local copy of the NCBI new_taxdump.zip archive (default: downloaded from NCBI server)
       --no-taxdump                  Suppress download of NCBI taxonomy dumps archive
+      --split-sequences             Split sequence variant file and run BLAST and/or insect in parallel
+      --split-sequences-by [num]    Number of sequence records to include in each split query (default: 200)
+      --split-cpus [num]            Number of CPUs to allocate to each split BLAST/insect operation (default: 1)
+      --split-memory [mem]          Memory to allocate to each split BLAST/insect operation (default: 2 GB)
 
     LCA taxonomy collapse:
       --lca                         Collapse assigned BLAST results by least common ancestor (LCA)

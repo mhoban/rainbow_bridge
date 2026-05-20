@@ -1164,7 +1164,7 @@ process blast {
     tuple path(zotus_fasta), val(db_name), path(db_files), path(taxdb), val(taxids), val(method)
 
   output:
-    path("blast_result.tsv"), emit: result
+    tuple val(db_name), path("blast_result.tsv"), emit: result
     path 'settings.yml'
 
   script:
@@ -1222,6 +1222,31 @@ process blast {
   """
 }
 
+// merge split blast results
+// it's a process instead of collectFile because it has more than one output directory
+process merge_split_blasts {
+  label 'shell'
+  label 'process_single'
+
+  publishDir { "${params.outDir}/blast/${db_name}" }, mode: params.publishMode
+  publishDir {
+    def pid = String.format("%d",(Integer)num(params.percentIdentity ))
+    def evalue = String.format("%.3f",num(params.evalue))
+    def qcov = String.format("%d",(Integer)num(params.qcov))
+    "${params.outDir}/blast/pid${pid}_eval${evalue}_qcov${qcov}_max${params.maxQueryResults}/${db_name}"
+  }, mode: params.publishMode
+
+  input:
+    tuple val(db_name), path('result*.tsv')
+  output:
+    path('blast_result.tsv')
+
+  script:
+  """
+  cat result*.tsv > blast_result.tsv
+  """
+}
+
 // lookup taxids from taxa names
 process lookup_blast_taxids {
   label 'shell'
@@ -1243,6 +1268,7 @@ process lookup_blast_taxids {
 }
 
 // merge blast results
+// it's a process instead of collectFile because it has more than one output directory
 process merge_blast {
   label 'shell'
   label 'process_single'
@@ -1263,7 +1289,7 @@ process merge_blast {
 
   script:
   """
-  cat staged/*.tsv > blast_result_merged.tsv
+  cat staged/*.tsv | sort -k1,1V > blast_result_merged.tsv
   """
 }
 
@@ -1423,6 +1449,34 @@ process insect {
   """
 }
 
+// merge split insect results
+// it's a process instead of collectFile because it has more than one output directory
+process merge_split_insect {
+  label 'shell'
+  label 'process_single'
+
+  publishDir {
+    def offs = String.format("%d",(Integer)num(params.insectOffset))
+    def thresh = String.format("%.2f",num(params.insectThreshold))
+    def minc = String.format("%d",(Integer)num(params.insectMinCount))
+    def ping = String.format("%.2f",num(params.insectPing))
+    "${params.outDir}/taxonomy/insect/thresh${thresh}_offset${offs}_mincount${minc}_ping${ping}"
+  }, mode: params.publishMode
+  publishDir { "${params.outDir}/taxonomy/insect" }
+
+  input:
+    path('insect*.tsv')
+  output:
+    path('insect_taxonomy.tsv')
+
+  script:
+  """
+  # preserve header
+  head -1 insect1.tsv > insect_taxonomy.tsv
+  tail -qn+2 insect*.tsv | sort -k1,1V >> insect_taxonomy.tsv
+  """
+}
+
 // produce a phyloseq object from pipeline output
 process phyloseq {
   label 'r'
@@ -1572,6 +1626,8 @@ workflow {
         // glob:false is necessary because the urls have question marks in them
         classifier = Channel.fromPath(url, glob:false)
       }
+
+
 
       // run the insect classification
       classifier |
@@ -2204,6 +2260,15 @@ workflow {
         }
       }
 
+      // if requested, split query sequences into chunks
+      if (params.splitSequences) {
+        sequences |
+          splitFasta(by: params.splitSequencesBy, file: true) |
+          set { query_sequences }
+      } else {
+        query_sequences = sequences
+      }
+
       // run blast query, unless skipped
       if (params.blast) {
         // def only works on its own line
@@ -2244,7 +2309,7 @@ workflow {
         }
 
         // create the blast input channel
-        sequences | 
+        query_sequences | 
           combine(blastdb) | 
           set { blast_input }
 
@@ -2265,9 +2330,23 @@ workflow {
         } 
         // run the blast query
         blast(blast_input.combine(blast_taxids))
+        blast_result = blast.out.result
+
+        // merge split blast results by database
+        if (params.splitSequences) {
+          blast_result |
+            groupTuple | 
+            merge_split_blasts |
+            set { blast_result } 
+        } else {
+          // otherwise just get results
+          blast_result | 
+            map { it[1] } |
+            set { blast_result }
+        }
 
         // merge blast results from different databases
-        blast.out.result |
+        blast_result |
           collect |
           merge_blast |
           set { blast_result }
@@ -2298,10 +2377,17 @@ workflow {
 
         // run the insect classification
         classifier |
-          combine(sequences) |
+          combine(query_sequences) |
           combine(ncbi_dumps) |
           insect
-        insect_taxonomy = insect.out.taxonomy
+        if (params.splitSequences) {
+          insect.out.taxonomy |
+            toList |
+            merge_split_insect |
+            set { insect_taxonomy }
+        } else {
+          insect_taxonomy = insect.out.taxonomy
+        }
       } else {
         insect_taxonomy = Channel.fromPath("nofile-insect-taxonomy")
       }

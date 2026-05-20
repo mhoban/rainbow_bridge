@@ -721,7 +721,7 @@ process filter_merge {
   if( params.single ) {
     // single end
     """
-    echo 'single: true' > settings.yml
+    echo "AdapterRemoval: \$(AdapterRemoval --version 2>&1 | awk '{print \$NF}')" >> settings.yml
     echo 'paired: false' >> settings.yml
     echo 'min-quality: ${params.minQuality}' >> settings.yml
     echo 'max-quality: ${params.maxQuality}' >> settings.yml
@@ -739,7 +739,7 @@ process filter_merge {
   } else if ( params.paired ) {
     // if reads are paired-end then merge
     """
-    echo 'single: false' > settings.yml
+    echo "AdapterRemoval: \$(AdapterRemoval --version 2>&1 | awk '{print \$NF}')" >> settings.yml
     echo 'paired: true' >> settings.yml
     echo 'min-quality: ${params.minQuality}' >> settings.yml
     echo 'max-quality: ${params.maxQuality}' >> settings.yml
@@ -835,7 +835,8 @@ process ngsfilter {
 
   script:
   """
-  echo 'primer-mismatch: ${params.primerMismatch}' > settings.yml
+  echo "obitools: 1.2.13" >> settings.yml
+  echo 'primer-mismatch: ${params.primerMismatch}' >> settings.yml
 
   ngsfilter --uppercase -t ${barcode} -e ${params.primerMismatch} -u "${key}_filter_orphans.fastq" ${read} > "${key}_${barcode.baseName}_annotated.fastq"
   """
@@ -857,7 +858,8 @@ process filter_length {
 
   script:
   """
-  echo 'min-len: ${params.minLen}' > settings.yml
+  echo "obitools: 1.2.13" >> settings.yml
+  echo 'min-len: ${params.minLen}' >> settings.yml
 
   obigrep --uppercase -l ${params.minLen} "${fastq}" > "${key}_length_filtered.fastq"
   """
@@ -902,14 +904,16 @@ process relabel {
   // vsearch might as well, so we play it safe
   if (params.denoiser == "vsearch") {
     """
-    echo 'denoiser: vsearch' > settings.yml
+    echo "vsearch: \$(vsearch --version 2>&1| head -1 | awk  '{print \$2}' | sed 's/,\$//')" >> settings.yml
+    echo 'denoiser: vsearch' >> settings.yml
 
     vsearch --threads ${task.cpus} --fastq_qmax ${params.maxQuality} --fastx_filter ${fastq} --relabel "${key}." --label_suffix ";sample=${key}" --fastaout - | \\
       awk '/^>/ {print;} !/^>/ {print(toupper(\$0))}' > "${key}_relabeled.fasta"
     """
   } else {
     """
-    echo 'denoiser: usearch' > settings.yml
+    echo "usearch: \$(usearch | head -1 | awk '{print \$2}')" >> settings.yml
+    echo 'denoiser: usearch' >> settings.yml
 
     # usearch doesn't allow output to stdout so we have to use an intermediate file
     usearch -fastq_filter ${fastq} -relabel "${key}." -fastaout tmp.fasta  -sample "${key}"
@@ -957,7 +961,7 @@ process dereplicate {
   script:
   if (params.denoiser == "vsearch") {
     """
-    touch settings.yml
+    echo "vsearch: \$(vsearch --version 2>&1| head -1 | awk  '{print \$2}' | sed 's/,\$//')" >> settings.yml
     if [ -s "${relabeled_merged}" ]; then
       # dereplicate to uniques
       vsearch \\
@@ -972,7 +976,7 @@ process dereplicate {
     """
   } else {
     """
-    touch settings.yml
+    echo "usearch: \$(usearch | head -1 | awk '{print \$2}')" >> settings.yml
     if [ -s "${relabeled_merged}" ]; then
       # dereplicate to uniques
       usearch \\
@@ -1010,7 +1014,7 @@ process remove_chimeras {
   script:
   if (params.denoiser == "vsearch") {
     """
-    touch settings.yml
+    echo "vsearch: \$(vsearch --version 2>&1| head -1 | awk  '{print \$2}' | sed 's/,\$//')" >> settings.yml
     # remove chimeras
     if [ -f "${chimera_reference}" ]; then
       # if we have a valid reference file
@@ -1038,7 +1042,7 @@ process remove_chimeras {
     """
   } else {
     """
-    touch settings.yml
+    echo "usearch: \$(usearch | head -1 | awk '{print \$2}')" >> settings.yml
     # remove chimeras
     usearch -uchime3_denovo "${uniques}" \\
       -uchimeout chimera_map.tsv \\
@@ -1066,7 +1070,8 @@ process denoise {
   script:
   if (params.denoiser == "vsearch") {
     """
-    echo 'min-abundance: ${params.minAbundance}' > settings.yml
+    echo "vsearch: \$(vsearch --version 2>&1| head -1 | awk  '{print \$2}' | sed 's/,\$//')" >> settings.yml
+    echo 'min-abundance: ${params.minAbundance}' >> settings.yml
     echo 'alpha: ${params.alpha}' >> settings.yml
 
     # denoise to zotus
@@ -1080,7 +1085,8 @@ process denoise {
     """
   } else {
     """
-    echo 'min-abundance: ${params.minAbundance}' > settings.yml
+    echo "usearch: \$(usearch | head -1 | awk '{print \$2}')" >> settings.yml
+    echo 'min-abundance: ${params.minAbundance}' >> settings.yml
     echo 'alpha: ${params.alpha}' >> settings.yml
 
     # denoise to zotus
@@ -1112,6 +1118,7 @@ process generate_sequence_table {
   script:
   if (params.denoiser == "vsearch") {
     """
+    echo "vsearch: \$(vsearch --version 2>&1| head -1 | awk  '{print \$2}' | sed 's/,\$//')" >> settings.yml
     echo 'zotu-identity: ${params.zotuIdentity}' >> settings.yml
 
     # generate zotu table
@@ -1127,6 +1134,7 @@ process generate_sequence_table {
     """
   } else {
     """
+    echo "usearch: \$(usearch | head -1 | awk '{print \$2}')" >> settings.yml
     echo 'zotu-identity: ${params.zotuIdentity}' >> settings.yml
 
     # generate zotu table
@@ -1193,7 +1201,8 @@ process blast {
     .join(" ")
   """
   # record blast settings
-  echo "percent-identity: ${params.percentIdentity}" > settings.yml
+  echo "blastn: \$(blastn -version | head -1 | awk '{print \$NF}')" >> settings.yml
+  echo "percent-identity: ${params.percentIdentity}" >> settings.yml
   echo "evalue: ${params.evalue}" >> settings.yml
   echo "qcov: ${params.qcov}" >> settings.yml
   echo "max-query-results: ${params.maxQueryResults}" >> settings.yml
@@ -1323,7 +1332,8 @@ process lulu {
 
   script:
   """
-  echo "lulu-min-ratio: ${params.luluMinRatio}" > settings.yml
+  echo "lulu: \$(Rscript -e 'cat(as.character(packageVersion(\"lulu\")),\"\\n\")')" >> settings.yml
+  echo "lulu-min-ratio: ${params.luluMinRatio}" >> settings.yml
   echo "lulu-min-ratio-type: ${params.luluMinRatioType}" >> settings.yml
   echo "lulu-min-match: ${params.luluMinMatch}" >> settings.yml
   echo "lulu-min-rc: ${params.luluMinRc}" >> settings.yml
@@ -1418,7 +1428,8 @@ process insect {
 
   """
   # record insect settings
-  echo "insect-offset: ${params.insectOffset}" > settings.yml
+  echo "insect: \$(Rscript -e 'cat(as.character(packageVersion(\"insect\")),\"\\n\")')" >> settings.yml
+  echo "insect-offset: ${params.insectOffset}" >> settings.yml
   echo "insect-threshold: ${params.insectThreshold}" >> settings.yml
   echo "insect-min-count: ${params.insectMinCount}" >> settings.yml
   echo "insect-ping: ${params.insectPing}" >> settings.yml

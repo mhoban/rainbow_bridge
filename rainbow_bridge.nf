@@ -1628,13 +1628,30 @@ workflow {
       }
 
 
+      // if requested, split query sequences into chunks
+      if (params.splitSequences) {
+        sequences |
+          splitFasta(by: params.splitSequencesBy, file: true) |
+          set { query_sequences }
+      } else {
+        query_sequences = sequences
+      }
 
       // run the insect classification
       classifier |
-        combine(sequences) |
+        combine(query_sequences) |
         combine(ncbi_dumps) |
         insect 
-      insect_taxonomy = insect.out.taxonomy
+
+      if (params.splitSequences) {
+        insect.out.taxonomy |
+          toList |
+          merge_split_insect |
+          set { insect_taxonomy }
+      } else {
+        insect_taxonomy = insect.out.taxonomy
+      }
+
     } else {
       insect_taxonomy = Channel.fromPath('nofile-insect-taxonomy')
     }

@@ -250,7 +250,7 @@ process dada_plot_quality_profiles {
   label 'r'
   label 'process_more_memory'
 
-  publishDir "${params.preDir}/quality_plots"
+  publishDir "${params.outDir}/plots/quality"
 
   input:
     tuple val(key), path(reads)
@@ -492,7 +492,7 @@ process dada_plot_errors {
   label 'r'
   label 'process_more_memory'
 
-  publishDir "${params.preDir}/error_plots"
+  publishDir "${params.outDir}/plots/error"
 
   input:
     tuple path(reads), path(filtered), path(err), val(direction)
@@ -1930,80 +1930,75 @@ workflow {
       // do the quality plots (if requested)
       if (params.plotQualities) { 
         dada_plot_quality_profiles(reads)
-        if (params.plotOnly) { 
-          println(colors.yellow("bailing out"))
-          // TODO: make this actually work
-          // wait for plotting to finish and bail
-          dada_plot_quality_profiles.collect()
-          exit(0)
+      }
+
+      if (!params.plotOnly || !params.plotQualities) {
+        // flatten the reads since dada2 works with everything all at once
+        samples = reads.collect { it[0] }
+        fwd = reads.collect { it[1][0] }
+        rev = params.paired ? reads.collect { it[1][1] } : Channel.fromPath('-')
+        samples |
+          toList |
+          combine(fwd.toList()) | 
+          combine(rev.toList()) |
+          set { to_trim }
+
+        filtered = dada_filter_trim(to_trim).result
+
+        // tuple val(samples), path('*_R1_filtered_trimmed.fastq.gz'), path('*_R2_filtered_trimmed.fastq.gz'), path('fwd.rds'), path('rev.rds'), emit: result
+        fwd = filtered.map{ [ it[1], it[3], 'fwd' ] }
+        rev = filtered.map{ [ it[2], it[4], 'rev' ] }
+
+        dada_learn_errors(params.paired ? fwd.concat(rev) : fwd) |
+          set { errors }
+        
+        if (params.plotErrors) {
+          dada_plot_errors(errors)
         }
+
+        errors | 
+          dada_infer_samples |
+          set { inferred_samples }
+        
+        if (params.paired) {
+          inferred_samples | 
+            collect | 
+            map { [ it[0] + it[5], [it[1],it[6]], [it[2],it[7]], [it[3],it[8]] ]} |
+            set { to_merge }
+          to_merge |
+            dada_merge_reads | 
+            set { denoised }
+        } else {
+          inferred_samples |
+            map { it[3] } |
+            set { denoised } 
+        }
+        dada_make_asv_table(denoised)
+        dada_make_asv_table.out.asv | 
+          dada_remove_chimeras
+
+        // tuple path(filter_table), path(filter), path(dada), path(merged), path(asv_table)
+        if (params.paired) {
+          dada_filter_trim.out.filter |
+            combine(to_merge) | 
+            map { [ it[0], it[2], it[4] ] } |
+            combine(dada_merge_reads.out) |
+            combine(dada_remove_chimeras.out.asv | map { it[0] }) |
+            set { to_track }
+        } else {
+          dada_filter_trim.out.filter | 
+            combine(dada_filter_trim.out.result | map { it[3] }) |
+            combine(dada_infer_samples.out | map { it[3] } ) | 
+            combine(Channel.fromPath('-')) |
+            combine(dada_remove_chimeras.out.asv | map { it[0] }) | 
+            set { to_track }
+        }
+        dada_track_reads(to_track)
+        dada_remove_chimeras.out.asv_table | 
+          set { seq_table }
+        dada_remove_chimeras.out.fasta | 
+          set { sequences }
       }
-
-      // flatten the reads since dada2 works with everything all at once
-      samples = reads.collect { it[0] }
-      fwd = reads.collect { it[1][0] }
-      rev = params.paired ? reads.collect { it[1][1] } : Channel.fromPath('-')
-      samples |
-        toList |
-        combine(fwd.toList()) | 
-        combine(rev.toList()) |
-        set { to_trim }
-
-      filtered = dada_filter_trim(to_trim).result
-
-      // tuple val(samples), path('*_R1_filtered_trimmed.fastq.gz'), path('*_R2_filtered_trimmed.fastq.gz'), path('fwd.rds'), path('rev.rds'), emit: result
-      fwd = filtered.map{ [ it[1], it[3], 'fwd' ] }
-      rev = filtered.map{ [ it[2], it[4], 'rev' ] }
-
-      dada_learn_errors(params.paired ? fwd.concat(rev) : fwd) |
-        set { errors }
-      
-      if (params.plotErrors) {
-        dada_plot_errors(errors)
-      }
-
-      errors | 
-        dada_infer_samples |
-        set { inferred_samples }
-      
-      if (params.paired) {
-        inferred_samples | 
-          collect | 
-          map { [ it[0] + it[5], [it[1],it[6]], [it[2],it[7]], [it[3],it[8]] ]} |
-          set { to_merge }
-        to_merge |
-          dada_merge_reads | 
-          set { denoised }
-      } else {
-        inferred_samples |
-          map { it[3] } |
-          set { denoised } 
-      }
-      dada_make_asv_table(denoised)
-      dada_make_asv_table.out.asv | 
-        dada_remove_chimeras
-
-      // tuple path(filter_table), path(filter), path(dada), path(merged), path(asv_table)
-      if (params.paired) {
-        dada_filter_trim.out.filter |
-          combine(to_merge) | 
-          map { [ it[0], it[2], it[4] ] } |
-          combine(dada_merge_reads.out) |
-          combine(dada_remove_chimeras.out.asv | map { it[0] }) |
-          set { to_track }
-      } else {
-        dada_filter_trim.out.filter | 
-          combine(dada_filter_trim.out.result | map { it[3] }) |
-          combine(dada_infer_samples.out | map { it[3] } ) | 
-          combine(Channel.fromPath('-')) |
-          combine(dada_remove_chimeras.out.asv | map { it[0] }) | 
-          set { to_track }
-      }
-      dada_track_reads(to_track)
-      dada_remove_chimeras.out.asv_table | 
-        set { seq_table }
-      dada_remove_chimeras.out.fasta | 
-        set { sequences }
     } else { // run the u/vsearch pipeline
       if (helper.file_exists(params.sequences)) {
         // we've already demultiplexed and relabeled sequences
@@ -2251,7 +2246,7 @@ workflow {
       }
     }
       
-    if (!params.preprocessOnly) { 
+    if (!params.preprocessOnly && (!params.plotOnly || !params.plotQualities)) {
       if (params.blastTaxa || params.blastExcludeTaxa || params.insect || params.lca) {
         if (!params.noTaxdump) {
           // load and extract NCBI taxonomy

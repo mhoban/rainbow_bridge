@@ -185,13 +185,8 @@ def check_params() {
       exit(1)
     }
 
-    // make --blast param into a list, if it isn't
-    def blasts = params.blast
-    if (!helper.is_list(blasts))
-      blasts = [blasts]
-
-    // get unique vals
-    blasts = blasts.unique(false)
+    // get --blast param value(s) as a list with only unique elements
+    def blasts = ([] + params.blast).unique()
 
     // make sure we've got at least one db
     if (!blasts.size()) {
@@ -1187,9 +1182,7 @@ process blast {
   def blastn_map = task.ext.blastn_map
   // construct -taxids or -negative_taxids argument
   if (taxids && method) {
-    if (taxids instanceof Collection) {
-      taxids = (taxids - "").join(",")
-    }
+    taxids = (([]+taxids) - "").join(",")
     def tt = blastn_map[method] ?: ""
     blastn_map[method] = ([taxids,tt] - "").join(",")
   } 
@@ -1258,10 +1251,7 @@ process lookup_blast_taxids {
     env(taxids)
 
   script:
-  if (!(taxa instanceof Collection)) {
-    taxa = [taxa]
-  }
-  def begin = "BEGIN { " + taxa.collect { "spp[\"${it.toLowerCase()}\"] = 1;" }.join(" ") + " }"
+  def begin = "BEGIN { " + ([] + taxa).collect { "spp[\"${it.toLowerCase()}\"] = 1;" }.join(" ") + " }"
   """
   taxids=\$(awk -F '\\t' '${begin} (tolower(\$3) in spp && \$7 == "scientific name") {print \$1}' names.dmp | sort -n | paste -sd,)
   """
@@ -1930,7 +1920,7 @@ workflow {
             set { reads }
         } else {
           trim_length(reads) |
-            map { key, reads -> [ key, reads instanceof Collection ? reads : [reads] ]} |
+            map { key, reads -> [ key, helper.is_list(reads) ? reads : [reads] ]} |
             set { reads }
         }
       } else {
@@ -2291,13 +2281,8 @@ workflow {
         // def only works on its own line
         // possibly related to NF issue #804: https://github.com/nextflow-io/nextflow/issues/804
 
-        // make --blast value a list, if it's not already
-        def blasts = params.blast
-        if (!helper.is_list(blasts))
-          blasts = [blasts]
-
-        // get unique blast dbs
-        blasts = blasts.unique(false)
+        // get --blast param value(s) as a list with only unique elements
+        def blasts = ([] + params.blast).unique()
 
         // collect list of blast database files, grouped by database name
         Channel.fromPath(blasts) | 

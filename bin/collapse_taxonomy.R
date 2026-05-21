@@ -491,6 +491,8 @@ collapsed <- filtered %>%
   summarise(
     across(all_of(lineage_ranks),~ifelse(n_distinct(.x) == 1,first(.x),dropped)),
     unique_hits=unique_hits[1],
+    max_pid = max(pident),
+    mean_pid = mean(pident),
     taxid = (\(tids,ncbi) {
       if (n_distinct(tids) == 1) {
         return(setNames(unique(tids),"species"))

@@ -68,14 +68,14 @@ class helper {
 
     General options:
       --demultiplexed-by [option]  (required) Specify demultiplexing strategy. Accepted options are 
-                                   `index`, `barcode`, `combined` (default: ${params.demultiplexedBy})
+                                   `index`, `barcode`, `pool` (default: ${params.demultiplexedBy})
       --barcode [file]             (required) Barcode file. Format must match OBITools requirements
                                    (see https://pythonhosted.org/OBITools/scripts/ngsfilter.html)
                                    To denote multiple barcode files, this may be a glob, but it must
                                    be surrounded by quotations (e.g. 'barcode*.tab'). 
                                    For previously-demultiplexed datasets, use ':' for barcode pairs
                                    Primer sequences are still used for primer-mismatch comparisons
-                                   For `combined` demultiplexing strategy, first column of barcode file
+                                   For `pooled` demultiplexing strategy, first column of barcode file
                                    must match the underscore-delimited prefix of your sequence read files.
                                    (See README for more details).
       --fwd-primer [seq]           Forward PCR primer (to trim)

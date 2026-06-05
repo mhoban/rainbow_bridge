@@ -77,7 +77,7 @@ def check_params() {
     }
   } else {
     // bail if demultiplexed by barcode or pool and no barcode is given
-    if (params.demultiplexedBy in ['combined','barcode']) {
+    if (params.demultiplexedBy in ['pool','barcode']) {
       println(colors.red("A valid barcode file is required for this demultiplexing method"))
       exit(1)
     }
@@ -2107,7 +2107,7 @@ workflow {
             toList | merge_relabeled |
             set { to_dereplicate }
 
-        } else { // demultiplexed by barcode/combined
+        } else { // demultiplexed by barcode/pool
           // here, reads are demultiplexed by barcodes, so they're either
           // all in one or two fastq files (depending on single vs paired end)
           // or they're pooled such that barcode pairs are reused across index pairs
@@ -2140,7 +2140,7 @@ workflow {
               combine(reads) |
               first_fastqc
             // if input files are split we'll run them through multiqc
-            if (params.split || params.demultiplexedBy == "combined") {
+            if (params.split || params.demultiplexedBy == "pool") {
               first_fastqc.out |
                 collect(flat: true) |
                 toList |
@@ -2161,7 +2161,7 @@ workflow {
               combine(reads_filtered_merged) |
               second_fastqc
             // again run multiqc if split
-            if (params.split || params.demultiplexedBy == "combined") {
+            if (params.split || params.demultiplexedBy == "pool") {
               second_fastqc.out |
                 collect(flat: true) |
                 toList |
@@ -2171,7 +2171,7 @@ workflow {
           }
 
           // process pooled barcodes
-          if (params.demultiplexedBy == "combined") {
+          if (params.demultiplexedBy == "pool") {
             barcodes |
               // split barcode file into multiples by the first column (key value)
               split_barcodes | flatten |

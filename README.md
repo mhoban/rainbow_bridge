@@ -335,10 +335,10 @@ When the pipeline finishes, output from each step can be found in directories co
 | Directory   | Subdirectory                        | Description                                                  | Condition                                                | Denoiser |
 | ----------- | ----------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------- | ---- |
 | preprocess/ | trim_merge/                          | Length/quality filtered and (for paired-end runs) merged reads |                                                          |  usearch/vsearch  |
-|             | index_filtered/                      | Filtered/merged sequences with ambiguous indices filtered out | --remove-ambiguous-indices<br />--demultiplexed-by index/combined |  usearch/vsearch  |
+|             | index_filtered/                      | Filtered/merged sequences with ambiguous indices filtered out | --remove-ambiguous-indices<br />--demultiplexed-by index/pool |  usearch/vsearch  |
 |             | ngsfilter/                           | ngsfilter-processed reads: primer mismatch and sample annotation (if not previously demultiplexed) |  --demultiplexed-by barcode<br>OR<br>primers trimmed via ngsfilter  |  usearch/vsearch  |
 |             | length_filtered/                     | Sequence reads after length filtering  |                                                          |  usearch/vsearch/dada2  |
-|             | split_samples/                       | Annotated samples split into individual files                | --demultiplexed-by barcode<br>OR<br>--demultiplexed-by combined |  usearch/vsearch  |
+|             | split_samples/                       | Annotated samples split into individual files                | --demultiplexed-by barcode<br>OR<br>--demultiplexed-by pool |  usearch/vsearch  |
 |             | relabeled/                           | Relabeled combined FASTA files for denoiser (usearch/vsearch) input |                                                          |  usearch/vsearch  |
 |             | merged/                              | Merged relabeled FASTA file for denoising                    |                                                          |  usearch/vsearch  |
 |             | quality_plots/                              | Sequence read quality profile plots (PDF)   | --plot-qualities |  dada2  |
@@ -448,7 +448,7 @@ For fastq-based analyses, you must specify whether the sequencing run is single 
 
 You must also specify the [demultiplexing strategy](#input-requirements) used when preparing your sequencing libraries. 
 
-<small>**`--demultiplexed-by [strategy]`**</small>:  Specify sample demultiplexing strategy used when processing sequence reads. Accepted values are `index` (Illumina indices, previously-demultiplexed, the default), `barcode` (barcoded primers, not demultiplexed), or `combined` (pooled barcoded primers across Illumina index pairs).
+<small>**`--demultiplexed-by [strategy]`**</small>:  Specify sample demultiplexing strategy used when processing sequence reads. Accepted values are `index` (Illumina indices, previously-demultiplexed, the default), `barcode` (barcoded primers, not demultiplexed), or `pool` (pooled barcoded primers across Illumina index pairs).
 
 ### Specifying sequence denoiser
 
@@ -478,7 +478,7 @@ These settings allow you to set values related to quality filtering and paired-e
 <small>**`--min-len [num]`**</small>:         Minimum overall sequence length (default: 50)  
 
 ## PCR primer trimming
-These settings control how PCR primers are (optionally) trimmed from sequence reads. For non-demultiplexed and combined datasets (`--demultiplexed-by barcode/combined`), this will be done automatically during the demultiplexing step. For demultiplexed datasets processed with `usearch` or `vsearch`, this will optionally be done with `ngsfilter`. For demultiplexed datasets processed with `dada2`, it will be done using `cutadapt`.
+These settings control how PCR primers are (optionally) trimmed from sequence reads. For non-demultiplexed and pooled datasets (`--demultiplexed-by barcode/pool`), this will be done automatically during the demultiplexing step. For demultiplexed datasets processed with `usearch` or `vsearch`, this will optionally be done with `ngsfilter`. For demultiplexed datasets processed with `dada2`, it will be done using `cutadapt`.
 
 <small>**`--barcode [file/glob]`**</small>: Barcode file containing PCR primers. When used for primer trimming (as opposed to demultiplexing), this file should be formatted as for [previously-demultiplexed sequencing runs](#demuxed-run).  
 <small>**`--fwd-primer [primer sequence]`**</small>: Nucleotide sequence of forward PCR primer.  
@@ -858,7 +858,7 @@ rainbow_bridge supports generation of [phyloseq](https://joey711.github.io/phylo
 
 ## Barcode file 
 
-For combined/barcoded sequencing runs (`--demultiplexed-by barcode/combined`), a barcode file is required. For demultiplexed runs (`--demultiplexed-by index`), a barcode file can optionally be supplied to trim PCR primers. 
+For barcoded/pooled sequencing runs (`--demultiplexed-by barcode/pool`), a barcode file is required. For demultiplexed runs (`--demultiplexed-by index`), a barcode file can optionally be supplied to trim PCR primers. 
 
 <small>**`--barcode [file/glob]`**</small>: Location of a tab-separted barcode file (to be passed to ngsfilter or parsed for forward/reverse primer sequences). If the value passed to `--barcode` is a glob (enclosed in quotes!), rainbow_bridge will use all matching barcode files for demultiplexing/primer matching. Barcode files should comply with the [ngsfilter barcode file format](https://pythonhosted.org/OBITools/scripts/ngsfilter.html), which is a tab-delimited format used to define sample barcodes and amplicon primers. It will be different based on whether or not your reads are demultiplexed.
 
@@ -1365,6 +1365,3 @@ flowchart TB
 
   classDef hidden display: none, height: 0px, width: 0px, margi?worn: 0px;
   classDef sg rx:10,ry:10,margin:10px
-
-
-```

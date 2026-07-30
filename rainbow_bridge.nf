@@ -992,6 +992,53 @@ process dereplicate {
   }
 }
 
+// denoise to zotus
+process denoise {
+  label 'denoiser'
+  label 'process_full'
+
+  publishDir "${params.outDir}/zotus", mode: params.publishMode
+
+  input:
+    tuple val(id), path(sequences)
+
+  output:
+    tuple val(id), path("${id}_centroids.fasta"), emit: result
+    path 'settings.yml'
+
+
+  script:
+  if (params.denoiser == "vsearch") {
+    """
+    echo "vsearch: \$(vsearch --version 2>&1| head -1 | awk  '{print \$2}' | sed 's/,\$//')" >> settings.yml
+    echo 'min-abundance: ${params.minAbundance}' >> settings.yml
+    echo 'alpha: ${params.alpha}' >> settings.yml
+
+    # denoise to zotus
+    vsearch \\
+      --threads ${task.cpus} \\
+      --cluster_unoise "${sequences}" \\
+      --centroids "${id}_centroids.fasta" \\
+      --minsize ${params.minAbundance}  \\
+      --unoise_alpha ${params.alpha} \\
+      --relabel Zotu
+    """
+  } else {
+    """
+    echo "usearch: \$(usearch | head -1 | awk '{print \$2}')" >> settings.yml
+    echo 'min-abundance: ${params.minAbundance}' >> settings.yml
+    echo 'alpha: ${params.alpha}' >> settings.yml
+
+    # denoise to zotus
+    usearch -unoise3 "${sequences}"  \\
+      -zotus "${id}_zotus.fasta" \\
+      -threads ${task.cpus} \\
+      -minsize ${params.minAbundance} \\
+      -unoise_alpha ${params.alpha}
+    """
+  }
+}
+
 // remove chimera sequences
 process remove_chimeras {
   label 'denoiser'
@@ -1000,10 +1047,10 @@ process remove_chimeras {
   publishDir "${params.outDir}/zotus", mode: params.publishMode
 
   input:
-    tuple val(id), path(uniques), path(chimera_reference)
+    tuple val(id), path(centroids), path(chimera_reference)
 
   output:
-    tuple val(id), path("${id}_chimeras_removed.fasta"), emit: result
+    tuple val(id), path("${id}_zotus.fasta"), emit: result
     path 'settings.yml'
     path 'chimera_map.tsv'
     path '*_chimera_sequences.fasta'
@@ -1021,21 +1068,21 @@ process remove_chimeras {
       # do reference-based chimera removal in addition to denovo
       vsearch \\
         --threads ${task.cpus} \\
-        --uchime3_denovo "${uniques}" \\
+        --uchime3_denovo "${centroids}" \\
         --chimeras "${id}_chimeras_denovo.fasta" \\
         --nonchimeras - |\\
         vsearch \\
           --threads ${task.cpus} \\
           --uchime_ref - \\
           --db "${chimera_reference}" \\
-          --nonchimeras "${id}_chimeras_removed.fasta" \\
+          --nonchimeras "${id}_zotus.fasta" \\
           --chimeras "${id}_chimeras_reference.fasta" 
     else
       # otherwise just do it denovo
       vsearch \\
         --threads ${task.cpus} \\
-        --uchime3_denovo "${uniques}" \\
-        --nonchimeras "${id}_chimeras_removed.fasta" \\
+        --uchime3_denovo "${centroids}" \\
+        --nonchimeras "${id}_zotus.fasta" \\
         --uchimeout chimera_map.tsv \\
         --chimeras "${id}_chimera_sequences.fasta" 
     fi
@@ -1044,57 +1091,10 @@ process remove_chimeras {
     """
     echo "usearch: \$(usearch | head -1 | awk '{print \$2}')" >> settings.yml
     # remove chimeras
-    usearch -uchime3_denovo "${uniques}" \\
+    usearch -uchime3_denovo "${centroids}" \\
       -uchimeout chimera_map.tsv \\
       -chimeras "${id}_chimera_sequences.fasta" \\
-      -nonchimeras "${id}_chimeras_removed.fasta"
-    """
-  }
-}
-
-// denoise to zotus
-process denoise {
-  label 'denoiser'
-  label 'process_full'
-
-  publishDir "${params.outDir}/zotus", mode: params.publishMode
-
-  input:
-    tuple val(id), path(sequences)
-
-  output:
-    tuple val(id), path("${id}_zotus.fasta"), emit: result
-    path 'settings.yml'
-
-
-  script:
-  if (params.denoiser == "vsearch") {
-    """
-    echo "vsearch: \$(vsearch --version 2>&1| head -1 | awk  '{print \$2}' | sed 's/,\$//')" >> settings.yml
-    echo 'min-abundance: ${params.minAbundance}' >> settings.yml
-    echo 'alpha: ${params.alpha}' >> settings.yml
-
-    # denoise to zotus
-    vsearch \\
-      --threads ${task.cpus} \\
-      --cluster_unoise "${sequences}" \\
-      --centroids "${id}_zotus.fasta" \\
-      --minsize ${params.minAbundance}  \\
-      --unoise_alpha ${params.alpha} \\
-      --relabel Zotu
-    """
-  } else {
-    """
-    echo "usearch: \$(usearch | head -1 | awk '{print \$2}')" >> settings.yml
-    echo 'min-abundance: ${params.minAbundance}' >> settings.yml
-    echo 'alpha: ${params.alpha}' >> settings.yml
-
-    # denoise to zotus
-    usearch -unoise3 "${sequences}"  \\
-      -zotus "${id}_zotus.fasta" \\
-      -threads ${task.cpus} \\
-      -minsize ${params.minAbundance} \\
-      -unoise_alpha ${params.alpha}
+      -nonchimeras "${id}_zotus.fasta"
     """
   }
 }
@@ -2230,13 +2230,13 @@ workflow {
 
         // remove chimeras
         dereplicated.result |
-          combine(Channel.fromPath(params.chimeraRef)) |
-          remove_chimeras |
-          set { chimeras_removed }
+          denoise |
+          set { denoised }
 
         // denoise to zotus
-        chimeras_removed.result |
-          denoise | 
+        denoised.result |
+          combine(Channel.fromPath(params.chimeraRef)) |
+          remove_chimeras | 
           set { denoised } 
 
         // generate zotu table

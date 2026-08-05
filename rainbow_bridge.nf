@@ -1031,7 +1031,7 @@ process denoise {
 
     # denoise to zotus
     usearch -unoise3 "${sequences}"  \\
-      -zotus "${id}_zotus.fasta" \\
+      -zotus "${id}_centroids.fasta" \\
       -threads ${task.cpus} \\
       -minsize ${params.minAbundance} \\
       -unoise_alpha ${params.alpha}

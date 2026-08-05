@@ -9,7 +9,7 @@
 
 <br><br>
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.8278073.svg)](https://doi.org/10.5281/zenodo.8278073)
+[![DOI: 10.5281/zenodo.8278073](https://img.shields.io/badge/DOI-10.5281/zenodo.8278073-blue.svg)](https://doi.org/10.5281/zenodo.8278073)
 
 # rainbow_bridge
 
